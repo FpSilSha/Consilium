@@ -3,5 +3,6 @@ import type { PersonasSlice } from './slices/personasSlice'
 import type { ThemesSlice } from './slices/themesSlice'
 import type { ContextBusSlice } from './slices/contextBusSlice'
 import type { WindowsSlice } from './slices/windowsSlice'
+import type { UISlice } from './slices/uiSlice'
 
-export type RootState = KeysSlice & PersonasSlice & ThemesSlice & ContextBusSlice & WindowsSlice
+export type RootState = KeysSlice & PersonasSlice & ThemesSlice & ContextBusSlice & WindowsSlice & UISlice
