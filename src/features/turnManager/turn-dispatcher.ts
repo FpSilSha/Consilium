@@ -195,14 +195,18 @@ function dispatchAgentTurn(card: QueueCard): void {
 
       onTurnComplete()
     },
-    onError: (error) => {
+    onError: (error, tokenUsage) => {
       activeControllers.delete(card.id)
+
+      // Record partial cost even on error
+      const costMeta = buildCostMetadata(tokenUsage, window.model)
 
       const current = useStore.getState()
       current.updateWindow(card.windowId, {
         isStreaming: false,
         streamContent: '',
         error,
+        runningCost: window.runningCost + (costMeta?.estimatedCost ?? 0),
       })
       current.setCardStatus(card.id, 'errored', error)
       current.setActiveCard(null)

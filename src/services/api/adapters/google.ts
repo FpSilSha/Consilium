@@ -69,9 +69,12 @@ export const googleAdapter: ProviderAdapter = {
 function extractTokenUsage(obj: Record<string, unknown>): StreamChunk['tokenUsage'] {
   const usage = obj['usageMetadata'] as Record<string, unknown> | undefined
   if (usage === undefined) return undefined
+  const inputTokens = typeof usage['promptTokenCount'] === 'number' ? usage['promptTokenCount'] : undefined
+  const outputTokens = typeof usage['candidatesTokenCount'] === 'number' ? usage['candidatesTokenCount'] : undefined
+  if (inputTokens === undefined && outputTokens === undefined) return undefined
   return {
-    inputTokens: typeof usage['promptTokenCount'] === 'number' ? usage['promptTokenCount'] : 0,
-    outputTokens: typeof usage['candidatesTokenCount'] === 'number' ? usage['candidatesTokenCount'] : 0,
+    inputTokens: inputTokens ?? 0,
+    outputTokens: outputTokens ?? 0,
   }
 }
 
@@ -91,10 +94,23 @@ function parseGoogleEvent(event: unknown): StreamChunk | null {
 
   // Terminal event: finishReason present (STOP, SAFETY, MAX_TOKENS, etc.)
   if (finishReason !== undefined && finishReason !== null) {
-    const isSafetyStop = finishReason === 'SAFETY' || finishReason === 'RECITATION'
+    const isPolicyStop =
+      finishReason === 'SAFETY' ||
+      finishReason === 'RECITATION' ||
+      finishReason === 'BLOCKLIST' ||
+      finishReason === 'PROHIBITED_CONTENT' ||
+      finishReason === 'SPII'
+    if (isPolicyStop) {
+      const partialNote = text !== '' ? `\n\n[Partial response before block]:\n${text}` : ''
+      return {
+        type: 'error',
+        content: `Response blocked by provider (${String(finishReason)})${partialNote}`,
+        tokenUsage: extractTokenUsage(obj),
+      }
+    }
     return {
-      type: isSafetyStop ? 'error' : 'done',
-      content: isSafetyStop ? `Response blocked by provider (${String(finishReason)})` : text,
+      type: 'done',
+      content: text,
       tokenUsage: extractTokenUsage(obj),
     }
   }

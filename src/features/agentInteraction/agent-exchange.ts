@@ -144,14 +144,18 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
 
         resolve(false)
       },
-      onError: (error) => {
+      onError: (error, tokenUsage) => {
         activeExchangeController = null
+
+        // Record partial cost even on error
+        const errorCostMeta = buildCostMetadata(tokenUsage, window.model)
 
         const current = useStore.getState()
         current.updateWindow(windowId, {
           isStreaming: false,
           streamContent: '',
           error,
+          runningCost: window.runningCost + (errorCostMeta?.estimatedCost ?? 0),
         })
 
         resolve(controller.signal.aborted)

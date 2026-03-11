@@ -20,7 +20,7 @@ export function getAdapter(provider: Provider): ProviderAdapter {
 export interface StreamCallbacks {
   onChunk: (content: string) => void
   onDone: (fullContent: string, tokenUsage?: StreamChunk['tokenUsage']) => void
-  onError: (error: string) => void
+  onError: (error: string, tokenUsage?: StreamChunk['tokenUsage']) => void
 }
 
 /**
@@ -121,7 +121,16 @@ async function runStream(
         return
 
       case 'error':
-        callbacks.onError(chunk.content)
+        if (chunk.tokenUsage !== undefined) {
+          accumulatedInputTokens = Math.max(accumulatedInputTokens, chunk.tokenUsage.inputTokens)
+          accumulatedOutputTokens = Math.max(accumulatedOutputTokens, chunk.tokenUsage.outputTokens)
+        }
+        callbacks.onError(
+          chunk.content,
+          accumulatedInputTokens > 0 || accumulatedOutputTokens > 0
+            ? { inputTokens: accumulatedInputTokens, outputTokens: accumulatedOutputTokens }
+            : undefined,
+        )
         return
     }
   }
