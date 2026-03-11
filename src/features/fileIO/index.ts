@@ -1,2 +1,9 @@
-// Phase 5A — File I/O sandbox
-export {}
+export {
+  isPathSandboxed,
+  getSessionInputDir,
+  getSessionOutputDir,
+  getSessionsDir,
+  sanitizePathSegment,
+  prepareFileContent,
+  buildRelativePath,
+} from './file-sandbox'
