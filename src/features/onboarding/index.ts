@@ -1,2 +1,1 @@
-// Phase 5C — Onboarding wizard
-export {}
+export { OnboardingWizard } from './OnboardingWizard'

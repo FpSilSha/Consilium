@@ -1,2 +1,8 @@
-// Phase 5C — Budget enforcement
-export {}
+export {
+  getSessionTotalCost,
+  isBudgetWarning,
+  isBudgetExceeded,
+  getRemainingBudget,
+  getBudgetUsagePercent,
+} from './budget-engine'
+export { BudgetBar } from './BudgetBar'

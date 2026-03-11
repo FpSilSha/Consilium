@@ -7,6 +7,7 @@ import { createContextBusSlice } from './slices/contextBusSlice'
 import { createWindowsSlice } from './slices/windowsSlice'
 import { createUISlice } from './slices/uiSlice'
 import { createTurnSlice } from './slices/turnSlice'
+import { createBudgetSlice } from './slices/budgetSlice'
 
 export const useStore = create<RootState>()((...args) => ({
   ...createKeysSlice(...args),
@@ -16,6 +17,7 @@ export const useStore = create<RootState>()((...args) => ({
   ...createWindowsSlice(...args),
   ...createUISlice(...args),
   ...createTurnSlice(...args),
+  ...createBudgetSlice(...args),
 }))
 
 export type { RootState } from './types'
