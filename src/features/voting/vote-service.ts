@@ -10,6 +10,9 @@ import { parseVoteResponse, tallyVotes } from './vote-parser'
 
 const VOTE_INSTRUCTION = 'Respond with only: YAY, NAY, or ABSTAIN, followed by a one-sentence justification.'
 
+/** Prevents concurrent vote calls from corrupting the shared thread. */
+let isVoting = false
+
 /**
  * Broadcasts a "Call for Vote" question to all active advisors.
  * Returns a tally of all votes once all advisors have responded.
@@ -18,6 +21,19 @@ const VOTE_INSTRUCTION = 'Respond with only: YAY, NAY, or ABSTAIN, followed by a
  * then replaced with just the clean question after all votes are collected.
  */
 export async function callForVote(question: string): Promise<VoteTally> {
+  if (isVoting) {
+    return { yay: 0, nay: 0, abstain: 0, total: 0, votes: [] }
+  }
+  isVoting = true
+
+  try {
+    return await executeVote(question)
+  } finally {
+    isVoting = false
+  }
+}
+
+async function executeVote(question: string): Promise<VoteTally> {
   const state = useStore.getState()
 
   // Append the vote question + instruction as a temporary user message

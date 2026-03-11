@@ -134,9 +134,8 @@ export async function compactMainThread(): Promise<CompactionResult | null> {
     summary = buildFallbackSummaryText(archive)
   }
 
-  // Archive old messages, replace thread with summary + buffer
-  state.archiveMessages(archive)
-  state.setMessages(buffer)
+  // Atomically archive old messages and replace thread with buffer
+  state.compactMessages(archive, buffer)
 
   // Mark all windows as compacted
   for (const windowId of state.windowOrder) {
@@ -198,8 +197,7 @@ function applyCompaction(
   summary: string,
 ): void {
   const state = useStore.getState()
-  state.archiveMessages(archive)
-  state.setMessages(buffer)
+  state.compactMessages(archive, buffer)
   state.updateWindow(windowId, { isCompacted: true, compactedSummary: summary })
 }
 
