@@ -49,19 +49,16 @@ async function executeWindowCompaction(
   const window = state.windows[windowId]
   if (window === undefined) return null
 
-  const { archive } = splitForCompaction(
-    state.messages,
-    window.bufferSize,
-  )
-
-  if (archive.length === 0) return null
-
   // Find a suitable summary model with an available key
   const summaryConfig = findSummaryModel(state.keys)
   if (summaryConfig === null) {
-    // Fallback: create a basic summary without API call
+    // No API key available — createFallbackSummary reads live state internally
     return createFallbackSummary(windowId)
   }
+
+  // Only compute archive for the API summarization path
+  const { archive } = splitForCompaction(state.messages, window.bufferSize)
+  if (archive.length === 0) return null
 
   const summaryPrompt = buildSummaryPrompt(archive)
 
