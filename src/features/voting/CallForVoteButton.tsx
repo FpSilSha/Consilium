@@ -18,19 +18,20 @@ export function CallForVoteButton(): ReactNode {
     setIsVoting(true)
     setError(null)
 
+    let clearQuestion = true
     try {
       const result = await callForVote(trimmed)
       setTally(result)
     } catch (err) {
       if (err instanceof VoteInProgressError) {
         // Vote already running — preserve question so user can retry
-        setIsVoting(false)
-        return
+        clearQuestion = false
+      } else {
+        setError(err instanceof Error ? err.message : 'Vote failed. Please try again.')
       }
-      setError(err instanceof Error ? err.message : 'Vote failed. Please try again.')
     } finally {
       setIsVoting(false)
-      setQuestion('')
+      if (clearQuestion) setQuestion('')
     }
   }, [question])
 
