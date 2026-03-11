@@ -1,2 +1,7 @@
-// Phase 4C — Agent-to-agent
-export {}
+export { resolveMentionTargets, cleanMentions, hasMentions } from './mention-router'
+export {
+  executeAgentExchange,
+  repeatLastExchange,
+  cancelExchange,
+  hasLastExchange,
+} from './agent-exchange'
