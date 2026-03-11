@@ -19,6 +19,8 @@ export function CallForVoteButton(): ReactNode {
     try {
       const result = await callForVote(trimmed)
       setTally(result)
+    } catch {
+      // Vote already in progress or failed — UI already shows disabled state
     } finally {
       setIsVoting(false)
       setQuestion('')

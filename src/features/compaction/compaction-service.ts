@@ -27,15 +27,29 @@ interface CompactionResult {
 /**
  * Runs compaction for a specific window.
  * Summarizes older messages, archives them, and marks the window as compacted.
+ * Guards against concurrent compaction for the same window.
  */
 export async function compactWindow(
+  windowId: string,
+): Promise<CompactionResult | null> {
+  if (compactingWindows.has(windowId)) return null
+  compactingWindows.add(windowId)
+
+  try {
+    return await executeWindowCompaction(windowId)
+  } finally {
+    compactingWindows.delete(windowId)
+  }
+}
+
+async function executeWindowCompaction(
   windowId: string,
 ): Promise<CompactionResult | null> {
   const state = useStore.getState()
   const window = state.windows[windowId]
   if (window === undefined) return null
 
-  const { archive, buffer } = splitForCompaction(
+  const { archive } = splitForCompaction(
     state.messages,
     window.bufferSize,
   )
@@ -46,7 +60,7 @@ export async function compactWindow(
   const summaryConfig = findSummaryModel(state.keys)
   if (summaryConfig === null) {
     // Fallback: create a basic summary without API call
-    return createFallbackSummary(archive, buffer, windowId)
+    return createFallbackSummary(windowId)
   }
 
   const summaryPrompt = buildSummaryPrompt(archive)
@@ -62,9 +76,11 @@ export async function compactWindow(
     // Re-split from live state to avoid dropping messages appended during summarization
     const liveState = useStore.getState()
     const liveWindow = liveState.windows[windowId]
+    if (liveWindow === undefined) return null
+
     const { archive: liveArchive, buffer: liveBuffer } = splitForCompaction(
       liveState.messages,
-      liveWindow?.bufferSize ?? window.bufferSize,
+      liveWindow.bufferSize,
     )
 
     if (liveArchive.length === 0) return null
@@ -77,17 +93,7 @@ export async function compactWindow(
       bufferCount: liveBuffer.length,
     }
   } catch {
-    // Fallback also re-splits from live state
-    const liveState = useStore.getState()
-    const liveWindow = liveState.windows[windowId]
-    const { archive: liveArchive, buffer: liveBuffer } = splitForCompaction(
-      liveState.messages,
-      liveWindow?.bufferSize ?? window.bufferSize,
-    )
-
-    if (liveArchive.length === 0) return null
-
-    return createFallbackSummary(liveArchive, liveBuffer, windowId)
+    return createFallbackSummary(windowId)
   }
 }
 
@@ -105,20 +111,13 @@ export function checkAutoCompaction(): void {
   const state = useStore.getState()
 
   for (const windowId of state.windowOrder) {
-    if (compactingWindows.has(windowId)) continue
-
     const window = state.windows[windowId]
     if (window === undefined || window.isStreaming) continue
 
     if (shouldCompact(state.messages, window)) {
-      compactingWindows.add(windowId)
-      compactWindow(windowId)
-        .catch(() => {
-          // Auto-compaction failures are non-fatal
-        })
-        .finally(() => {
-          compactingWindows.delete(windowId)
-        })
+      compactWindow(windowId).catch(() => {
+        // Auto-compaction failures are non-fatal
+      })
     }
   }
 }
@@ -248,10 +247,19 @@ function applyCompaction(
 }
 
 function createFallbackSummary(
-  archive: readonly Message[],
-  buffer: readonly Message[],
   windowId: string,
-): CompactionResult {
+): CompactionResult | null {
+  const liveState = useStore.getState()
+  const liveWindow = liveState.windows[windowId]
+  if (liveWindow === undefined) return null
+
+  const { archive, buffer } = splitForCompaction(
+    liveState.messages,
+    liveWindow.bufferSize,
+  )
+
+  if (archive.length === 0) return null
+
   const summary = buildFallbackSummaryText(archive)
   applyCompaction(windowId, archive, buffer, summary)
 
