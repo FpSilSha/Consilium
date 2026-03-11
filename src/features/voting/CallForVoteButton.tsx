@@ -1,5 +1,5 @@
 import { type ReactNode, useState, useCallback } from 'react'
-import { callForVote } from './vote-service'
+import { callForVote, VoteInProgressError } from './vote-service'
 import { VoteTallyPanel } from './VoteTallyPanel'
 import type { VoteTally } from './vote-types'
 
@@ -8,6 +8,7 @@ export function CallForVoteButton(): ReactNode {
   const [question, setQuestion] = useState('')
   const [isVoting, setIsVoting] = useState(false)
   const [tally, setTally] = useState<VoteTally | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const handleCallVote = useCallback(async () => {
     const trimmed = question.trim()
@@ -15,14 +16,18 @@ export function CallForVoteButton(): ReactNode {
 
     setShowPrompt(false)
     setIsVoting(true)
+    setError(null)
 
     try {
       const result = await callForVote(trimmed)
       setTally(result)
     } catch (err) {
-      if (!(err instanceof Error && err.message === 'A vote is already in progress')) {
-        throw err
+      if (err instanceof VoteInProgressError) {
+        // Vote already running — preserve question so user can retry
+        setIsVoting(false)
+        return
       }
+      setError(err instanceof Error ? err.message : 'Vote failed. Please try again.')
     } finally {
       setIsVoting(false)
       setQuestion('')
@@ -72,6 +77,24 @@ export function CallForVoteButton(): ReactNode {
                 className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-40"
               >
                 Call Vote
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vote error */}
+      {error !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="mx-4 max-w-sm rounded-lg border border-red-800 bg-gray-900 p-5">
+            <h3 className="mb-2 text-sm font-medium text-red-400">Vote Failed</h3>
+            <p className="mb-3 text-xs text-gray-300">{error}</p>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setError(null)}
+                className="rounded px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-800"
+              >
+                Dismiss
               </button>
             </div>
           </div>

@@ -10,8 +10,16 @@ import { parseVoteResponse, tallyVotes } from './vote-parser'
 
 const VOTE_INSTRUCTION = 'Respond with only: YAY, NAY, or ABSTAIN, followed by a one-sentence justification.'
 
+/** Typed error for re-entrant vote calls — use instanceof checks instead of string matching. */
+export class VoteInProgressError extends Error {
+  constructor() {
+    super('A vote is already in progress')
+    this.name = 'VoteInProgressError'
+  }
+}
+
 /** Prevents concurrent vote calls from corrupting the shared thread. */
-let isVoting = false
+let isVoteInFlight = false
 
 /**
  * Broadcasts a "Call for Vote" question to all active advisors.
@@ -21,15 +29,15 @@ let isVoting = false
  * then replaced with just the clean question after all votes are collected.
  */
 export async function callForVote(question: string): Promise<VoteTally> {
-  if (isVoting) {
-    throw new Error('A vote is already in progress')
+  if (isVoteInFlight) {
+    throw new VoteInProgressError()
   }
-  isVoting = true
+  isVoteInFlight = true
 
   try {
     return await executeVote(question)
   } finally {
-    isVoting = false
+    isVoteInFlight = false
   }
 }
 
