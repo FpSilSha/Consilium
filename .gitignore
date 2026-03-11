@@ -24,6 +24,8 @@ node_modules/
 # Build output
 dist/
 build/
+out/
+release/
 
 # Python
 __pycache__/
