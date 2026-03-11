@@ -1,0 +1,14 @@
+appId: com.consilium.app
+productName: Consilium
+directories:
+  buildResources: build
+  output: release
+files:
+  - dist/**/*
+  - package.json
+win:
+  target: nsis
+mac:
+  target: dmg
+linux:
+  target: AppImage
