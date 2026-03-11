@@ -94,12 +94,32 @@ function windowToSession(
 function isSessionFile(data: unknown): data is SessionFile {
   if (typeof data !== 'object' || data === null) return false
   const obj = data as Record<string, unknown>
-  return (
-    obj['version'] === 1 &&
-    typeof obj['id'] === 'string' &&
-    typeof obj['name'] === 'string' &&
-    typeof obj['createdAt'] === 'number' &&
-    Array.isArray(obj['windows']) &&
-    Array.isArray(obj['messages'])
-  )
+  if (
+    obj['version'] !== 1 ||
+    typeof obj['id'] !== 'string' ||
+    typeof obj['name'] !== 'string' ||
+    typeof obj['createdAt'] !== 'number' ||
+    !Array.isArray(obj['windows']) ||
+    !Array.isArray(obj['messages'])
+  ) {
+    return false
+  }
+
+  // Validate window shapes
+  const windows = obj['windows'] as unknown[]
+  for (const w of windows) {
+    if (typeof w !== 'object' || w === null) return false
+    const win = w as Record<string, unknown>
+    if (typeof win['id'] !== 'string' || typeof win['model'] !== 'string') return false
+  }
+
+  // Validate message shapes
+  const messages = obj['messages'] as unknown[]
+  for (const m of messages) {
+    if (typeof m !== 'object' || m === null) return false
+    const msg = m as Record<string, unknown>
+    if (typeof msg['id'] !== 'string' || typeof msg['role'] !== 'string' || typeof msg['content'] !== 'string') return false
+  }
+
+  return true
 }

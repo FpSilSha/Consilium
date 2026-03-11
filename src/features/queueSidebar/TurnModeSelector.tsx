@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useCallback } from 'react'
 import type { TurnMode } from '@/types'
 import { useStore } from '@/store'
+import { buildInitialQueue } from '@/features/turnManager/queue-builder'
 
 const MODES: readonly { readonly value: TurnMode; readonly label: string }[] = [
   { value: 'sequential', label: 'Seq' },
@@ -12,14 +13,23 @@ const MODES: readonly { readonly value: TurnMode; readonly label: string }[] = [
 export function TurnModeSelector(): ReactNode {
   const turnMode = useStore((s) => s.turnMode)
   const setTurnMode = useStore((s) => s.setTurnMode)
+  const setQueue = useStore((s) => s.setQueue)
+  const windowOrder = useStore((s) => s.windowOrder)
   const isRunning = useStore((s) => s.isRunning)
+
+  const handleModeChange = useCallback((mode: TurnMode) => {
+    setTurnMode(mode)
+    // Rebuild the queue for the new mode's structure
+    const newQueue = buildInitialQueue(windowOrder, mode)
+    setQueue(newQueue)
+  }, [setTurnMode, setQueue, windowOrder])
 
   return (
     <div className="flex gap-1">
       {MODES.map((mode) => (
         <button
           key={mode.value}
-          onClick={() => setTurnMode(mode.value)}
+          onClick={() => handleModeChange(mode.value)}
           disabled={isRunning}
           className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
             turnMode === mode.value

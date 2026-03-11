@@ -106,7 +106,7 @@ export const createTurnSlice: StateCreator<TurnSlice> = (set) => ({
   resetQueue: () =>
     set((state) => ({
       queue: state.queue
-        .filter((c) => c.status !== 'errored')
+        .filter((c) => c.status !== 'errored' && c.status !== 'skipped')
         .map((c) => ({ ...c, status: 'waiting' as const, errorLabel: null })),
       activeCardId: null,
       isRunning: false,

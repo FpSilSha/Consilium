@@ -26,7 +26,8 @@ export function BudgetBar(): ReactNode {
   const handleSetBudget = useCallback(() => {
     const parsed = parseFloat(budgetValue)
     if (!isNaN(parsed) && parsed >= 0) {
-      setSessionBudget(parsed)
+      // Cap budget at $10,000 to prevent unreasonable values
+      setSessionBudget(Math.min(parsed, 10_000))
     }
     setShowBudgetInput(false)
     setBudgetValue('')
@@ -78,6 +79,7 @@ export function BudgetBar(): ReactNode {
               placeholder={sessionBudget > 0 ? sessionBudget.toString() : '5.00'}
               step="0.50"
               min="0"
+              max="10000"
               className="mb-3 w-full rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-gray-500"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleSetBudget()}

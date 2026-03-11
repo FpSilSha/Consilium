@@ -6,6 +6,7 @@ export function ExportButton(): ReactNode {
   const messages = useStore((s) => s.messages)
   const archivedMessages = useStore((s) => s.archivedMessages)
   const windows = useStore((s) => s.windows)
+  const windowOrder = useStore((s) => s.windowOrder)
 
   const handleExport = useCallback(() => {
     // Combine archived + current messages for full export
@@ -19,9 +20,17 @@ export function ExportButton(): ReactNode {
       ]),
     )
 
+    // Derive session name from active persona labels
+    const personaLabels = windowOrder
+      .map((id) => windows[id]?.personaLabel)
+      .filter((label): label is string => label !== undefined)
+    const sessionName = personaLabels.length > 0
+      ? `Consilium — ${personaLabels.join(', ')}`
+      : 'Consilium Session'
+
     const markdown = exportToMarkdown({
       messages: allMessages,
-      sessionName: 'Consilium Session',
+      sessionName,
       sessionId: 'export',
       windowMeta,
     })
@@ -35,7 +44,7 @@ export function ExportButton(): ReactNode {
     a.click()
     // Delay revocation to ensure browsers (especially Firefox) finish the download
     setTimeout(() => URL.revokeObjectURL(url), 500)
-  }, [messages, archivedMessages, windows])
+  }, [messages, archivedMessages, windows, windowOrder])
 
   if (messages.length === 0 && archivedMessages.length === 0) return null
 

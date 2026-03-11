@@ -14,11 +14,14 @@ const VOTE_INSTRUCTION = 'Respond with only: YAY, NAY, or ABSTAIN, followed by a
 /**
  * Broadcasts a "Call for Vote" question to all active advisors.
  * Returns a tally of all votes once all advisors have responded.
+ *
+ * The vote instruction is appended temporarily to the thread so agents see it,
+ * then replaced with just the clean question after all votes are collected.
  */
 export async function callForVote(question: string): Promise<VoteTally> {
   const state = useStore.getState()
 
-  // Append the vote question as a user message
+  // Append the vote question + instruction as a temporary user message
   const votePrompt = `${question}\n\n${VOTE_INSTRUCTION}`
   const userMsg = createUserMessage(votePrompt, 'user-input')
   state.appendMessage(userMsg)
@@ -40,6 +43,13 @@ export async function callForVote(question: string): Promise<VoteTally> {
       votes.push(result.value)
     }
   }
+
+  // Replace the temporary vote prompt with the clean question only
+  const finalState = useStore.getState()
+  const cleanedMessages = finalState.messages.map((m) =>
+    m.id === userMsg.id ? { ...m, content: `[Vote] ${question}` } : m,
+  )
+  finalState.setMessages(cleanedMessages)
 
   return tallyVotes(votes)
 }

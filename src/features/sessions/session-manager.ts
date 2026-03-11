@@ -17,6 +17,7 @@ export function restoreSession(session: SessionFile): void {
   state.setMessages([])
   state.resetQueue()
   state.resetBudgetWarning()
+  state.setSessionBudget(0)
 
   // Restore messages
   state.setMessages(session.messages)

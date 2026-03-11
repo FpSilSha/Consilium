@@ -59,7 +59,7 @@ export async function compactWindow(
       summaryPrompt,
     )
 
-    applyCompaction(windowId, archive, summary)
+    applyCompaction(windowId, archive, buffer, summary)
 
     return {
       archiveSummary: summary,
@@ -71,20 +71,31 @@ export async function compactWindow(
   }
 }
 
+/** Tracks windows currently being compacted to prevent duplicate jobs. */
+const compactingWindows = new Set<string>()
+
 /**
  * Checks all windows and triggers compaction for any that need it.
+ * Guards against duplicate in-flight compaction jobs per window.
  */
 export function checkAutoCompaction(): void {
   const state = useStore.getState()
 
   for (const windowId of state.windowOrder) {
+    if (compactingWindows.has(windowId)) continue
+
     const window = state.windows[windowId]
     if (window === undefined || window.isStreaming) continue
 
     if (shouldCompact(state.messages, window)) {
-      compactWindow(windowId).catch(() => {
-        // Auto-compaction failures are non-fatal
-      })
+      compactingWindows.add(windowId)
+      compactWindow(windowId)
+        .catch(() => {
+          // Auto-compaction failures are non-fatal
+        })
+        .finally(() => {
+          compactingWindows.delete(windowId)
+        })
     }
   }
 }
@@ -183,10 +194,12 @@ function runSummarization(
 function applyCompaction(
   windowId: string,
   archive: readonly Message[],
+  buffer: readonly Message[],
   summary: string,
 ): void {
   const state = useStore.getState()
   state.archiveMessages(archive)
+  state.setMessages(buffer)
   state.updateWindow(windowId, { isCompacted: true, compactedSummary: summary })
 }
 
@@ -196,7 +209,7 @@ function createFallbackSummary(
   windowId: string,
 ): CompactionResult {
   const summary = buildFallbackSummaryText(archive)
-  applyCompaction(windowId, archive, summary)
+  applyCompaction(windowId, archive, buffer, summary)
 
   return {
     archiveSummary: summary,

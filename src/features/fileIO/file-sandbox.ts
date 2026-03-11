@@ -64,16 +64,23 @@ export function sanitizePathSegment(segment: string): string {
     .slice(0, 128)
 }
 
+/** Maximum file content size (1 MB) to prevent sending huge payloads to LLMs. */
+const MAX_FILE_CONTENT_SIZE = 1_048_576
+
 /**
  * Strips the file path from content before sending to an LLM.
  * Returns a safe descriptor: "Content of [filename]:" + content.
+ * Truncates content exceeding 1 MB to prevent excessive token usage.
  */
 export function prepareFileContent(
   filename: string,
   content: string,
 ): string {
   const safeName = filename.replace(/[<>:"/\\|?*]/g, '_')
-  return `[Content of file: ${safeName}]\n\n${content}`
+  const truncated = content.length > MAX_FILE_CONTENT_SIZE
+    ? content.slice(0, MAX_FILE_CONTENT_SIZE) + '\n\n[Content truncated — file exceeds 1 MB]'
+    : content
+  return `[Content of file: ${safeName}]\n\n${truncated}`
 }
 
 /**
