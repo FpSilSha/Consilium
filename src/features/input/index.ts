@@ -1,2 +1,1 @@
-// Phase 3C — Input bar
-export {}
+export { SharedInputBar } from './SharedInputBar'
