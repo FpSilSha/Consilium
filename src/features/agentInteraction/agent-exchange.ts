@@ -63,9 +63,10 @@ export async function repeatLastExchange(): Promise<void> {
  * Cancels all in-flight agent-to-agent exchange streams.
  */
 export function cancelExchange(): void {
-  for (const [windowId, controller] of activeExchangeControllers) {
+  const controllers = [...activeExchangeControllers.values()]
+  activeExchangeControllers.clear()
+  for (const controller of controllers) {
     controller.abort()
-    activeExchangeControllers.delete(windowId)
   }
 }
 
@@ -124,20 +125,21 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
       onDone: (fullContent, tokenUsage) => {
         activeExchangeControllers.delete(windowId)
 
-        const costMeta = buildCostMetadata(tokenUsage, window.model)
+        const current = useStore.getState()
+        const freshWindow = current.windows[windowId]
+        const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
         const message = createAssistantMessage(
           fullContent,
-          window.personaLabel,
+          freshWindow?.personaLabel ?? window.personaLabel,
           windowId,
           costMeta,
         )
 
-        const current = useStore.getState()
         current.appendMessage(message)
         current.updateWindow(windowId, {
           isStreaming: false,
           streamContent: '',
-          runningCost: window.runningCost + (costMeta?.estimatedCost ?? 0),
+          runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
         })
 
         resolve(false)
@@ -145,15 +147,15 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
       onError: (error, tokenUsage) => {
         activeExchangeControllers.delete(windowId)
 
-        // Record partial cost even on error
-        const errorCostMeta = buildCostMetadata(tokenUsage, window.model)
-
         const current = useStore.getState()
+        const freshWindow = current.windows[windowId]
+        const errorCostMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
+
         current.updateWindow(windowId, {
           isStreaming: false,
           streamContent: '',
           error,
-          runningCost: window.runningCost + (errorCostMeta?.estimatedCost ?? 0),
+          runningCost: (freshWindow?.runningCost ?? 0) + (errorCostMeta?.estimatedCost ?? 0),
         })
 
         resolve(controller.signal.aborted)

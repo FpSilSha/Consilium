@@ -72,11 +72,13 @@ export function startRun(): void {
  * Stops all active agent streams and pauses the queue.
  */
 export function stopAll(): void {
-  for (const [cardId, controller] of activeControllers) {
-    controller.abort()
-    activeControllers.delete(cardId)
-  }
+  const entries = [...activeControllers.entries()]
+  activeControllers.clear()
   const state = useStore.getState()
+  for (const [cardId, controller] of entries) {
+    controller.abort()
+    state.removeActiveCard(cardId)
+  }
   state.setPaused(true)
   state.setIsRunning(false)
 }
@@ -104,35 +106,32 @@ function dispatchAgentTurn(card: QueueCard): void {
     return
   }
 
-  // Mark card and window as active
-  state.setCardStatus(card.id, 'active')
-  state.addActiveCard(card.id)
-  state.updateWindow(card.windowId, { isStreaming: true, streamContent: '', error: null })
-
-  // Find the API key for this window
+  // Validate key and persona before marking card as active
   const key = state.keys.find((k) => k.id === window.keyId)
   if (key === undefined) {
     state.setCardStatus(card.id, 'errored', 'API key not found')
-    state.updateWindow(card.windowId, { isStreaming: false, error: 'API key not found' })
+    state.updateWindow(card.windowId, { error: 'API key not found' })
     onTurnComplete()
     return
   }
-
-  // Find persona content
-  const persona = state.personas.find((p) => p.id === window.personaId)
-  const personaContent = persona?.content ?? ''
-
-  // Build system prompt and convert messages to API format
-  const systemPrompt = buildSystemPrompt(personaContent, state.sessionInstructions || undefined)
-  const threadMessages = messagesToApiFormat(state.messages)
 
   const apiKey = getRawKey(key.id)
   if (apiKey === null) {
     state.setCardStatus(card.id, 'errored', 'Could not retrieve API key')
-    state.updateWindow(card.windowId, { isStreaming: false, error: 'Could not retrieve API key' })
+    state.updateWindow(card.windowId, { error: 'Could not retrieve API key' })
     onTurnComplete()
     return
   }
+
+  const persona = state.personas.find((p) => p.id === window.personaId)
+  const personaContent = persona?.content ?? ''
+  const systemPrompt = buildSystemPrompt(personaContent, state.sessionInstructions || undefined)
+  const threadMessages = messagesToApiFormat(state.messages)
+
+  // Mark card and window as active only after all validation passes
+  state.setCardStatus(card.id, 'active')
+  state.addActiveCard(card.id)
+  state.updateWindow(card.windowId, { isStreaming: true, streamContent: '', error: null })
 
   const callbacks: StreamCallbacks = {
     onChunk: (content) => {
