@@ -26,7 +26,7 @@ export async function validateKey(
     const response = await fetch(endpoint, {
       method: provider === 'anthropic' ? 'POST' : 'GET',
       headers,
-      signal,
+      signal: signal ?? null,
       ...(provider === 'anthropic'
         ? {
             body: JSON.stringify({
