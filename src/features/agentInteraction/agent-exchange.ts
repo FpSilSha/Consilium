@@ -63,10 +63,12 @@ export async function repeatLastExchange(): Promise<void> {
  * Cancels all in-flight agent-to-agent exchange streams.
  */
 export function cancelExchange(): void {
-  const controllers = [...activeExchangeControllers.values()]
+  const entries = [...activeExchangeControllers.entries()]
   activeExchangeControllers.clear()
-  for (const controller of controllers) {
+  const state = useStore.getState()
+  for (const [windowId, controller] of entries) {
     controller.abort()
+    state.updateWindow(windowId, { isStreaming: false, streamContent: '' })
   }
 }
 

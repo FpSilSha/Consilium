@@ -15,7 +15,7 @@ import {
   completeUserTurn,
 } from './turn-engine'
 
-const activeControllers = new Map<string, AbortController>()
+const activeControllers = new Map<string, { controller: AbortController; windowId: string }>()
 
 /**
  * Dispatches the next turn(s) based on the current queue state and turn mode.
@@ -75,9 +75,10 @@ export function stopAll(): void {
   const entries = [...activeControllers.entries()]
   activeControllers.clear()
   const state = useStore.getState()
-  for (const [cardId, controller] of entries) {
+  for (const [cardId, { controller, windowId }] of entries) {
     controller.abort()
     state.removeActiveCard(cardId)
+    state.updateWindow(windowId, { isStreaming: false, streamContent: '' })
   }
   state.setPaused(true)
   state.setIsRunning(false)
@@ -110,7 +111,7 @@ function dispatchAgentTurn(card: QueueCard): void {
   const key = state.keys.find((k) => k.id === window.keyId)
   if (key === undefined) {
     state.setCardStatus(card.id, 'errored', 'API key not found')
-    state.updateWindow(card.windowId, { error: 'API key not found' })
+    state.updateWindow(card.windowId, { isStreaming: false, error: 'API key not found' })
     onTurnComplete()
     return
   }
@@ -118,7 +119,7 @@ function dispatchAgentTurn(card: QueueCard): void {
   const apiKey = getRawKey(key.id)
   if (apiKey === null) {
     state.setCardStatus(card.id, 'errored', 'Could not retrieve API key')
-    state.updateWindow(card.windowId, { error: 'Could not retrieve API key' })
+    state.updateWindow(card.windowId, { isStreaming: false, error: 'Could not retrieve API key' })
     onTurnComplete()
     return
   }
@@ -166,7 +167,6 @@ function dispatchAgentTurn(card: QueueCard): void {
       current.setCardStatus(card.id, 'completed')
       current.removeActiveCard(card.id)
 
-      // Use queueMicrotask to avoid unbounded recursive call stack
       queueMicrotask(onTurnComplete)
     },
     onError: (error, tokenUsage) => {
@@ -202,7 +202,7 @@ function dispatchAgentTurn(card: QueueCard): void {
     callbacks,
   )
 
-  activeControllers.set(card.id, controller)
+  activeControllers.set(card.id, { controller, windowId: card.windowId })
 }
 
 function onTurnComplete(): void {
