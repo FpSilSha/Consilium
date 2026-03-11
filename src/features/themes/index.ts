@@ -1,2 +1,6 @@
-// Phase 1C — Theme loader
-export {}
+export {
+  BUILT_IN_THEMES,
+  parseThemeFile,
+  getDefaultTheme,
+  getAccentColor,
+} from './theme-loader'

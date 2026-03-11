@@ -1,2 +1,1 @@
-// Phase 1C — Persona loader
-export {}
+export { parsePersonaFile, sortPersonas } from './persona-loader'
