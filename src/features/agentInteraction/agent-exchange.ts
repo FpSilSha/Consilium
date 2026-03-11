@@ -8,6 +8,7 @@ import { getRawKey } from '@/features/keys/key-vault'
 import { getModelById } from '@/features/modelSelector/model-registry'
 import type { CostMetadata, Message } from '@/types'
 import type { TokenUsage, ApiMessage } from '@/services/api/types'
+import { isBudgetExceeded } from '@/features/budget/budget-engine'
 import { resolveMentionTargets, cleanMentions } from './mention-router'
 
 const MAX_EXCHANGE_ROUNDS = 10
@@ -38,6 +39,13 @@ export async function executeAgentExchange(
   state.appendMessage(userMsg)
 
   for (let round = 0; round < effectiveRounds; round++) {
+    // Budget enforcement: cancel exchange if budget exceeded
+    const budgetState = useStore.getState()
+    if (budgetState.sessionBudget > 0 && isBudgetExceeded(budgetState.sessionBudget)) {
+      cancelExchange()
+      return
+    }
+
     for (const windowId of targetWindowIds) {
       const aborted = await dispatchSingleExchangeTurn(windowId)
       if (aborted) return

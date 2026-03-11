@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand'
 import type { Persona } from '@/types'
+import { BUILT_IN_PERSONAS } from '@/features/personas'
 
 export interface PersonasSlice {
   readonly personas: readonly Persona[]
@@ -9,7 +10,7 @@ export interface PersonasSlice {
 }
 
 export const createPersonasSlice: StateCreator<PersonasSlice> = (set) => ({
-  personas: [],
+  personas: BUILT_IN_PERSONAS,
   personasLoaded: false,
 
   setPersonas: (personas) => set({ personas }),

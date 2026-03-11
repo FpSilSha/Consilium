@@ -25,7 +25,14 @@ export interface StreamCallbacks {
 
 /**
  * Streams a response from a provider's API.
- * Returns an AbortController for cancellation.
+ *
+ * **Cancellation contract:**
+ * - If `config.signal` is provided, the caller owns cancellation; the returned
+ *   AbortController is a **separate** controller that only governs the internal
+ *   fetch and will NOT abort the caller's signal.  Callers should use their own
+ *   signal/controller for lifecycle management.
+ * - If `config.signal` is omitted, the returned AbortController is wired
+ *   directly to the fetch and can be used to cancel the stream.
  */
 export function streamResponse(
   config: ApiRequestConfig,

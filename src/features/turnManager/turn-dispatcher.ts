@@ -8,6 +8,7 @@ import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
 import { formatWithIdentityHeader } from '@/services/context-bus/identity-headers'
 import { getRawKey } from '@/features/keys/key-vault'
 import { getModelById } from '@/features/modelSelector/model-registry'
+import { isBudgetExceeded } from '@/features/budget/budget-engine'
 import {
   getNextCard,
   getAllParallelCards,
@@ -26,6 +27,12 @@ export function dispatchNextTurn(): void {
   const { turnMode, queue, isPaused } = state
 
   if (isPaused || !state.isRunning) return
+
+  // Budget enforcement: halt all dispatch when budget exceeded
+  if (state.sessionBudget > 0 && isBudgetExceeded(state.sessionBudget)) {
+    stopAll()
+    return
+  }
 
   if (turnMode === 'parallel') {
     const cards = getAllParallelCards(queue)
@@ -220,6 +227,12 @@ function dispatchAgentTurn(card: QueueCard): void {
 
 function onTurnComplete(): void {
   const state = useStore.getState()
+
+  // Budget enforcement: halt after each turn if budget exceeded
+  if (state.sessionBudget > 0 && isBudgetExceeded(state.sessionBudget)) {
+    stopAll()
+    return
+  }
 
   if (isCycleComplete(state.queue)) {
     state.setIsRunning(false)

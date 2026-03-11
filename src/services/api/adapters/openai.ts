@@ -79,10 +79,13 @@ function parseOpenAIEvent(event: unknown): StreamChunk | null {
       return { type: 'content', content: delta['content'] }
     }
 
-    // finish_reason without usage: don't emit done yet — wait for the
-    // separate usage event that arrives after (stream_options.include_usage)
-    if (choice['finish_reason'] !== null && choice['finish_reason'] !== undefined) {
-      return null
+    // Handle finish_reason: content_filter is an error, others wait for usage event
+    const finishReason = choice['finish_reason']
+    if (finishReason !== null && finishReason !== undefined) {
+      if (finishReason === 'content_filter') {
+        return { type: 'error', content: 'Response blocked by provider content filter' }
+      }
+      return null // wait for usage event (stop, length, etc.)
     }
   }
 

@@ -66,38 +66,42 @@ export const googleAdapter: ProviderAdapter = {
   },
 }
 
+function extractTokenUsage(obj: Record<string, unknown>): StreamChunk['tokenUsage'] {
+  const usage = obj['usageMetadata'] as Record<string, unknown> | undefined
+  if (usage === undefined) return undefined
+  return {
+    inputTokens: typeof usage['promptTokenCount'] === 'number' ? usage['promptTokenCount'] : 0,
+    outputTokens: typeof usage['candidatesTokenCount'] === 'number' ? usage['candidatesTokenCount'] : 0,
+  }
+}
+
 function parseGoogleEvent(event: unknown): StreamChunk | null {
   if (typeof event !== 'object' || event === null) return null
   const obj = event as Record<string, unknown>
 
   const candidates = obj['candidates'] as readonly Record<string, unknown>[] | undefined
-  if (candidates !== undefined && candidates.length > 0) {
-    const candidate = candidates[0]!
-    const content = candidate['content'] as Record<string, unknown> | undefined
-    const parts = content?.['parts'] as readonly Record<string, unknown>[] | undefined
+  const candidate = candidates !== undefined && candidates.length > 0 ? candidates[0]! : undefined
+  const finishReason = candidate?.['finishReason']
 
-    if (parts !== undefined && parts.length > 0) {
-      const text = parts[0]!['text']
-      if (typeof text === 'string') {
-        const finishReason = candidate['finishReason']
-        const usage = obj['usageMetadata'] as Record<string, unknown> | undefined
+  // Extract text content if present
+  const content = candidate?.['content'] as Record<string, unknown> | undefined
+  const parts = content?.['parts'] as readonly Record<string, unknown>[] | undefined
+  const rawText = parts !== undefined && parts.length > 0 ? parts[0]!['text'] : undefined
+  const text = typeof rawText === 'string' ? rawText : ''
 
-        if (finishReason !== undefined && finishReason !== null) {
-          return {
-            type: 'done',
-            content: text,
-            tokenUsage: usage !== undefined
-              ? {
-                  inputTokens: typeof usage['promptTokenCount'] === 'number' ? usage['promptTokenCount'] : 0,
-                  outputTokens: typeof usage['candidatesTokenCount'] === 'number' ? usage['candidatesTokenCount'] : 0,
-                }
-              : undefined,
-          }
-        }
-
-        return { type: 'content', content: text }
-      }
+  // Terminal event: finishReason present (STOP, SAFETY, MAX_TOKENS, etc.)
+  if (finishReason !== undefined && finishReason !== null) {
+    const isSafetyStop = finishReason === 'SAFETY' || finishReason === 'RECITATION'
+    return {
+      type: isSafetyStop ? 'error' : 'done',
+      content: isSafetyStop ? `Response blocked by provider (${String(finishReason)})` : text,
+      tokenUsage: extractTokenUsage(obj),
     }
+  }
+
+  // Content delta (mid-stream)
+  if (text !== '') {
+    return { type: 'content', content: text, tokenUsage: extractTokenUsage(obj) }
   }
 
   return null
