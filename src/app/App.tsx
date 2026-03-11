@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { MosaicLayout, AddAdvisorButton } from '@/features/windows'
 import { SharedInputBar } from '@/features/input'
 import { QueueSidebar } from '@/features/queueSidebar'
+import { MainThreadCompactButton } from '@/features/compaction'
 import { useStore } from '@/store'
 
 export function App(): ReactNode {
@@ -13,6 +14,7 @@ export function App(): ReactNode {
       <header className="flex h-10 shrink-0 items-center justify-between border-b border-gray-800 px-4">
         <span className="text-sm font-medium text-gray-400">Consilium</span>
         <div className="flex items-center gap-3">
+          <MainThreadCompactButton />
           <button
             onClick={() => setUIMode(uiMode === 'gui' ? 'terminal' : 'gui')}
             className="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-400 hover:border-gray-500 hover:text-gray-200"

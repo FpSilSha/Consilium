@@ -1,2 +1,11 @@
-// Phase 4B — Context compaction
-export {}
+export {
+  estimateThreadTokens,
+  shouldCompact,
+  splitForCompaction,
+  buildSummaryPrompt,
+  buildCompactedContext,
+  getContextUsagePercent,
+} from './compaction-engine'
+export { compactWindow, compactMainThread, checkAutoCompaction } from './compaction-service'
+export { CompactButton } from './CompactButton'
+export { MainThreadCompactButton } from './MainThreadCompactButton'

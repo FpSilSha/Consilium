@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { AdvisorWindow } from '@/types'
+import { CompactButton } from '@/features/compaction'
 
 interface WindowHeaderProps {
   readonly window: AdvisorWindow
@@ -26,16 +27,12 @@ export function WindowHeader({ window: win, onClose }: WindowHeaderProps): React
       </div>
 
       <div className="flex items-center gap-2">
+        <CompactButton windowId={win.id} />
         <span className="text-xs text-gray-500">
           ~${win.runningCost.toFixed(4)}
         </span>
         {win.isStreaming && (
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-400" />
-        )}
-        {win.isCompacted && (
-          <span className="text-xs text-amber-500" title="Working from summarized history">
-            C
-          </span>
         )}
         <button
           onClick={onClose}
