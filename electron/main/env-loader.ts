@@ -19,11 +19,10 @@ function parseEnvContent(content: string): Record<string, string> {
     const key = trimmed.slice(0, eqIndex).trim()
     let value = trimmed.slice(eqIndex + 1).trim()
 
-    // Strip surrounding quotes
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
+    // Strip surrounding quotes and unescape
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+    } else if (value.startsWith("'") && value.endsWith("'")) {
       value = value.slice(1, -1)
     }
 
@@ -39,7 +38,8 @@ function serializeEnvEntries(entries: Readonly<Record<string, string>>): string 
   const lines: string[] = ['# Consilium API Keys — managed by the app, do not edit manually']
 
   for (const [key, value] of Object.entries(entries)) {
-    lines.push(`${key}="${value}"`)
+    const escaped = value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+    lines.push(`${key}="${escaped}"`)
   }
 
   return lines.join('\n') + '\n'

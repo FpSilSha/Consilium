@@ -18,7 +18,7 @@ function createWindow(): void {
     },
   })
 
-  if (process.env['ELECTRON_RENDERER_URL'] !== undefined) {
+  if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL'] !== undefined) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
