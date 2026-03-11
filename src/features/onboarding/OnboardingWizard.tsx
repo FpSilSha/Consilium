@@ -1,9 +1,13 @@
 import { type ReactNode, useState, useCallback } from 'react'
+import { v4 as uuidv4 } from 'uuid'
 import { useStore } from '@/store'
 import { createApiKeyEntry } from '@/features/keys/key-storage'
 import { storeRawKey } from '@/features/keys/key-vault'
 import { detectProvider } from '@/features/keys/key-detection'
 import { getModelsForProvider, getAllModels } from '@/features/modelSelector/model-registry'
+import { getAccentColor, BUILT_IN_THEMES } from '@/features/themes'
+import { createAgentCard } from '@/features/turnManager'
+import type { AdvisorWindow } from '@/types'
 
 type WizardStep = 'welcome' | 'api-key' | 'model' | 'persona' | 'tour' | 'done'
 
@@ -16,7 +20,10 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
   const [keyInput, setKeyInput] = useState('')
   const [keyError, setKeyError] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
+  const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null)
   const addKey = useStore((s) => s.addKey)
+  const addWindow = useStore((s) => s.addWindow)
+  const addToQueue = useStore((s) => s.addToQueue)
   const personas = useStore((s) => s.personas)
 
   const handleAddKey = useCallback(() => {
@@ -153,12 +160,17 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
             </p>
             <div className="mb-6 grid grid-cols-2 gap-2">
               {personas.map((p) => (
-                <div
+                <button
                   key={p.id}
-                  className="rounded border border-gray-700 bg-gray-800 px-3 py-2"
+                  onClick={() => setSelectedPersonaId(p.id)}
+                  className={`rounded border px-3 py-2 text-left transition-colors ${
+                    selectedPersonaId === p.id
+                      ? 'border-blue-500 bg-blue-900/30'
+                      : 'border-gray-700 bg-gray-800 hover:border-gray-600'
+                  }`}
                 >
                   <span className="text-xs font-medium text-gray-300">{p.name}</span>
-                </div>
+                </button>
               ))}
               {personas.length === 0 && (
                 <p className="col-span-2 text-xs text-gray-500">
@@ -216,7 +228,37 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
                 Back
               </button>
               <button
-                onClick={onComplete}
+                onClick={() => {
+                  // Create the first advisor window with selected settings
+                  const state = useStore.getState()
+                  const firstKey = state.keys[0]
+                  const persona = selectedPersonaId !== null
+                    ? state.personas.find((p) => p.id === selectedPersonaId)
+                    : state.personas[0]
+                  const defaultTheme = BUILT_IN_THEMES[0]!
+                  const accentColor = getAccentColor(0, defaultTheme.colors.accentPalette)
+
+                  const newWindow: AdvisorWindow = {
+                    id: uuidv4(),
+                    provider: firstKey?.provider ?? 'anthropic',
+                    keyId: firstKey?.id ?? '',
+                    model: selectedModel !== '' ? selectedModel : 'claude-sonnet-4-5-20241022',
+                    personaId: persona?.id ?? '',
+                    personaLabel: persona?.name ?? 'Advisor',
+                    accentColor,
+                    runningCost: 0,
+                    isStreaming: false,
+                    streamContent: '',
+                    error: null,
+                    isCompacted: false,
+                    compactedSummary: null,
+                    bufferSize: 15,
+                  }
+
+                  addWindow(newWindow)
+                  addToQueue(createAgentCard(newWindow.id))
+                  onComplete()
+                }}
                 className="rounded-lg bg-green-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-green-500"
               >
                 Start Using Consilium

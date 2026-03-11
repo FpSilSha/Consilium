@@ -18,7 +18,8 @@ export function isPathSandboxed(
   const normalized = normalizePath(path)
   const normalizedBase = normalizePath(userDataPath)
 
-  if (!normalized.startsWith(normalizedBase)) return false
+  // Append / to prevent prefix confusion (e.g., /sessions-evil matching /sessions)
+  if (!normalized.startsWith(normalizedBase + '/')) return false
 
   const relative = normalized.slice(normalizedBase.length + 1)
   const firstSegment = relative.split('/')[0]

@@ -183,11 +183,11 @@ function runSummarization(
 function applyCompaction(
   windowId: string,
   archive: readonly Message[],
-  _summary: string,
+  summary: string,
 ): void {
   const state = useStore.getState()
   state.archiveMessages(archive)
-  state.updateWindow(windowId, { isCompacted: true })
+  state.updateWindow(windowId, { isCompacted: true, compactedSummary: summary })
 }
 
 function createFallbackSummary(

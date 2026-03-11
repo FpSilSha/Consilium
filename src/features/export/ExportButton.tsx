@@ -33,7 +33,8 @@ export function ExportButton(): ReactNode {
     a.href = url
     a.download = `consilium-export-${new Date().toISOString().slice(0, 10)}.md`
     a.click()
-    URL.revokeObjectURL(url)
+    // Delay revocation to ensure browsers (especially Firefox) finish the download
+    setTimeout(() => URL.revokeObjectURL(url), 500)
   }, [messages, archivedMessages, windows])
 
   if (messages.length === 0 && archivedMessages.length === 0) return null

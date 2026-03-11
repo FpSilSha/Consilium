@@ -8,6 +8,7 @@ import { useStore } from '@/store'
 export function serializeSession(
   sessionId: string,
   sessionName: string,
+  existingCreatedAt?: number,
 ): SessionFile {
   const state = useStore.getState()
 
@@ -29,7 +30,7 @@ export function serializeSession(
     version: 1,
     id: sessionId,
     name: sessionName,
-    createdAt: Date.now(),
+    createdAt: existingCreatedAt ?? Date.now(),
     updatedAt: Date.now(),
     windows,
     messages: [...state.messages],

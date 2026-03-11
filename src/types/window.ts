@@ -13,5 +13,6 @@ export interface AdvisorWindow {
   readonly streamContent: string
   readonly error: string | null
   readonly isCompacted: boolean
+  readonly compactedSummary: string | null
   readonly bufferSize: number
 }

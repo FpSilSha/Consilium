@@ -174,44 +174,49 @@ function dispatchAgentTurn(card: QueueCard): void {
     onDone: (fullContent, tokenUsage) => {
       activeControllers.delete(card.id)
 
-      const costMeta = buildCostMetadata(tokenUsage, window.model)
+      // Read fresh window state to avoid stale closure in parallel mode
+      const current = useStore.getState()
+      const freshWindow = current.windows[card.windowId]
+      const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
 
       const message = createAssistantMessage(
         fullContent,
-        window.personaLabel,
+        freshWindow?.personaLabel ?? window.personaLabel,
         card.windowId,
         costMeta,
       )
 
-      const current = useStore.getState()
       current.appendMessage(message)
       current.updateWindow(card.windowId, {
         isStreaming: false,
         streamContent: '',
-        runningCost: window.runningCost + (costMeta?.estimatedCost ?? 0),
+        runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
       })
       current.setCardStatus(card.id, 'completed')
       current.setActiveCard(null)
 
-      onTurnComplete()
+      // Use queueMicrotask to avoid unbounded recursive call stack
+      queueMicrotask(onTurnComplete)
     },
     onError: (error, tokenUsage) => {
       activeControllers.delete(card.id)
 
-      // Record partial cost even on error
-      const costMeta = buildCostMetadata(tokenUsage, window.model)
-
+      // Read fresh window state to avoid stale closure in parallel mode
       const current = useStore.getState()
+      const freshWindow = current.windows[card.windowId]
+      const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
+
       current.updateWindow(card.windowId, {
         isStreaming: false,
         streamContent: '',
         error,
-        runningCost: window.runningCost + (costMeta?.estimatedCost ?? 0),
+        runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
       })
       current.setCardStatus(card.id, 'errored', error)
       current.setActiveCard(null)
 
-      onTurnComplete()
+      // Use queueMicrotask to avoid unbounded recursive call stack
+      queueMicrotask(onTurnComplete)
     },
   }
 

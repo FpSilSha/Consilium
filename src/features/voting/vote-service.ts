@@ -23,10 +23,13 @@ export async function callForVote(question: string): Promise<VoteTally> {
   const userMsg = createUserMessage(votePrompt, 'user-input')
   state.appendMessage(userMsg)
 
+  // Re-read state after append so agents see the vote question
+  const updatedState = useStore.getState()
+
   // Dispatch to all active windows in parallel
-  const windowIds = state.windowOrder
+  const windowIds = updatedState.windowOrder
   const votePromises = windowIds.map((windowId) =>
-    collectVoteFromWindow(windowId, state.messages),
+    collectVoteFromWindow(windowId, updatedState.messages),
   )
 
   const results = await Promise.allSettled(votePromises)

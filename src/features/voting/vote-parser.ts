@@ -1,6 +1,7 @@
 import type { VoteValue, AdvisorVote, VoteTally } from './vote-types'
 
-const VOTE_PATTERN = /^(YAY|NAY|ABSTAIN)[.,:]?\s*(.*)/i
+// Match YAY/NAY/ABSTAIN at start of any line (agents may add preamble)
+const VOTE_PATTERN = /^\s*(YAY|NAY|ABSTAIN)[.,:]?\s*(.*)/im
 
 /**
  * Parses a vote response from an agent.

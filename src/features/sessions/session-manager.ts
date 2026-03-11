@@ -10,6 +10,14 @@ import { useStore } from '@/store'
 export function restoreSession(session: SessionFile): void {
   const state = useStore.getState()
 
+  // Clear existing state before restoring
+  for (const windowId of state.windowOrder) {
+    state.removeWindow(windowId)
+  }
+  state.setMessages([])
+  state.resetQueue()
+  state.resetBudgetWarning()
+
   // Restore messages
   state.setMessages(session.messages)
   if (session.archivedMessages.length > 0) {
@@ -63,6 +71,7 @@ function sessionWindowToAdvisor(
     streamContent: '',
     error,
     isCompacted: sw.isCompacted,
+    compactedSummary: null,
     bufferSize: sw.bufferSize,
   }
 }
@@ -116,7 +125,8 @@ async function writeFileViaIPC(
   _filePath: string,
   _content: string,
 ): Promise<void> {
-  // Placeholder — needs IPC handler for writing arbitrary files within sandbox
+  // TODO: Implement IPC handler for writing session files
   // The actual implementation would use:
   // ipcRenderer.invoke('write-session-file', filePath, content)
+  throw new Error('Session file writing not yet implemented — IPC handler needed')
 }

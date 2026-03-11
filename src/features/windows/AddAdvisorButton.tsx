@@ -35,6 +35,7 @@ export function AddAdvisorButton(): ReactNode {
       streamContent: '',
       error: null,
       isCompacted: false,
+      compactedSummary: null,
       bufferSize: 15,
     }
 
