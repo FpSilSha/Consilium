@@ -121,24 +121,26 @@ function isSessionFile(data: unknown): data is SessionFile {
     if (typeof msg['id'] !== 'string' || typeof msg['role'] !== 'string' || typeof msg['content'] !== 'string') return false
   }
 
-  // Validate archivedMessages if present
-  if ('archivedMessages' in obj) {
-    if (!Array.isArray(obj['archivedMessages'])) return false
-    for (const m of obj['archivedMessages'] as unknown[]) {
-      if (typeof m !== 'object' || m === null) return false
-      const msg = m as Record<string, unknown>
-      if (typeof msg['id'] !== 'string' || typeof msg['role'] !== 'string' || typeof msg['content'] !== 'string') return false
-    }
+  // Validate archivedMessages (required by SessionFile)
+  if (!Array.isArray(obj['archivedMessages'])) return false
+  for (const m of obj['archivedMessages'] as unknown[]) {
+    if (typeof m !== 'object' || m === null) return false
+    const msg = m as Record<string, unknown>
+    if (typeof msg['id'] !== 'string' || typeof msg['role'] !== 'string' || typeof msg['content'] !== 'string') return false
   }
 
-  // Validate queue if present
-  if ('queue' in obj) {
-    if (!Array.isArray(obj['queue'])) return false
-    for (const q of obj['queue'] as unknown[]) {
-      if (typeof q !== 'object' || q === null) return false
-      const card = q as Record<string, unknown>
-      if (typeof card['id'] !== 'string' || typeof card['windowId'] !== 'string' || typeof card['status'] !== 'string') return false
-    }
+  // Validate queue (required by SessionFile)
+  if (!Array.isArray(obj['queue'])) return false
+  for (const q of obj['queue'] as unknown[]) {
+    if (typeof q !== 'object' || q === null) return false
+    const card = q as Record<string, unknown>
+    if (
+      typeof card['id'] !== 'string' ||
+      typeof card['windowId'] !== 'string' ||
+      typeof card['status'] !== 'string' ||
+      typeof card['isUser'] !== 'boolean'
+    ) return false
+    if (card['errorLabel'] !== null && typeof card['errorLabel'] !== 'string') return false
   }
 
   return true

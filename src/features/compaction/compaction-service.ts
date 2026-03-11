@@ -59,20 +59,43 @@ export async function compactWindow(
       summaryPrompt,
     )
 
-    applyCompaction(windowId, archive, buffer, summary)
+    // Re-split from live state to avoid dropping messages appended during summarization
+    const liveState = useStore.getState()
+    const liveWindow = liveState.windows[windowId]
+    const { archive: liveArchive, buffer: liveBuffer } = splitForCompaction(
+      liveState.messages,
+      liveWindow?.bufferSize ?? window.bufferSize,
+    )
+
+    if (liveArchive.length === 0) return null
+
+    applyCompaction(windowId, liveArchive, liveBuffer, summary)
 
     return {
       archiveSummary: summary,
-      archivedCount: archive.length,
-      bufferCount: buffer.length,
+      archivedCount: liveArchive.length,
+      bufferCount: liveBuffer.length,
     }
   } catch {
-    return createFallbackSummary(archive, buffer, windowId)
+    // Fallback also re-splits from live state
+    const liveState = useStore.getState()
+    const liveWindow = liveState.windows[windowId]
+    const { archive: liveArchive, buffer: liveBuffer } = splitForCompaction(
+      liveState.messages,
+      liveWindow?.bufferSize ?? window.bufferSize,
+    )
+
+    if (liveArchive.length === 0) return null
+
+    return createFallbackSummary(liveArchive, liveBuffer, windowId)
   }
 }
 
 /** Tracks windows currently being compacted to prevent duplicate jobs. */
 const compactingWindows = new Set<string>()
+
+/** Prevents concurrent main thread compaction from double-archiving. */
+let isCompactingMainThread = false
 
 /**
  * Checks all windows and triggers compaction for any that need it.
@@ -104,6 +127,17 @@ export function checkAutoCompaction(): void {
  * Compacts the main shared thread. This is user-triggered and affects all windows.
  */
 export async function compactMainThread(): Promise<CompactionResult | null> {
+  if (isCompactingMainThread) return null
+  isCompactingMainThread = true
+
+  try {
+    return await executeMainThreadCompaction()
+  } finally {
+    isCompactingMainThread = false
+  }
+}
+
+async function executeMainThreadCompaction(): Promise<CompactionResult | null> {
   const state = useStore.getState()
 
   // Use the smallest buffer size among all windows
@@ -112,7 +146,7 @@ export async function compactMainThread(): Promise<CompactionResult | null> {
     return w !== undefined ? Math.min(min, w.bufferSize) : min
   }, 15)
 
-  const { archive, buffer } = splitForCompaction(state.messages, minBuffer)
+  const { archive } = splitForCompaction(state.messages, minBuffer)
   if (archive.length === 0) return null
 
   const summaryConfig = findSummaryModel(state.keys)
@@ -134,18 +168,31 @@ export async function compactMainThread(): Promise<CompactionResult | null> {
     summary = buildFallbackSummaryText(archive)
   }
 
+  // Re-split from live state to avoid dropping messages appended during summarization
+  const liveState = useStore.getState()
+  const liveMinBuffer = liveState.windowOrder.reduce((min, id) => {
+    const w = liveState.windows[id]
+    return w !== undefined ? Math.min(min, w.bufferSize) : min
+  }, 15)
+  const { archive: liveArchive, buffer: liveBuffer } = splitForCompaction(
+    liveState.messages,
+    liveMinBuffer,
+  )
+
+  if (liveArchive.length === 0) return null
+
   // Atomically archive old messages and replace thread with buffer
-  state.compactMessages(archive, buffer)
+  liveState.compactMessages(liveArchive, liveBuffer)
 
   // Mark all windows as compacted
-  for (const windowId of state.windowOrder) {
-    state.updateWindow(windowId, { isCompacted: true })
+  for (const windowId of liveState.windowOrder) {
+    liveState.updateWindow(windowId, { isCompacted: true })
   }
 
   return {
     archiveSummary: summary,
-    archivedCount: archive.length,
-    bufferCount: buffer.length,
+    archivedCount: liveArchive.length,
+    bufferCount: liveBuffer.length,
   }
 }
 
@@ -171,7 +218,6 @@ function runSummarization(
   prompt: string,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    let content = ''
     streamResponse(
       {
         provider: provider as 'anthropic' | 'openai' | 'google' | 'xai' | 'deepseek',
@@ -182,7 +228,7 @@ function runSummarization(
         maxTokens: 1024,
       },
       {
-        onChunk: (chunk) => { content += chunk },
+        onChunk: () => {},
         onDone: (fullContent) => { resolve(fullContent) },
         onError: (error) => { reject(new Error(error)) },
       },

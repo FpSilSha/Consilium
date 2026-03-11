@@ -22,7 +22,7 @@ let isVoting = false
  */
 export async function callForVote(question: string): Promise<VoteTally> {
   if (isVoting) {
-    return { yay: 0, nay: 0, abstain: 0, total: 0, votes: [] }
+    throw new Error('A vote is already in progress')
   }
   isVoting = true
 
