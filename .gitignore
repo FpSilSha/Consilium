@@ -1,0 +1,46 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# API keys and secrets
+*.key
+*.pem
+secrets.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Go
+bin/
+
+# Logs
+*.log
+
+# Personal configs
+personal/
+private/
+
+# Claude Code local files
+.claude/sessions/
+.claude/metrics/
