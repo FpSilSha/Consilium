@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { MosaicLayout, AddAdvisorButton } from '@/features/windows'
 import { SharedInputBar } from '@/features/input'
+import { QueueSidebar } from '@/features/queueSidebar'
 import { useStore } from '@/store'
 
 export function App(): ReactNode {
@@ -23,7 +24,10 @@ export function App(): ReactNode {
       </header>
 
       <main className="flex flex-1 overflow-hidden">
-        <MosaicLayout />
+        <div className="flex-1 overflow-hidden">
+          <MosaicLayout />
+        </div>
+        <QueueSidebar />
       </main>
 
       <footer className="shrink-0 border-t border-gray-800 p-3">
