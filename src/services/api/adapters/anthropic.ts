@@ -51,6 +51,12 @@ export const anthropicAdapter: ProviderAdapter = {
           }
         }
       }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        await reader.cancel().catch(() => {})
+        return
+      }
+      throw error
     } finally {
       reader.releaseLock()
     }
@@ -71,13 +77,14 @@ function parseAnthropicEvent(event: unknown): StreamChunk | null {
     }
 
     case 'message_delta': {
+      // message_delta carries output_tokens only (input_tokens come from message_start)
       const usage = obj['usage'] as Record<string, unknown> | undefined
       if (usage !== undefined) {
         return {
           type: 'done',
           content: '',
           tokenUsage: {
-            inputTokens: typeof usage['input_tokens'] === 'number' ? usage['input_tokens'] : 0,
+            inputTokens: 0,
             outputTokens: typeof usage['output_tokens'] === 'number' ? usage['output_tokens'] : 0,
           },
         }

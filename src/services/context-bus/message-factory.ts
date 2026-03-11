@@ -1,10 +1,7 @@
 import type { Message, CostMetadata } from '@/types'
 
-let messageCounter = 0
-
 function generateMessageId(): string {
-  messageCounter += 1
-  return `msg_${Date.now()}_${messageCounter}`
+  return `msg_${Date.now()}_${crypto.randomUUID()}`
 }
 
 export function createUserMessage(

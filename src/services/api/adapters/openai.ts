@@ -53,6 +53,12 @@ export const openaiAdapter: ProviderAdapter = {
           }
         }
       }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        await reader.cancel().catch(() => {})
+        return
+      }
+      throw error
     } finally {
       reader.releaseLock()
     }
@@ -73,24 +79,17 @@ function parseOpenAIEvent(event: unknown): StreamChunk | null {
       return { type: 'content', content: delta['content'] }
     }
 
+    // finish_reason without usage: don't emit done yet — wait for the
+    // separate usage event that arrives after (stream_options.include_usage)
     if (choice['finish_reason'] !== null && choice['finish_reason'] !== undefined) {
-      const usage = obj['usage'] as Record<string, unknown> | undefined
-      return {
-        type: 'done',
-        content: '',
-        tokenUsage: usage !== undefined
-          ? {
-              inputTokens: typeof usage['prompt_tokens'] === 'number' ? usage['prompt_tokens'] : 0,
-              outputTokens: typeof usage['completion_tokens'] === 'number' ? usage['completion_tokens'] : 0,
-            }
-          : undefined,
-      }
+      return null
     }
   }
 
-  // Usage-only event (stream_options.include_usage)
+  // Usage-only event (stream_options.include_usage) — this arrives after
+  // the finish_reason event and carries the final token counts
   const usage = obj['usage'] as Record<string, unknown> | undefined
-  if (usage !== undefined && choices === undefined) {
+  if (usage !== undefined) {
     return {
       type: 'done',
       content: '',

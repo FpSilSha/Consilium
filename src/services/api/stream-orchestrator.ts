@@ -33,14 +33,15 @@ export function streamResponse(
 ): AbortController {
   const controller = new AbortController()
   const adapter = getAdapter(config.provider)
+  const effectiveSignal = config.signal ?? controller.signal
 
   const configWithSignal: ApiRequestConfig = {
     ...config,
-    signal: config.signal ?? controller.signal,
+    signal: effectiveSignal,
   }
 
   runStream(adapter, configWithSignal, callbacks).catch((error) => {
-    if (controller.signal.aborted) return
+    if (effectiveSignal.aborted) return
     callbacks.onError(
       error instanceof Error ? error.message : 'Unknown streaming error',
     )
@@ -64,8 +65,17 @@ async function runStream(
   })
 
   if (!response.ok) {
-    const errorText = await response.text().catch(() => 'Unknown error')
-    callbacks.onError(`API error ${response.status}: ${errorText}`)
+    const statusCode = response.status
+    const sanitizedMessage = statusCode === 401
+      ? 'Authentication failed — check your API key'
+      : statusCode === 429
+        ? 'Rate limit exceeded — try again later'
+        : statusCode === 403
+          ? 'Access forbidden — check API key permissions'
+          : statusCode >= 500
+            ? `Provider server error (${statusCode})`
+            : `API error (${statusCode})`
+    callbacks.onError(sanitizedMessage)
     return
   }
 
@@ -76,7 +86,8 @@ async function runStream(
   }
 
   let fullContent = ''
-  let finalUsage: StreamChunk['tokenUsage'] | undefined
+  let accumulatedInputTokens = 0
+  let accumulatedOutputTokens = 0
 
   for await (const chunk of adapter.parseStream(reader)) {
     switch (chunk.type) {
@@ -86,16 +97,20 @@ async function runStream(
           callbacks.onChunk(chunk.content)
         }
         if (chunk.tokenUsage !== undefined) {
-          finalUsage = chunk.tokenUsage
+          accumulatedInputTokens = Math.max(accumulatedInputTokens, chunk.tokenUsage.inputTokens)
+          accumulatedOutputTokens = Math.max(accumulatedOutputTokens, chunk.tokenUsage.outputTokens)
         }
         break
 
       case 'done':
         fullContent += chunk.content
         if (chunk.tokenUsage !== undefined) {
-          finalUsage = chunk.tokenUsage
+          accumulatedInputTokens = Math.max(accumulatedInputTokens, chunk.tokenUsage.inputTokens)
+          accumulatedOutputTokens = Math.max(accumulatedOutputTokens, chunk.tokenUsage.outputTokens)
         }
-        callbacks.onDone(fullContent, finalUsage)
+        callbacks.onDone(fullContent, accumulatedInputTokens > 0 || accumulatedOutputTokens > 0
+          ? { inputTokens: accumulatedInputTokens, outputTokens: accumulatedOutputTokens }
+          : undefined)
         return
 
       case 'error':
@@ -105,5 +120,7 @@ async function runStream(
   }
 
   // Stream ended without explicit 'done' event
-  callbacks.onDone(fullContent, finalUsage)
+  callbacks.onDone(fullContent, accumulatedInputTokens > 0 || accumulatedOutputTokens > 0
+    ? { inputTokens: accumulatedInputTokens, outputTokens: accumulatedOutputTokens }
+    : undefined)
 }

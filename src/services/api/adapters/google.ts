@@ -4,12 +4,13 @@ export const googleAdapter: ProviderAdapter = {
   provider: 'google',
 
   buildRequest(config: ApiRequestConfig) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:streamGenerateContent?alt=sse&key=${config.apiKey}`
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:streamGenerateContent?alt=sse`
 
     return {
       url,
       headers: {
         'Content-Type': 'application/json',
+        'x-goog-api-key': config.apiKey,
       },
       body: JSON.stringify({
         systemInstruction: {
@@ -53,6 +54,12 @@ export const googleAdapter: ProviderAdapter = {
           }
         }
       }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        await reader.cancel().catch(() => {})
+        return
+      }
+      throw error
     } finally {
       reader.releaseLock()
     }
