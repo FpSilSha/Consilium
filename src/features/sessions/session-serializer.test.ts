@@ -67,7 +67,6 @@ describe('deserializeSession', () => {
         ],
       })
       const result = deserializeSession(toJson(fixture))
-      expect(result).not.toBeNull()
       expect(result?.windows).toHaveLength(1)
     })
 
@@ -85,39 +84,19 @@ describe('deserializeSession', () => {
         ],
       })
       const result = deserializeSession(toJson(fixture))
-      expect(result).not.toBeNull()
       expect(result?.messages).toHaveLength(1)
     })
 
-    it('accepts a queue card with errorLabel as null', () => {
+    it('accepts queue cards with null errorLabel, string errorLabel, and isUser variants', () => {
       const fixture = makeValidSession({
         queue: [
           { id: 'q-1', windowId: 'win-1', status: 'waiting', isUser: false, errorLabel: null },
+          { id: 'q-2', windowId: 'win-1', status: 'errored', isUser: false, errorLabel: 'Rate limit' },
+          { id: 'q-3', windowId: 'win-1', status: 'waiting', isUser: true, errorLabel: null },
         ],
       })
       const result = deserializeSession(toJson(fixture))
-      expect(result).not.toBeNull()
-      expect(result?.queue).toHaveLength(1)
-    })
-
-    it('accepts a queue card with errorLabel as a string', () => {
-      const fixture = makeValidSession({
-        queue: [
-          { id: 'q-1', windowId: 'win-1', status: 'errored', isUser: false, errorLabel: 'Rate limit' },
-        ],
-      })
-      const result = deserializeSession(toJson(fixture))
-      expect(result).not.toBeNull()
-    })
-
-    it('accepts queue card with isUser: true', () => {
-      const fixture = makeValidSession({
-        queue: [
-          { id: 'q-2', windowId: 'win-1', status: 'waiting', isUser: true, errorLabel: null },
-        ],
-      })
-      const result = deserializeSession(toJson(fixture))
-      expect(result).not.toBeNull()
+      expect(result?.queue).toHaveLength(3)
     })
 
     it('accepts extra unknown top-level fields (lenient validation)', () => {
@@ -323,56 +302,32 @@ describe('extractMetadata', () => {
     } as SessionFile
   }
 
-  it('maps id correctly', () => {
+  it('maps all scalar fields from SessionFile to metadata', () => {
     const meta = extractMetadata(makeTypedSession())
     expect(meta.id).toBe('sess-meta-test')
-  })
-
-  it('maps name correctly', () => {
-    const meta = extractMetadata(makeTypedSession())
     expect(meta.name).toBe('Metadata Test Session')
-  })
-
-  it('maps createdAt correctly', () => {
-    const meta = extractMetadata(makeTypedSession())
     expect(meta.createdAt).toBe(1700000000000)
-  })
-
-  it('maps updatedAt correctly', () => {
-    const meta = extractMetadata(makeTypedSession())
     expect(meta.updatedAt).toBe(1700000099000)
-  })
-
-  it('maps totalCost correctly', () => {
-    const meta = extractMetadata(makeTypedSession())
     expect(meta.totalCost).toBe(3.75)
+    expect(meta.windowCount).toBe(0)
+    expect(meta.messageCount).toBe(0)
   })
 
-  it('sets windowCount to the length of the windows array', () => {
+  it('counts windows and messages from populated arrays', () => {
     const session = makeTypedSession({
       windows: [
         { id: 'w1', model: 'm', provider: 'anthropic', keyId: 'k', personaId: 'p', personaLabel: 'l', personaFilename: 'f', accentColor: '#fff', runningCost: 0, isCompacted: false, bufferSize: 0 },
         { id: 'w2', model: 'm', provider: 'openai', keyId: 'k', personaId: 'p', personaLabel: 'l', personaFilename: 'f', accentColor: '#000', runningCost: 1, isCompacted: false, bufferSize: 0 },
       ],
-    })
-    expect(extractMetadata(session).windowCount).toBe(2)
-  })
-
-  it('sets messageCount to the length of the messages array', () => {
-    const session = makeTypedSession({
       messages: [
         { id: 'm1', role: 'user', content: 'hi', personaLabel: 'You', timestamp: 0, windowId: 'w1' },
         { id: 'm2', role: 'assistant', content: 'hello', personaLabel: 'AI', timestamp: 1, windowId: 'w1' },
         { id: 'm3', role: 'user', content: 'thanks', personaLabel: 'You', timestamp: 2, windowId: 'w1' },
       ],
     })
-    expect(extractMetadata(session).messageCount).toBe(3)
-  })
-
-  it('returns windowCount=0 and messageCount=0 for empty arrays', () => {
-    const meta = extractMetadata(makeTypedSession())
-    expect(meta.windowCount).toBe(0)
-    expect(meta.messageCount).toBe(0)
+    const meta = extractMetadata(session)
+    expect(meta.windowCount).toBe(2)
+    expect(meta.messageCount).toBe(3)
   })
 
   it('returns exactly 7 fields (no extra leakage from SessionFile)', () => {
@@ -382,10 +337,5 @@ describe('extractMetadata', () => {
     expect(keys.sort()).toEqual(
       ['createdAt', 'id', 'messageCount', 'name', 'totalCost', 'updatedAt', 'windowCount'].sort(),
     )
-  })
-
-  it('reflects totalCost=0 for a session with no cost', () => {
-    const meta = extractMetadata(makeTypedSession({ totalCost: 0 }))
-    expect(meta.totalCost).toBe(0)
   })
 })

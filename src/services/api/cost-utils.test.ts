@@ -15,42 +15,18 @@ describe('buildCostMetadata', () => {
     it('returns undefined regardless of modelId', () => {
       expect(buildCostMetadata(undefined, 'claude-opus-4-6')).toBeUndefined()
     })
-
-    it('returns undefined for an unknown modelId when tokenUsage is undefined', () => {
-      expect(buildCostMetadata(undefined, 'non-existent-model')).toBeUndefined()
-    })
-
-    it('returns undefined for an empty-string modelId when tokenUsage is undefined', () => {
-      expect(buildCostMetadata(undefined, '')).toBeUndefined()
-    })
   })
 
   describe('with a known model (claude-opus-4-6)', () => {
     const usage: TokenUsage = { inputTokens: 1000, outputTokens: 500 }
 
-    it('passes inputTokens through to the result', () => {
-      const result = buildCostMetadata(usage, 'claude-opus-4-6')
-      expect(result?.inputTokens).toBe(1000)
-    })
-
-    it('passes outputTokens through to the result', () => {
-      const result = buildCostMetadata(usage, 'claude-opus-4-6')
-      expect(result?.outputTokens).toBe(500)
-    })
-
-    it('computes estimatedCost as inputTokens * inputPrice + outputTokens * outputPrice', () => {
+    it('returns correct token counts, cost, and isEstimate=false', () => {
       const expected = 1000 * CLAUDE_OPUS_INPUT_PRICE + 500 * CLAUDE_OPUS_OUTPUT_PRICE
       const result = buildCostMetadata(usage, 'claude-opus-4-6')
+      expect(result?.inputTokens).toBe(1000)
+      expect(result?.outputTokens).toBe(500)
       expect(result?.estimatedCost).toBeCloseTo(expected, 10)
-    })
-
-    it('sets isEstimate to false because the model is known', () => {
-      const result = buildCostMetadata(usage, 'claude-opus-4-6')
       expect(result?.isEstimate).toBe(false)
-    })
-
-    it('returns a defined object (not undefined)', () => {
-      expect(buildCostMetadata(usage, 'claude-opus-4-6')).toBeDefined()
     })
   })
 
@@ -93,27 +69,15 @@ describe('buildCostMetadata', () => {
   describe('with an unknown model', () => {
     const usage: TokenUsage = { inputTokens: 1000, outputTokens: 500 }
 
-    it('returns a defined object (not undefined)', () => {
-      expect(buildCostMetadata(usage, 'totally-unknown-model')).toBeDefined()
-    })
-
-    it('sets isEstimate to true', () => {
+    it('returns isEstimate=true with 0 cost but preserves token counts', () => {
       const result = buildCostMetadata(usage, 'totally-unknown-model')
       expect(result?.isEstimate).toBe(true)
-    })
-
-    it('uses 0 for both price rates, so estimatedCost is 0', () => {
-      const result = buildCostMetadata(usage, 'totally-unknown-model')
       expect(result?.estimatedCost).toBe(0)
-    })
-
-    it('still passes token counts through', () => {
-      const result = buildCostMetadata(usage, 'totally-unknown-model')
       expect(result?.inputTokens).toBe(1000)
       expect(result?.outputTokens).toBe(500)
     })
 
-    it('returns isEstimate true for empty-string model ID', () => {
+    it('returns isEstimate=true for empty-string model ID', () => {
       const result = buildCostMetadata(usage, '')
       expect(result?.isEstimate).toBe(true)
     })

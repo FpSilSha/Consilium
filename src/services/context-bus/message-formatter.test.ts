@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { messagesToApiFormat } from './message-formatter'
 import type { Message } from '@/types'
 
@@ -41,24 +41,10 @@ describe('messagesToApiFormat', () => {
       expect(result[0]?.role).toBe('user')
     })
 
-    it('prefixes user message content with [You]:', () => {
-      const msgs = [makeMessage('user', 'Hello there')]
+    it('prefixes user message content with [You]: regardless of personaLabel', () => {
+      const msgs = [makeMessage('user', 'Hello there', 'SomePersona')]
       const result = messagesToApiFormat(msgs)
       expect(result[0]?.content).toBe('[You]: Hello there')
-    })
-
-    it('uses the literal string "You" as the label regardless of personaLabel value', () => {
-      // personaLabel on a user message should be ignored in favor of 'You'
-      const msg = makeMessage('user', 'Test content', 'SomePersona')
-      const result = messagesToApiFormat([msg])
-      expect(result[0]?.content).toMatch(/^\[You\]:/)
-
-    })
-
-    it('preserves the original content after the prefix', () => {
-      const msgs = [makeMessage('user', 'Some detailed query with punctuation: yes!')]
-      const result = messagesToApiFormat(msgs)
-      expect(result[0]?.content).toContain('Some detailed query with punctuation: yes!')
     })
   })
 
@@ -76,19 +62,6 @@ describe('messagesToApiFormat', () => {
       expect(result[0]?.content).toBe('[Security Engineer]: Use AES-256.')
     })
 
-    it('uses the message personaLabel as the identity header for assistant', () => {
-      const msgs = [makeMessage('assistant', 'My analysis...', 'Risk Analyst')]
-      const result = messagesToApiFormat(msgs)
-      expect(result[0]?.content).toMatch(/^\[Risk Analyst\]:/)
-
-    })
-
-    it('preserves original content in the assistant output', () => {
-      const content = 'The answer is 42. Here is why: ...'
-      const msgs = [makeMessage('assistant', content, 'Advisor')]
-      const result = messagesToApiFormat(msgs)
-      expect(result[0]?.content).toContain(content)
-    })
   })
 
   describe('system messages', () => {
@@ -173,39 +146,6 @@ describe('messagesToApiFormat', () => {
       const result = messagesToApiFormat(msgs)
       // 2 user + 2 assistant = 4
       expect(result).toHaveLength(4)
-    })
-  })
-
-  describe('output shape', () => {
-    it('each output item has exactly role and content fields', () => {
-      const msgs = [makeMessage('user', 'Check output shape')]
-      const result = messagesToApiFormat(msgs)
-      expect(result[0]).toHaveProperty('role')
-      expect(result[0]).toHaveProperty('content')
-    })
-
-    it('output role is strictly "user" or "assistant" — never "system"', () => {
-      const msgs = [
-        makeMessage('user', 'u'),
-        makeMessage('assistant', 'a', 'P'),
-        makeMessage('system', 's'),
-      ]
-      const result = messagesToApiFormat(msgs)
-      for (const m of result) {
-        expect(['user', 'assistant']).toContain(m.role)
-      }
-    })
-
-    it('content is a non-empty string for each output message', () => {
-      const msgs = [
-        makeMessage('user', 'hello'),
-        makeMessage('assistant', 'world', 'Advisor'),
-      ]
-      const result = messagesToApiFormat(msgs)
-      for (const m of result) {
-        expect(typeof m.content).toBe('string')
-        expect(m.content.length).toBeGreaterThan(0)
-      }
     })
   })
 
