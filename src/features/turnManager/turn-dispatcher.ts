@@ -146,7 +146,9 @@ function dispatchAgentTurn(card: QueueCard): void {
     onDone: (fullContent, tokenUsage) => {
       activeControllers.delete(card.id)
 
-      // Read fresh window state to avoid stale closure in parallel mode
+      // Discard late-arriving responses after user explicitly stopped
+      if (controller.signal.aborted) return
+
       const current = useStore.getState()
       const freshWindow = current.windows[card.windowId]
       const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
@@ -167,12 +169,15 @@ function dispatchAgentTurn(card: QueueCard): void {
       current.setCardStatus(card.id, 'completed')
       current.removeActiveCard(card.id)
 
+      // Use queueMicrotask to avoid unbounded recursive call stack
       queueMicrotask(onTurnComplete)
     },
     onError: (error, tokenUsage) => {
       activeControllers.delete(card.id)
 
-      // Read fresh window state to avoid stale closure in parallel mode
+      // Discard late-arriving errors after user explicitly stopped
+      if (controller.signal.aborted) return
+
       const current = useStore.getState()
       const freshWindow = current.windows[card.windowId]
       const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)

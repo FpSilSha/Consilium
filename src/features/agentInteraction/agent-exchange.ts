@@ -90,14 +90,14 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
 
     const key = state.keys.find((k) => k.id === window.keyId)
     if (key === undefined) {
-      state.updateWindow(windowId, { error: 'API key not found' })
+      state.updateWindow(windowId, { isStreaming: false, error: 'API key not found' })
       resolve(false)
       return
     }
 
     const apiKey = getRawKey(key.id)
     if (apiKey === null) {
-      state.updateWindow(windowId, { error: 'Could not retrieve API key' })
+      state.updateWindow(windowId, { isStreaming: false, error: 'Could not retrieve API key' })
       resolve(false)
       return
     }
@@ -110,10 +110,11 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
 
     const messages = messagesToApiFormat(state.messages)
 
-    state.updateWindow(windowId, { isStreaming: true, streamContent: '', error: null })
-
+    // Register controller before setting isStreaming to avoid cancellation gap
     const controller = new AbortController()
     activeExchangeControllers.set(windowId, controller)
+
+    state.updateWindow(windowId, { isStreaming: true, streamContent: '', error: null })
 
     const callbacks: StreamCallbacks = {
       onChunk: (content) => {
@@ -126,6 +127,12 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
       },
       onDone: (fullContent, tokenUsage) => {
         activeExchangeControllers.delete(windowId)
+
+        // Discard late-arriving responses after cancellation
+        if (controller.signal.aborted) {
+          resolve(true)
+          return
+        }
 
         const current = useStore.getState()
         const freshWindow = current.windows[windowId]
