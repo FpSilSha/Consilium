@@ -1,13 +1,12 @@
-import type { QueueCard, CostMetadata, Message } from '@/types'
-import type { TokenUsage, ApiMessage } from '@/services/api/types'
+import type { QueueCard } from '@/types'
 import { useStore } from '@/store'
 import { streamResponse } from '@/services/api/stream-orchestrator'
 import type { StreamCallbacks } from '@/services/api/stream-orchestrator'
 import { createAssistantMessage } from '@/services/context-bus/message-factory'
 import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
-import { formatWithIdentityHeader } from '@/services/context-bus/identity-headers'
+import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
+import { buildCostMetadata } from '@/services/api/cost-utils'
 import { getRawKey } from '@/features/keys/key-vault'
-import { getModelById } from '@/features/modelSelector/model-registry'
 import { isBudgetExceeded } from '@/features/budget/budget-engine'
 import {
   getNextCard,
@@ -96,33 +95,6 @@ export function manualDispatch(cardId: string): void {
   dispatchAgentTurn(card)
 }
 
-function buildCostMetadata(
-  tokenUsage: TokenUsage | undefined,
-  modelId: string,
-): CostMetadata | undefined {
-  if (tokenUsage === undefined) return undefined
-
-  const model = getModelById(modelId)
-  const inputCost = tokenUsage.inputTokens * (model?.inputPricePerToken ?? 0)
-  const outputCost = tokenUsage.outputTokens * (model?.outputPricePerToken ?? 0)
-
-  return {
-    inputTokens: tokenUsage.inputTokens,
-    outputTokens: tokenUsage.outputTokens,
-    estimatedCost: inputCost + outputCost,
-    isEstimate: model === undefined,
-  }
-}
-
-function messagesToApiFormat(messages: readonly Message[]): readonly ApiMessage[] {
-  return messages
-    .filter((m) => m.role !== 'system')
-    .map((m) => ({
-      role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-      content: formatWithIdentityHeader(m),
-    }))
-}
-
 function dispatchAgentTurn(card: QueueCard): void {
   const state = useStore.getState()
   const window = state.windows[card.windowId]
@@ -134,7 +106,7 @@ function dispatchAgentTurn(card: QueueCard): void {
 
   // Mark card and window as active
   state.setCardStatus(card.id, 'active')
-  state.setActiveCard(card.id)
+  state.addActiveCard(card.id)
   state.updateWindow(card.windowId, { isStreaming: true, streamContent: '', error: null })
 
   // Find the API key for this window
@@ -193,7 +165,7 @@ function dispatchAgentTurn(card: QueueCard): void {
         runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
       })
       current.setCardStatus(card.id, 'completed')
-      current.setActiveCard(null)
+      current.removeActiveCard(card.id)
 
       // Use queueMicrotask to avoid unbounded recursive call stack
       queueMicrotask(onTurnComplete)
@@ -213,7 +185,7 @@ function dispatchAgentTurn(card: QueueCard): void {
         runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
       })
       current.setCardStatus(card.id, 'errored', error)
-      current.setActiveCard(null)
+      current.removeActiveCard(card.id)
 
       // Use queueMicrotask to avoid unbounded recursive call stack
       queueMicrotask(onTurnComplete)
@@ -240,6 +212,12 @@ function onTurnComplete(): void {
   // Budget enforcement: halt after each turn if budget exceeded
   if (state.sessionBudget > 0 && isBudgetExceeded(state.sessionBudget)) {
     stopAll()
+    return
+  }
+
+  // In parallel mode, wait until ALL active agents have finished before
+  // declaring the cycle complete or dispatching the next round.
+  if (state.turnMode === 'parallel' && state.activeCardIds.length > 0) {
     return
   }
 

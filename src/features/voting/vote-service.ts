@@ -1,13 +1,12 @@
-import type { AdvisorWindow, Message } from '@/types'
+import type { Message } from '@/types'
 import { useStore } from '@/store'
 import { streamResponse } from '@/services/api/stream-orchestrator'
 import { createUserMessage, createAssistantMessage } from '@/services/context-bus/message-factory'
 import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
-import { formatWithIdentityHeader } from '@/services/context-bus/identity-headers'
+import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { getRawKey } from '@/features/keys/key-vault'
 import type { AdvisorVote, VoteTally } from './vote-types'
 import { parseVoteResponse, tallyVotes } from './vote-parser'
-import type { ApiMessage } from '@/services/api/types'
 
 const VOTE_INSTRUCTION = 'Respond with only: YAY, NAY, or ABSTAIN, followed by a one-sentence justification.'
 
@@ -119,13 +118,4 @@ async function collectVoteFromWindow(
       },
     )
   })
-}
-
-function messagesToApiFormat(messages: readonly Message[]): readonly ApiMessage[] {
-  return messages
-    .filter((m) => m.role !== 'system')
-    .map((m) => ({
-      role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-      content: formatWithIdentityHeader(m),
-    }))
 }

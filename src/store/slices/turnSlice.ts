@@ -6,7 +6,7 @@ export interface TurnSlice {
   readonly queue: readonly QueueCard[]
   readonly isPaused: boolean
   readonly isRunning: boolean
-  readonly activeCardId: string | null
+  readonly activeCardIds: readonly string[]
   setTurnMode: (mode: TurnMode) => void
   setQueue: (queue: readonly QueueCard[]) => void
   addToQueue: (card: QueueCard) => void
@@ -15,7 +15,8 @@ export interface TurnSlice {
   duplicateCard: (cardId: string) => void
   skipCard: (cardId: string) => void
   setCardStatus: (cardId: string, status: QueueCard['status'], errorLabel?: string) => void
-  setActiveCard: (cardId: string | null) => void
+  addActiveCard: (cardId: string) => void
+  removeActiveCard: (cardId: string) => void
   setPaused: (paused: boolean) => void
   setIsRunning: (running: boolean) => void
   resetQueue: () => void
@@ -26,7 +27,7 @@ export const createTurnSlice: StateCreator<TurnSlice> = (set) => ({
   queue: [],
   isPaused: false,
   isRunning: false,
-  activeCardId: null,
+  activeCardIds: [],
 
   setTurnMode: (mode) => set({ turnMode: mode }),
 
@@ -40,7 +41,7 @@ export const createTurnSlice: StateCreator<TurnSlice> = (set) => ({
   removeFromQueue: (cardId) =>
     set((state) => ({
       queue: state.queue.filter((c) => c.id !== cardId),
-      activeCardId: state.activeCardId === cardId ? null : state.activeCardId,
+      activeCardIds: state.activeCardIds.filter((id) => id !== cardId),
     })),
 
   moveInQueue: (cardId, toIndex) =>
@@ -50,11 +51,11 @@ export const createTurnSlice: StateCreator<TurnSlice> = (set) => ({
       // Don't allow moving the active card
       if (state.queue[fromIndex]?.status === 'active') return state
 
-      const newQueue = [...state.queue]
-      const [card] = newQueue.splice(fromIndex, 1)
+      const without = [...state.queue.slice(0, fromIndex), ...state.queue.slice(fromIndex + 1)]
+      const card = state.queue[fromIndex]
       if (card === undefined) return state
-      newQueue.splice(toIndex, 0, card)
-      return { queue: newQueue }
+      const reinserted = [...without.slice(0, toIndex), card, ...without.slice(toIndex)]
+      return { queue: reinserted }
     }),
 
   duplicateCard: (cardId) =>
@@ -71,9 +72,9 @@ export const createTurnSlice: StateCreator<TurnSlice> = (set) => ({
         errorLabel: null,
       }
       const insertIndex = state.queue.findIndex((c) => c.id === cardId) + 1
-      const newQueue = [...state.queue]
-      newQueue.splice(insertIndex, 0, duplicate)
-      return { queue: newQueue }
+      return {
+        queue: [...state.queue.slice(0, insertIndex), duplicate, ...state.queue.slice(insertIndex)],
+      }
     }),
 
   skipCard: (cardId) =>
@@ -97,7 +98,17 @@ export const createTurnSlice: StateCreator<TurnSlice> = (set) => ({
       ),
     })),
 
-  setActiveCard: (cardId) => set({ activeCardId: cardId }),
+  addActiveCard: (cardId) =>
+    set((state) => ({
+      activeCardIds: state.activeCardIds.includes(cardId)
+        ? state.activeCardIds
+        : [...state.activeCardIds, cardId],
+    })),
+
+  removeActiveCard: (cardId) =>
+    set((state) => ({
+      activeCardIds: state.activeCardIds.filter((id) => id !== cardId),
+    })),
 
   setPaused: (paused) => set({ isPaused: paused }),
 
@@ -108,7 +119,7 @@ export const createTurnSlice: StateCreator<TurnSlice> = (set) => ({
       queue: state.queue
         .filter((c) => c.status !== 'errored' && c.status !== 'skipped')
         .map((c) => ({ ...c, status: 'waiting' as const, errorLabel: null })),
-      activeCardId: null,
+      activeCardIds: [],
       isRunning: false,
       isPaused: false,
     })),

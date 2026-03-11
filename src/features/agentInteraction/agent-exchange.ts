@@ -3,16 +3,14 @@ import { streamResponse } from '@/services/api/stream-orchestrator'
 import type { StreamCallbacks } from '@/services/api/stream-orchestrator'
 import { createAssistantMessage, createUserMessage } from '@/services/context-bus/message-factory'
 import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
-import { formatWithIdentityHeader } from '@/services/context-bus/identity-headers'
+import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
+import { buildCostMetadata } from '@/services/api/cost-utils'
 import { getRawKey } from '@/features/keys/key-vault'
-import { getModelById } from '@/features/modelSelector/model-registry'
-import type { CostMetadata, Message } from '@/types'
-import type { TokenUsage, ApiMessage } from '@/services/api/types'
 import { isBudgetExceeded } from '@/features/budget/budget-engine'
 import { resolveMentionTargets, cleanMentions } from './mention-router'
 
 const MAX_EXCHANGE_ROUNDS = 10
-let activeExchangeController: AbortController | null = null
+const activeExchangeControllers = new Map<string, AbortController>()
 let lastExchangeDirective: { content: string; targetWindowIds: readonly string[] } | null = null
 
 /**
@@ -62,12 +60,12 @@ export async function repeatLastExchange(): Promise<void> {
 }
 
 /**
- * Cancels any in-flight agent-to-agent exchange.
+ * Cancels all in-flight agent-to-agent exchange streams.
  */
 export function cancelExchange(): void {
-  if (activeExchangeController !== null) {
-    activeExchangeController.abort()
-    activeExchangeController = null
+  for (const [windowId, controller] of activeExchangeControllers) {
+    controller.abort()
+    activeExchangeControllers.delete(windowId)
   }
 }
 
@@ -112,7 +110,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
     state.updateWindow(windowId, { isStreaming: true, streamContent: '', error: null })
 
     const controller = new AbortController()
-    activeExchangeController = controller
+    activeExchangeControllers.set(windowId, controller)
 
     const callbacks: StreamCallbacks = {
       onChunk: (content) => {
@@ -124,7 +122,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
         })
       },
       onDone: (fullContent, tokenUsage) => {
-        activeExchangeController = null
+        activeExchangeControllers.delete(windowId)
 
         const costMeta = buildCostMetadata(tokenUsage, window.model)
         const message = createAssistantMessage(
@@ -145,7 +143,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
         resolve(false)
       },
       onError: (error, tokenUsage) => {
-        activeExchangeController = null
+        activeExchangeControllers.delete(windowId)
 
         // Record partial cost even on error
         const errorCostMeta = buildCostMetadata(tokenUsage, window.model)
@@ -174,31 +172,4 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
       callbacks,
     )
   })
-}
-
-function messagesToApiFormat(messages: readonly Message[]): readonly ApiMessage[] {
-  return messages
-    .filter((m) => m.role !== 'system')
-    .map((m) => ({
-      role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-      content: formatWithIdentityHeader(m),
-    }))
-}
-
-function buildCostMetadata(
-  tokenUsage: TokenUsage | undefined,
-  modelId: string,
-): CostMetadata | undefined {
-  if (tokenUsage === undefined) return undefined
-
-  const model = getModelById(modelId)
-  const inputCost = tokenUsage.inputTokens * (model?.inputPricePerToken ?? 0)
-  const outputCost = tokenUsage.outputTokens * (model?.outputPricePerToken ?? 0)
-
-  return {
-    inputTokens: tokenUsage.inputTokens,
-    outputTokens: tokenUsage.outputTokens,
-    estimatedCost: inputCost + outputCost,
-    isEstimate: model === undefined,
-  }
 }
