@@ -14,12 +14,15 @@
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-mosaic-component": "^6.1.1",
+    "uuid": "^13.0.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/uuid": "^10.0.0",
     "electron": "^34.0.0",
     "electron-builder": "^25.0.0",
     "electron-vite": "^3.0.0",
