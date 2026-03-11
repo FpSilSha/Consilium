@@ -26,13 +26,10 @@ export interface StreamCallbacks {
 /**
  * Streams a response from a provider's API.
  *
- * **Cancellation contract:**
- * - If `config.signal` is provided, the caller owns cancellation; the returned
- *   AbortController is a **separate** controller that only governs the internal
- *   fetch and will NOT abort the caller's signal.  Callers should use their own
- *   signal/controller for lifecycle management.
- * - If `config.signal` is omitted, the returned AbortController is wired
- *   directly to the fetch and can be used to cancel the stream.
+ * Returns an AbortController that can always be used to cancel the stream.
+ * If `config.signal` is provided, it is linked to the internal controller:
+ * aborting either one cancels the fetch. The returned controller's
+ * `signal.aborted` reflects the true cancellation state for call-site checks.
  */
 export function streamResponse(
   config: ApiRequestConfig,
@@ -40,15 +37,27 @@ export function streamResponse(
 ): AbortController {
   const controller = new AbortController()
   const adapter = getAdapter(config.provider)
-  const effectiveSignal = config.signal ?? controller.signal
+
+  // Link external signal to internal controller so both can cancel
+  if (config.signal !== undefined) {
+    if (config.signal.aborted) {
+      controller.abort(config.signal.reason)
+    } else {
+      config.signal.addEventListener(
+        'abort',
+        () => controller.abort(config.signal!.reason),
+        { once: true },
+      )
+    }
+  }
 
   const configWithSignal: ApiRequestConfig = {
     ...config,
-    signal: effectiveSignal,
+    signal: controller.signal,
   }
 
   runStream(adapter, configWithSignal, callbacks).catch((error) => {
-    if (effectiveSignal.aborted) return
+    if (controller.signal.aborted) return
     callbacks.onError(
       error instanceof Error ? error.message : 'Unknown streaming error',
     )
