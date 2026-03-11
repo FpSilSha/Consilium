@@ -129,10 +129,9 @@ function dispatchAgentTurn(card: QueueCard): void {
   const systemPrompt = buildSystemPrompt(personaContent, state.sessionInstructions || undefined)
   const threadMessages = messagesToApiFormat(state.messages)
 
-  // Mark card and window as active only after all validation passes
+  // Mark card as active and prepare callbacks before setting isStreaming
   state.setCardStatus(card.id, 'active')
   state.addActiveCard(card.id)
-  state.updateWindow(card.windowId, { isStreaming: true, streamContent: '', error: null })
 
   const callbacks: StreamCallbacks = {
     onChunk: (content) => {
@@ -196,6 +195,7 @@ function dispatchAgentTurn(card: QueueCard): void {
     },
   }
 
+  // Register controller before isStreaming to avoid cancellation gap
   const controller = streamResponse(
     {
       provider: window.provider,
@@ -208,6 +208,7 @@ function dispatchAgentTurn(card: QueueCard): void {
   )
 
   activeControllers.set(card.id, { controller, windowId: card.windowId })
+  state.updateWindow(card.windowId, { isStreaming: true, streamContent: '', error: null })
 }
 
 function onTurnComplete(): void {

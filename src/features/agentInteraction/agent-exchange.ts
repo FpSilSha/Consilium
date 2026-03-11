@@ -156,6 +156,12 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
       onError: (error, tokenUsage) => {
         activeExchangeControllers.delete(windowId)
 
+        // Discard late-arriving errors after cancellation
+        if (controller.signal.aborted) {
+          resolve(true)
+          return
+        }
+
         const current = useStore.getState()
         const freshWindow = current.windows[windowId]
         const errorCostMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
@@ -167,7 +173,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
           runningCost: (freshWindow?.runningCost ?? 0) + (errorCostMeta?.estimatedCost ?? 0),
         })
 
-        resolve(controller.signal.aborted)
+        resolve(false)
       },
     }
 
