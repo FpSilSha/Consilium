@@ -4,7 +4,7 @@ import type { ConsiliumAPI } from '../../electron/preload/types'
 
 declare global {
   interface Window {
-    readonly consiliumAPI: ConsiliumAPI
+    readonly consiliumAPI: ConsiliumAPI | undefined
   }
 }
 

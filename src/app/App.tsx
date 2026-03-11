@@ -1,4 +1,6 @@
-export function App(): React.JSX.Element {
+import type { ReactNode } from 'react'
+
+export function App(): ReactNode {
   return (
     <div className="flex h-screen flex-col">
       {/* Title bar area — Phase 3A fills this */}
