@@ -14,6 +14,7 @@ export interface TurnSlice {
   moveInQueue: (cardId: string, toIndex: number) => void
   duplicateCard: (cardId: string) => void
   skipCard: (cardId: string) => void
+  unskipCard: (cardId: string) => void
   setCardStatus: (cardId: string, status: QueueCard['status'], errorLabel?: string) => void
   addActiveCard: (cardId: string) => void
   removeActiveCard: (cardId: string) => void
@@ -87,6 +88,24 @@ export const createTurnSlice: StateCreator<TurnSlice> = (set) => ({
       const updated: QueueCard = { ...card, status: 'skipped' }
       const withoutCard = state.queue.filter((c) => c.id !== cardId)
       return { queue: [...withoutCard, updated] }
+    }),
+
+  unskipCard: (cardId) =>
+    set((state) => {
+      const card = state.queue.find((c) => c.id === cardId)
+      if (card === undefined || card.status !== 'skipped') return state
+
+      // Find the last waiting card's position and insert after it
+      const lastWaitingIndex = state.queue.reduce(
+        (acc, c, i) => (c.status === 'waiting' ? i : acc),
+        -1,
+      )
+      const withoutCard = state.queue.filter((c) => c.id !== cardId)
+      const insertAt = lastWaitingIndex === -1 ? 0 : lastWaitingIndex
+      const restored: QueueCard = { ...card, status: 'waiting' }
+      return {
+        queue: [...withoutCard.slice(0, insertAt), restored, ...withoutCard.slice(insertAt)],
+      }
     }),
 
   setCardStatus: (cardId, status, errorLabel) =>

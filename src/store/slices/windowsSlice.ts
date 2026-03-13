@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand'
 import type { AdvisorWindow } from '@/types'
+import type { TurnSlice } from './turnSlice'
 
 export interface WindowsSlice {
   readonly windows: Readonly<Record<string, AdvisorWindow>>
@@ -10,7 +11,7 @@ export interface WindowsSlice {
   setWindowOrder: (order: readonly string[]) => void
 }
 
-export const createWindowsSlice: StateCreator<WindowsSlice> = (set) => ({
+export const createWindowsSlice: StateCreator<WindowsSlice & TurnSlice, [], [], WindowsSlice> = (set) => ({
   windows: {},
   windowOrder: [],
 
@@ -26,6 +27,10 @@ export const createWindowsSlice: StateCreator<WindowsSlice> = (set) => ({
       return {
         windows: remaining,
         windowOrder: state.windowOrder.filter((id) => id !== windowId),
+        queue: state.queue.filter((c) => c.windowId !== windowId),
+        activeCardIds: state.activeCardIds.filter(
+          (id) => !state.queue.some((c) => c.id === id && c.windowId === windowId),
+        ),
       }
     }),
 

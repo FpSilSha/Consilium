@@ -11,6 +11,7 @@ export function QueueSidebar(): ReactNode {
   const isRunning = useStore((s) => s.isRunning)
   const isPaused = useStore((s) => s.isPaused)
   const skipCard = useStore((s) => s.skipCard)
+  const unskipCard = useStore((s) => s.unskipCard)
   const duplicateCard = useStore((s) => s.duplicateCard)
   const removeFromQueue = useStore((s) => s.removeFromQueue)
   const moveInQueue = useStore((s) => s.moveInQueue)
@@ -61,8 +62,8 @@ export function QueueSidebar(): ReactNode {
 
   return (
     <div className="flex h-full w-56 flex-col border-l border-gray-800 bg-gray-950">
-      <div className="flex items-center justify-between border-b border-gray-800 px-3 py-2">
-        <span className="text-xs font-medium text-gray-400">Queue</span>
+      <div className="flex flex-col gap-2 border-b border-gray-800 px-3 py-2">
+        <span className="text-xs font-medium text-gray-400">Queue Type</span>
         <TurnModeSelector />
       </div>
 
@@ -129,6 +130,7 @@ export function QueueSidebar(): ReactNode {
                   accentColor={accentColor}
                   onManualTrigger={() => manualDispatch(card.id)}
                   onSkip={() => skipCard(card.id)}
+                  onUnskip={() => unskipCard(card.id)}
                   onDuplicate={() => duplicateCard(card.id)}
                   onRemove={() => removeFromQueue(card.id)}
                   isDragTarget={dragOverIndex === index}
@@ -163,6 +165,7 @@ export function QueueSidebar(): ReactNode {
                   accentColor={accentColor}
                   onManualTrigger={() => {}}
                   onSkip={() => {}}
+                  onUnskip={() => {}}
                   onDuplicate={() => {}}
                   onRemove={() => removeFromQueue(card.id)}
                 />

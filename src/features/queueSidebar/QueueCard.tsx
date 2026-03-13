@@ -9,6 +9,7 @@ interface QueueCardProps {
   readonly accentColor: string
   readonly onManualTrigger: () => void
   readonly onSkip: () => void
+  readonly onUnskip: () => void
   readonly onDuplicate: () => void
   readonly onRemove: () => void
   readonly isDragTarget?: boolean | undefined
@@ -21,6 +22,7 @@ export function QueueCardItem({
   accentColor,
   onManualTrigger,
   onSkip,
+  onUnskip,
   onDuplicate,
   onRemove,
   isDragTarget,
@@ -119,6 +121,15 @@ export function QueueCardItem({
                 +
               </button>
             </>
+          )}
+          {isSkipped && (
+            <button
+              onClick={onUnskip}
+              className="rounded px-1 py-0.5 text-xs text-blue-400 hover:text-blue-300"
+              title="Restore to queue"
+            >
+              Unskip
+            </button>
           )}
           {!isActive && (
             <button
