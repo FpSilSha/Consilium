@@ -55,8 +55,8 @@ export function CompactButton({ windowId }: CompactButtonProps): ReactNode {
         </span>
       )}
 
-      {/* Compact Now button */}
-      {(isHigh || window.isCompacted) && (
+      {/* Compact Now button — only show when there are messages to compact */}
+      {isHigh && usagePercent > 0 && (
         <button
           onClick={handleCompact}
           disabled={isCompacting || window.isStreaming}

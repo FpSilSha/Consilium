@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useState } from 'react'
 import { useStore } from '@/store'
-import { getActiveQueueCards, getErroredCards, stopAll, startRun, manualDispatch, createUserCard } from '@/features/turnManager'
+import { getActiveQueueCards, getErroredCards, stopAll, startRun, manualDispatch, createUserCard, createAgentCard } from '@/features/turnManager'
 import { QueueCardItem } from './QueueCard'
 import { TurnModeSelector } from './TurnModeSelector'
 
@@ -113,15 +113,32 @@ export function QueueSidebar(): ReactNode {
         )}
       </div>
 
-      {/* Add user turn */}
-      {!hasUserCard && !isRunning && (
-        <div className="border-b border-gray-800 px-3 py-1.5">
-          <button
-            onClick={() => addToQueue(createUserCard())}
-            className="w-full rounded bg-gray-800 px-2 py-1 text-xs text-blue-400 hover:bg-gray-700 hover:text-blue-300"
-          >
-            + Add Your Turn
-          </button>
+      {/* Quick add buttons */}
+      {!isRunning && (
+        <div className="flex flex-col gap-1 border-b border-gray-800 px-3 py-1.5">
+          {!hasUserCard && (
+            <button
+              onClick={() => addToQueue(createUserCard())}
+              className="w-full rounded bg-gray-800 px-2 py-1 text-xs text-blue-400 hover:bg-gray-700 hover:text-blue-300"
+            >
+              + Your Turn
+            </button>
+          )}
+          {Object.keys(windows).length > 0 && (
+            <button
+              onClick={() => {
+                for (const windowId of Object.keys(windows)) {
+                  const alreadyQueued = queue.some((c) => c.windowId === windowId && c.status === 'waiting')
+                  if (!alreadyQueued) {
+                    addToQueue(createAgentCard(windowId))
+                  }
+                }
+              }}
+              className="w-full rounded bg-gray-800 px-2 py-1 text-xs text-gray-400 hover:bg-gray-700 hover:text-gray-300"
+            >
+              + All Advisors
+            </button>
+          )}
         </div>
       )}
 
