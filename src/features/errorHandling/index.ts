@@ -1,2 +1,2 @@
-// Phase 5C — Error handling
-export {}
+export { installGlobalErrorHandlers } from './global-error-handler'
+export { safeLog } from './safe-log'

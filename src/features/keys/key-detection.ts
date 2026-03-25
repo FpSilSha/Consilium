@@ -39,7 +39,7 @@ export function maskKey(apiKey: string): string {
 const KEY_PATTERNS: readonly RegExp[] = [
   /sk-ant-[A-Za-z0-9_-]{20,}/g,
   /sk-proj-[A-Za-z0-9_-]{20,}/g,
-  /sk-[A-Za-z0-9_-]{20,}/g,
+  /sk-(?!ant-|proj-)[A-Za-z0-9_-]{20,}/g,
   /AIza[A-Za-z0-9_-]{30,}/g,
   /xai-[A-Za-z0-9_-]{20,}/g,
 ]

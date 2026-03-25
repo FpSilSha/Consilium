@@ -219,6 +219,48 @@ describe('redactKeys', () => {
     })
   })
 
+  describe('keys in structured contexts', () => {
+    it('redacts a key embedded in a JSON string', () => {
+      const key = `sk-ant-${suffix20}`
+      const json = JSON.stringify({ apiKey: key, name: 'test' })
+      const result = redactKeys(json)
+      expect(result).not.toContain('sk-ant-')
+      expect(result).toContain('[REDACTED]')
+    })
+
+    it('redacts a key in a URL query parameter', () => {
+      const key = `AIza${suffix30}`
+      const url = `https://api.example.com/v1/resource?key=${key}&format=json`
+      const result = redactKeys(url)
+      expect(result).not.toContain('AIza')
+      expect(result).toContain('[REDACTED]')
+    })
+
+    it('redacts a key adjacent to punctuation (no space)', () => {
+      const key = `sk-proj-${suffix20}`
+      const text = `key:${key}.`
+      const result = redactKeys(text)
+      expect(result).not.toContain('sk-proj-')
+      expect(result).toContain('[REDACTED]')
+    })
+
+    it('redacts a key inside single quotes', () => {
+      const key = `xai-${suffix20}`
+      const text = `Authorization: 'Bearer ${key}'`
+      const result = redactKeys(text)
+      expect(result).not.toContain('xai-')
+      expect(result).toContain('[REDACTED]')
+    })
+
+    it('redacts a key inside double quotes', () => {
+      const key = `sk-${suffix20}`
+      const text = `"api_key": "${key}"`
+      const result = redactKeys(text)
+      expect(result).not.toContain(key)
+      expect(result).toContain('[REDACTED]')
+    })
+  })
+
   describe('edge cases', () => {
     it('handles keys with underscores and hyphens in the suffix', () => {
       const key = `sk-ant-${'abc_DEF-123'.repeat(2)}` // 22 chars suffix
@@ -232,6 +274,41 @@ describe('redactKeys', () => {
       const result = redactKeys(text)
       expect(result.startsWith('prefix ')).toBe(true)
       expect(result.endsWith(' suffix')).toBe(true)
+    })
+
+    it('is idempotent — calling twice gives the same result', () => {
+      const key = `sk-ant-${suffix20}`
+      const text = `error: ${key}`
+      const once = redactKeys(text)
+      const twice = redactKeys(once)
+      expect(once).toBe(twice)
+    })
+
+    it('handles key at the very start of a string', () => {
+      const key = `sk-ant-${suffix20}`
+      expect(redactKeys(`${key} caused error`)).toBe('[REDACTED] caused error')
+    })
+
+    it('handles key at the very end of a string', () => {
+      const key = `sk-proj-${suffix20}`
+      expect(redactKeys(`Error with ${key}`)).toBe('Error with [REDACTED]')
+    })
+
+    it('handles consecutive calls correctly (regex /g flag state)', () => {
+      const key = `AIza${suffix30}`
+      for (let i = 0; i < 5; i++) {
+        const result = redactKeys(`key=${key}`)
+        expect(result).toContain('[REDACTED]')
+        expect(result).not.toContain('AIza')
+      }
+    })
+
+    it('does not redact short strings matching prefix but under minimum length', () => {
+      expect(redactKeys('sk-ant-short')).toBe('sk-ant-short')
+      expect(redactKeys('sk-proj-tiny')).toBe('sk-proj-tiny')
+      expect(redactKeys('AIzaShort')).toBe('AIzaShort')
+      expect(redactKeys('xai-brief')).toBe('xai-brief')
+      expect(redactKeys('sk-small')).toBe('sk-small')
     })
   })
 })

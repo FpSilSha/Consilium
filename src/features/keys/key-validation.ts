@@ -1,7 +1,10 @@
 import type { Provider } from '@/types'
 
-interface ValidationResult {
+export type ValidationFailureReason = 'auth_failure' | 'cancelled' | 'network_error' | 'unexpected_status'
+
+export interface ValidationResult {
   readonly valid: boolean
+  readonly reason?: ValidationFailureReason | undefined
   readonly error?: string | undefined
 }
 
@@ -13,6 +16,8 @@ const PROVIDER_ENDPOINTS: Readonly<Record<Provider, string>> = {
   deepseek: 'https://api.deepseek.com/v1/models',
 }
 
+const VALIDATION_TIMEOUT_MS = 15_000
+
 export async function validateKey(
   rawKey: string,
   provider: Provider,
@@ -22,11 +27,15 @@ export async function validateKey(
 
   try {
     const headers = buildAuthHeaders(rawKey, provider)
+    const timeoutSignal = AbortSignal.timeout(VALIDATION_TIMEOUT_MS)
+    const combinedSignal = signal != null
+      ? AbortSignal.any([signal, timeoutSignal])
+      : timeoutSignal
 
     const response = await fetch(endpoint, {
       method: provider === 'anthropic' ? 'POST' : 'GET',
       headers,
-      signal: signal ?? null,
+      signal: combinedSignal,
       ...(provider === 'anthropic'
         ? {
             body: JSON.stringify({
@@ -40,7 +49,7 @@ export async function validateKey(
 
     // 401/403 = invalid key, anything else might be rate limiting or other issue
     if (response.status === 401 || response.status === 403) {
-      return { valid: false, error: 'Invalid API key' }
+      return { valid: false, reason: 'auth_failure', error: 'Invalid API key' }
     }
 
     // 200 or 429 (rate limited but authenticated) both indicate a valid key
@@ -48,13 +57,17 @@ export async function validateKey(
       return { valid: true }
     }
 
-    return { valid: false, error: `Unexpected status: ${response.status}` }
+    return { valid: false, reason: 'unexpected_status', error: `Unexpected status: ${response.status}` }
   } catch (error) {
     if (signal?.aborted) {
-      return { valid: false, error: 'Validation cancelled' }
+      return { valid: false, reason: 'cancelled', error: 'Validation cancelled' }
+    }
+    if (error instanceof DOMException && error.name === 'TimeoutError') {
+      return { valid: false, reason: 'network_error', error: 'Validation timed out' }
     }
     return {
       valid: false,
+      reason: 'network_error',
       error: error instanceof Error ? error.message : 'Network error',
     }
   }
