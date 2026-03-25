@@ -27,6 +27,9 @@ export default defineConfig({
   },
   renderer: {
     root: 'src',
+    server: {
+      port: 5174,
+    },
     esbuild: {
       jsx: 'automatic',
     },
