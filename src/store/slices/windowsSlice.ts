@@ -7,6 +7,7 @@ export interface WindowsSlice {
   readonly windowOrder: readonly string[]
   addWindow: (window: AdvisorWindow) => void
   removeWindow: (windowId: string) => void
+  clearAllWindows: () => void
   updateWindow: (windowId: string, updates: Partial<AdvisorWindow>) => void
   setWindowOrder: (order: readonly string[]) => void
 }
@@ -32,6 +33,14 @@ export const createWindowsSlice: StateCreator<WindowsSlice & TurnSlice, [], [], 
           (id) => !state.queue.some((c) => c.id === id && c.windowId === windowId),
         ),
       }
+    }),
+
+  clearAllWindows: () =>
+    set({
+      windows: {},
+      windowOrder: [],
+      queue: [],
+      activeCardIds: [],
     }),
 
   updateWindow: (windowId, updates) =>

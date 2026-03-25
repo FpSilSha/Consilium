@@ -3,11 +3,9 @@ import { v4 as uuidv4 } from 'uuid'
 import type { AdvisorWindow } from '@/types'
 import { useStore } from '@/store'
 import { getAccentColor, BUILT_IN_THEMES } from '@/features/themes'
-import { createAgentCard } from '@/features/turnManager'
 
 export function AddAdvisorButton(): ReactNode {
   const addWindow = useStore((s) => s.addWindow)
-  const addToQueue = useStore((s) => s.addToQueue)
   const windowOrder = useStore((s) => s.windowOrder)
   const personas = useStore((s) => s.personas)
   const keys = useStore((s) => s.keys)
@@ -40,7 +38,6 @@ export function AddAdvisorButton(): ReactNode {
     }
 
     addWindow(newWindow)
-    addToQueue(createAgentCard(newWindow.id))
   }
 
   return (

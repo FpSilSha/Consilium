@@ -1,6 +1,6 @@
 import { type ReactNode, useCallback, useState } from 'react'
 import { useStore } from '@/store'
-import { getActiveQueueCards, getErroredCards, stopAll, startRun, manualDispatch } from '@/features/turnManager'
+import { getActiveQueueCards, getErroredCards, stopAll, startRun, manualDispatch, createUserCard } from '@/features/turnManager'
 import { QueueCardItem } from './QueueCard'
 import { TurnModeSelector } from './TurnModeSelector'
 
@@ -17,8 +17,10 @@ export function QueueSidebar(): ReactNode {
   const moveInQueue = useStore((s) => s.moveInQueue)
   const setPaused = useStore((s) => s.setPaused)
   const resetQueue = useStore((s) => s.resetQueue)
+  const addToQueue = useStore((s) => s.addToQueue)
 
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const hasUserCard = queue.some((c) => c.isUser)
 
   const activeCards = getActiveQueueCards(queue)
   const erroredCards = getErroredCards(queue)
@@ -111,6 +113,18 @@ export function QueueSidebar(): ReactNode {
         )}
       </div>
 
+      {/* Add user turn */}
+      {!hasUserCard && !isRunning && (
+        <div className="border-b border-gray-800 px-3 py-1.5">
+          <button
+            onClick={() => addToQueue(createUserCard())}
+            className="w-full rounded bg-gray-800 px-2 py-1 text-xs text-blue-400 hover:bg-gray-700 hover:text-blue-300"
+          >
+            + Add Your Turn
+          </button>
+        </div>
+      )}
+
       {/* Active queue */}
       <div className="flex-1 overflow-y-auto px-2 py-2">
         <div className="flex flex-col gap-1.5">
@@ -144,7 +158,7 @@ export function QueueSidebar(): ReactNode {
           <div className="py-8 text-center text-xs text-gray-600">
             No agents in queue.
             <br />
-            Add advisors to get started.
+            Click + on an advisor window to add them.
           </div>
         )}
       </div>
