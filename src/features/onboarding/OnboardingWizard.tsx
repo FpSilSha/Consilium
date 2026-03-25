@@ -1,9 +1,10 @@
-import { type ReactNode, useState, useCallback } from 'react'
+import { type ReactNode, useState, useCallback, useRef, useEffect } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { useStore } from '@/store'
 import { createApiKeyEntry } from '@/features/keys/key-storage'
 import { storeRawKey } from '@/features/keys/key-vault'
 import { detectProvider } from '@/features/keys/key-detection'
+import { validateKey } from '@/features/keys/key-validation'
 import { getModelsForProvider, getAllModels } from '@/features/modelSelector/model-registry'
 import { getAccentColor, BUILT_IN_THEMES } from '@/features/themes'
 import { createAgentCard } from '@/features/turnManager'
@@ -19,14 +20,20 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
   const [step, setStep] = useState<WizardStep>('welcome')
   const [keyInput, setKeyInput] = useState('')
   const [keyError, setKeyError] = useState('')
+  const [validating, setValidating] = useState(false)
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null)
   const addKey = useStore((s) => s.addKey)
   const addWindow = useStore((s) => s.addWindow)
   const addToQueue = useStore((s) => s.addToQueue)
   const personas = useStore((s) => s.personas)
+  const abortRef = useRef<AbortController | null>(null)
 
-  const handleAddKey = useCallback(() => {
+  useEffect(() => {
+    return () => { abortRef.current?.abort() }
+  }, [])
+
+  const handleAddKey = useCallback(async () => {
     const trimmed = keyInput.trim()
     if (trimmed === '') {
       setKeyError('Please enter an API key')
@@ -45,8 +52,37 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
       return
     }
 
-    addKey(entry)
-    storeRawKey(entry.id, trimmed)
+    // Validate key with a lightweight API call
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    setValidating(true)
+    setKeyError('')
+    const result = await validateKey(trimmed, detected.provider, controller.signal)
+    setValidating(false)
+
+    if (controller.signal.aborted) return
+
+    if (!result.valid && result.reason === 'auth_failure') {
+      setKeyError('This API key is invalid or revoked. Please check and try again.')
+      return
+    }
+
+    if (!result.valid && result.reason === 'cancelled') return
+
+    const verified = result.valid
+    const verifiedEntry = { ...entry, verified }
+
+    // Persist encrypted via IPC if available
+    try {
+      await window.consiliumAPI?.keysSave(verifiedEntry.id, trimmed)
+    } catch {
+      // Non-fatal — key still works in memory for this session
+    }
+
+    addKey(verifiedEntry)
+    storeRawKey(verifiedEntry.id, trimmed)
 
     // Pre-select a model from this provider
     const models = getModelsForProvider(detected.provider)
@@ -54,7 +90,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
       setSelectedModel(models[0]!.id)
     }
 
-    setKeyError('')
+    setKeyError(verified ? '' : `Key saved as unverified: ${result.error ?? 'could not reach provider'}`)
     setStep('model')
   }, [keyInput, addKey])
 
@@ -90,6 +126,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
               placeholder="sk-ant-..., sk-proj-..., AIza..., xai-..."
               className="mb-2 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
               autoFocus
+              disabled={validating}
               onKeyDown={(e) => e.key === 'Enter' && handleAddKey()}
             />
             {keyError !== '' && (
@@ -109,9 +146,10 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
               </button>
               <button
                 onClick={handleAddKey}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                disabled={validating}
               >
-                Add Key
+                {validating ? 'Validating...' : 'Add Key'}
               </button>
             </div>
           </div>

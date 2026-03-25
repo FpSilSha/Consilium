@@ -79,7 +79,9 @@ describe('createApiKeyEntry', () => {
       if (entry === null) return // narrow type
 
       expect(typeof entry.id).toBe('string')
-      expect(entry.id.startsWith('key_')).toBe(true)
+      expect(entry.id.length).toBeGreaterThan(0)
+      // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+      expect(entry.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
       expect(entry.provider).toBe('anthropic')
       expect(typeof entry.maskedKey).toBe('string')
       expect(entry.maskedKey).toContain('••••••••')
@@ -186,6 +188,7 @@ describe('keysToEnv', () => {
     return {
       maskedKey: 'sk-a••••••••wxyz',
       createdAt: Date.now(),
+      verified: false,
       ...overrides,
     }
   }

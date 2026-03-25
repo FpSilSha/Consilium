@@ -16,7 +16,7 @@ export const createKeysSlice: StateCreator<KeysSlice> = (set) => ({
 
   addKey: (key) =>
     set((state) => ({
-      keys: [...state.keys, key],
+      keys: state.keys.some((k) => k.id === key.id) ? state.keys : [...state.keys, key],
     })),
 
   removeKey: (keyId) =>

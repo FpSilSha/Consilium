@@ -1,6 +1,6 @@
 /**
  * In-memory vault for raw API keys.
- * Keys are loaded from .env via IPC on startup and stored here.
+ * Keys are loaded from encrypted safeStorage via IPC on startup and stored here.
  * The Zustand store only holds masked keys for display.
  * This module provides the raw key when needed for API calls.
  */

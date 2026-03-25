@@ -1,11 +1,8 @@
 import type { ApiKey, Provider } from '@/types'
 import { detectProvider, maskKey } from './key-detection'
 
-let keyIdCounter = 0
-
 function generateKeyId(): string {
-  keyIdCounter += 1
-  return `key_${Date.now()}_${keyIdCounter}`
+  return crypto.randomUUID()
 }
 
 export function createApiKeyEntry(
@@ -25,6 +22,7 @@ export function createApiKeyEntry(
     provider,
     maskedKey: maskKey(trimmed),
     createdAt: Date.now(),
+    verified: false,
   }
 }
 

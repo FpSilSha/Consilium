@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
-import { join, resolve, normalize } from 'path'
+import { join, resolve, normalize, sep } from 'path'
 import { loadEnvFile, writeEnvFile } from './env-loader'
+import { loadEncryptedKeys, saveEncryptedKey, deleteEncryptedKey, isEncryptionAvailable, isValidProviderId } from './key-store'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -31,7 +32,10 @@ function createWindow(): void {
 
 function isPathWithinAllowed(targetPath: string, allowedRoots: readonly string[]): boolean {
   const normalized = normalize(resolve(targetPath))
-  return allowedRoots.some((root) => normalized.startsWith(normalize(resolve(root))))
+  return allowedRoots.some((root) => {
+    const normalizedRoot = normalize(resolve(root))
+    return normalized === normalizedRoot || normalized.startsWith(normalizedRoot + sep)
+  })
 }
 
 function validateEnvEntries(entries: unknown): Record<string, string> | null {
@@ -69,6 +73,33 @@ function registerIpcHandlers(): void {
       throw new Error('Invalid entries format: expected Record<string, string> with valid env key names')
     }
     writeEnvFile(validated)
+  })
+
+  ipcMain.handle('keys:available', () => isEncryptionAvailable())
+
+  ipcMain.handle('keys:load', () => loadEncryptedKeys())
+
+  ipcMain.handle('keys:save', async (_event, providerId: unknown, rawKey: unknown) => {
+    if (typeof providerId !== 'string' || typeof rawKey !== 'string') {
+      throw new Error('Invalid arguments: expected (string, string)')
+    }
+    if (!isValidProviderId(providerId)) {
+      throw new Error('Invalid provider ID format')
+    }
+    if (rawKey.length === 0 || rawKey.length > 512) {
+      throw new Error('Invalid key length')
+    }
+    saveEncryptedKey(providerId, rawKey)
+  })
+
+  ipcMain.handle('keys:delete', async (_event, providerId: unknown) => {
+    if (typeof providerId !== 'string') {
+      throw new Error('Invalid argument: expected string')
+    }
+    if (!isValidProviderId(providerId)) {
+      throw new Error('Invalid provider ID format')
+    }
+    deleteEncryptedKey(providerId)
   })
 
   ipcMain.handle('open-folder', async (_event, path: unknown) => {

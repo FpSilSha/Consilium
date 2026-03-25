@@ -5,6 +5,7 @@ export interface ApiKey {
   readonly provider: Provider
   readonly maskedKey: string
   readonly createdAt: number
+  readonly verified: boolean
 }
 
 export interface ModelInfo {

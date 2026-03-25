@@ -11,6 +11,11 @@ const api: ConsiliumAPI = {
   writeEnvFile: (entries) => ipcRenderer.invoke('write-env-file', entries),
 
   openFolder: (path) => ipcRenderer.invoke('open-folder', path),
+
+  keysAvailable: () => ipcRenderer.invoke('keys:available'),
+  keysLoad: () => ipcRenderer.invoke('keys:load'),
+  keysSave: (providerId, rawKey) => ipcRenderer.invoke('keys:save', providerId, rawKey),
+  keysDelete: (providerId) => ipcRenderer.invoke('keys:delete', providerId),
 }
 
 contextBridge.exposeInMainWorld('consiliumAPI', api)
