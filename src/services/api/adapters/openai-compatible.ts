@@ -9,6 +9,7 @@ import { openaiAdapter } from './openai'
 function createOpenAICompatibleAdapter(
   provider: ProviderAdapter['provider'],
   baseUrl: string,
+  extraHeaders?: Readonly<Record<string, string>>,
 ): ProviderAdapter {
   return {
     provider,
@@ -18,6 +19,9 @@ function createOpenAICompatibleAdapter(
       return {
         ...base,
         url: `${baseUrl}/chat/completions`,
+        ...(extraHeaders != null
+          ? { headers: { ...base.headers as Record<string, string>, ...extraHeaders } }
+          : {}),
       }
     },
 
@@ -33,4 +37,10 @@ export const xaiAdapter = createOpenAICompatibleAdapter(
 export const deepseekAdapter = createOpenAICompatibleAdapter(
   'deepseek',
   'https://api.deepseek.com/v1',
+)
+
+export const openrouterAdapter = createOpenAICompatibleAdapter(
+  'openrouter',
+  'https://openrouter.ai/api/v1',
+  { 'HTTP-Referer': 'https://github.com/consilium', 'X-Title': 'Consilium' },
 )
