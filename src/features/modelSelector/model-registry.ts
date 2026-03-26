@@ -24,14 +24,28 @@ const MODELS: readonly ModelInfo[] = [
   { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', provider: 'deepseek', contextWindow: 128000, inputPricePerToken: 0.00000055, outputPricePerToken: 0.0000022 },
 ]
 
-export function getModelsForProvider(provider: Provider): readonly ModelInfo[] {
+export function getModelsForProvider(
+  provider: Provider,
+  dynamicModels?: readonly ModelInfo[],
+): readonly ModelInfo[] {
+  if (provider === 'openrouter') {
+    return dynamicModels ?? []
+  }
   return MODELS.filter((m) => m.provider === provider)
 }
 
-export function getModelById(modelId: string): ModelInfo | undefined {
-  return MODELS.find((m) => m.id === modelId)
+export function getModelById(
+  modelId: string,
+  dynamicModels?: readonly ModelInfo[],
+): ModelInfo | undefined {
+  const staticMatch = MODELS.find((m) => m.id === modelId)
+  if (staticMatch != null) return staticMatch
+  return dynamicModels?.find((m) => m.id === modelId)
 }
 
-export function getAllModels(): readonly ModelInfo[] {
+export function getAllModels(dynamicModels?: readonly ModelInfo[]): readonly ModelInfo[] {
+  if (dynamicModels != null && dynamicModels.length > 0) {
+    return [...MODELS, ...dynamicModels]
+  }
   return MODELS
 }
