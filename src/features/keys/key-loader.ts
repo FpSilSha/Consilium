@@ -1,5 +1,5 @@
 import { useStore } from '@/store'
-import { createApiKeyEntry } from './key-storage'
+import { createApiKeyEntry, isValidProvider } from './key-storage'
 import { storeRawKey } from './key-vault'
 
 /**
@@ -16,12 +16,19 @@ export async function loadPersistedKeys(): Promise<void> {
 
     const storedKeys = await api.keysLoad()
 
-    for (const { providerId, rawKey } of storedKeys) {
-      const entry = createApiKeyEntry(rawKey)
+    for (const { providerId, rawKey, provider, baseUrl } of storedKeys) {
+      // Use persisted provider if valid, otherwise auto-detect
+      const providerOverride = isValidProvider(provider) ? provider : undefined
+
+      const entry = createApiKeyEntry(rawKey, providerOverride)
       if (entry == null) continue
 
-      // Use the persisted ID so delete operations match
-      const entryWithId = { ...entry, id: providerId }
+      // Use the persisted ID so delete operations match, restore baseUrl
+      const entryWithId = {
+        ...entry,
+        id: providerId,
+        ...(baseUrl != null ? { baseUrl } : {}),
+      }
 
       storeRawKey(entryWithId.id, rawKey)
       useStore.getState().addKey(entryWithId)

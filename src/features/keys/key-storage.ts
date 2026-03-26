@@ -68,12 +68,14 @@ export function keysToEnv(
   return env
 }
 
-function isValidProvider(value: string | undefined): value is Provider {
+export function isValidProvider(value: string | undefined): value is Provider {
   return (
     value === 'anthropic' ||
     value === 'openai' ||
     value === 'google' ||
     value === 'xai' ||
-    value === 'deepseek'
+    value === 'deepseek' ||
+    value === 'openrouter' ||
+    value === 'custom'
   )
 }
