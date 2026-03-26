@@ -16,6 +16,8 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
 
   const [keyInput, setKeyInput] = useState('')
   const [error, setError] = useState('')
+  const [customUrl, setCustomUrl] = useState('')
+  const [showCustomUrl, setShowCustomUrl] = useState(false)
   const [validating, setValidating] = useState(false)
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
   const [encryptionAvailable, setEncryptionAvailable] = useState<boolean | null>(null)
@@ -42,70 +44,88 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
     }
 
     const detected = detectProvider(trimmed)
-    if (detected === null) {
-      setError('Could not detect provider. Supported: Anthropic (sk-ant-), OpenAI (sk-proj-), Google (AIza), xAI (xai-), DeepSeek (sk-)')
+
+    // Unknown key format: prompt for custom URL
+    if (detected === null && !showCustomUrl) {
+      setShowCustomUrl(true)
+      setError('Unknown key format. Enter the provider\u2019s base URL below.')
       return
     }
 
-    const entry = createApiKeyEntry(trimmed)
+    // Custom URL mode: validate URL
+    if (detected === null && showCustomUrl) {
+      const urlTrimmed = customUrl.trim()
+      if (urlTrimmed === '') {
+        setError('Please enter a base URL (e.g. https://api.example.com/v1)')
+        return
+      }
+      try {
+        const parsed = new URL(urlTrimmed)
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+          setError('URL must use http or https')
+          return
+        }
+      } catch {
+        setError('Invalid URL format')
+        return
+      }
+    }
+
+    const provider = detected?.provider ?? 'custom'
+    const entry = createApiKeyEntry(trimmed, provider)
     if (entry === null) {
       setError('Invalid API key format')
       return
     }
 
-    // Validate key with a lightweight API call
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
+    const baseUrl = detected === null ? customUrl.trim() : undefined
+    const entryWithUrl = baseUrl !== undefined ? { ...entry, baseUrl } : entry
 
-    setValidating(true)
-    setError('')
+    // Validate key with a lightweight API call (skip for custom providers)
+    let verified = false
+    if (detected !== null) {
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
 
-    const result = await validateKey(trimmed, detected.provider, controller.signal)
-    setValidating(false)
+      setValidating(true)
+      setError('')
 
-    if (controller.signal.aborted) return
+      const result = await validateKey(trimmed, detected.provider, controller.signal)
+      setValidating(false)
 
-    if (!result.valid) {
-      // Auth failure: reject the key
-      if (result.reason === 'auth_failure') {
-        setError('This API key is invalid or revoked. Please check and try again.')
-        return
+      if (controller.signal.aborted) return
+
+      if (!result.valid) {
+        if (result.reason === 'auth_failure') {
+          setError('This API key is invalid or revoked. Please check and try again.')
+          return
+        }
+        if (result.reason === 'cancelled') return
+        // Network error: proceed as unverified
+      } else {
+        verified = true
       }
-
-      // Cancelled: do nothing
-      if (result.reason === 'cancelled') return
-
-      // Network error / timeout: allow with unverified status
-      const unverifiedEntry = { ...entry, verified: false }
-      addKey(unverifiedEntry)
-      storeRawKey(unverifiedEntry.id, trimmed)
-
-      try {
-        await window.consiliumAPI?.keysSave(unverifiedEntry.id, trimmed)
-      } catch {
-        // Non-fatal
-      }
-
-      setKeyInput('')
-      setError('Key saved as unverified — could not reach provider to confirm.')
-      return
     }
 
-    // Validation passed
-    const verifiedEntry = { ...entry, verified: true }
-    addKey(verifiedEntry)
-    storeRawKey(verifiedEntry.id, trimmed)
+    const finalEntry = { ...entryWithUrl, verified }
+    addKey(finalEntry)
+    storeRawKey(finalEntry.id, trimmed)
 
     try {
-      await window.consiliumAPI?.keysSave(verifiedEntry.id, trimmed)
+      const metadata = finalEntry.baseUrl != null
+        ? { provider: finalEntry.provider, baseUrl: finalEntry.baseUrl }
+        : { provider: finalEntry.provider }
+      await window.consiliumAPI?.keysSave(finalEntry.id, trimmed, metadata)
     } catch {
       // Non-fatal
     }
 
     setKeyInput('')
-    setError('')
-  }, [keyInput, addKey])
+    setCustomUrl('')
+    setShowCustomUrl(false)
+    setError(verified ? '' : detected !== null ? 'Key saved as unverified — could not reach provider to confirm.' : '')
+  }, [keyInput, addKey, showCustomUrl, customUrl])
 
   const handleRemoveKey = useCallback(async (keyId: string) => {
     const key = keys.find((k) => k.id === keyId)
@@ -147,15 +167,20 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
                 key={key.id}
                 className="flex items-center justify-between rounded border border-gray-800 bg-gray-950 px-3 py-2"
               >
-                <div className="flex items-center gap-3">
-                  <span className="rounded bg-gray-800 px-1.5 py-0.5 text-xs font-medium text-gray-400">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <span className="shrink-0 rounded bg-gray-800 px-1.5 py-0.5 text-xs font-medium text-gray-400">
                     {key.provider}
                   </span>
-                  <span className="font-mono text-xs text-gray-500">
+                  <span className="shrink-0 font-mono text-xs text-gray-500">
                     {key.maskedKey}
                   </span>
+                  {key.baseUrl != null && (
+                    <span className="truncate text-[10px] text-gray-600" title={key.baseUrl}>
+                      {key.baseUrl}
+                    </span>
+                  )}
                   {!key.verified && (
-                    <span className="rounded bg-yellow-900/40 px-1.5 py-0.5 text-xs text-yellow-500">
+                    <span className="shrink-0 rounded bg-yellow-900/40 px-1.5 py-0.5 text-xs text-yellow-500">
                       unverified
                     </span>
                   )}
@@ -199,10 +224,10 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
             <input
               type="password"
               value={keyInput}
-              onChange={(e) => { setKeyInput(e.target.value); setError('') }}
+              onChange={(e) => { setKeyInput(e.target.value); setError(''); setShowCustomUrl(false); setCustomUrl('') }}
               placeholder="sk-ant-..., sk-proj-..., AIza..., xai-..."
               className="flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-200 outline-none focus:border-gray-500"
-              onKeyDown={(e) => { if (e.key === 'Enter') { handleAddKey() } }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !showCustomUrl) { handleAddKey() } }}
               disabled={validating}
             />
             <button
@@ -210,11 +235,25 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
               className="rounded bg-blue-700 px-3 py-1.5 text-xs text-white hover:bg-blue-600 disabled:opacity-50"
               disabled={validating}
             >
-              {validating ? 'Validating...' : 'Add'}
+              {validating ? '...' : showCustomUrl ? 'Add Custom' : 'Add'}
             </button>
           </div>
+          {showCustomUrl && (
+            <div className="mt-2">
+              <input
+                type="url"
+                value={customUrl}
+                onChange={(e) => { setCustomUrl(e.target.value); setError('') }}
+                placeholder="https://api.example.com/v1"
+                className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-200 outline-none focus:border-gray-500"
+                disabled={validating}
+                onKeyDown={(e) => { if (e.key === 'Enter') { handleAddKey() } }}
+              />
+              <p className="mt-0.5 text-[10px] text-gray-500">Provider API base URL</p>
+            </div>
+          )}
           {error !== '' && (
-            <p className={`mt-1 text-xs ${error.includes('unverified') ? 'text-yellow-400' : 'text-red-400'}`}>{error}</p>
+            <p className={`mt-1 text-xs ${error.includes('unverified') || showCustomUrl ? 'text-yellow-400' : 'text-red-400'}`}>{error}</p>
           )}
         </div>
 
