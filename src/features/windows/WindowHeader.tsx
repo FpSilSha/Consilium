@@ -2,7 +2,7 @@ import { type ReactNode, useState } from 'react'
 import type { AdvisorWindow } from '@/types'
 import { useStore } from '@/store'
 import { CompactButton, performPersonaSwitch } from '@/features/compaction'
-import { getModelsForProvider } from '@/features/modelSelector'
+import { getModelsForProvider } from '@/features/modelSelector/model-registry'
 import { createAgentCard } from '@/features/turnManager'
 
 interface WindowHeaderProps {
@@ -21,7 +21,8 @@ export function WindowHeader({ window: win, onClose }: WindowHeaderProps): React
     ? personas.find((p) => p.id === pendingPersonaId)
     : undefined
 
-  const models = getModelsForProvider(win.provider)
+  const openRouterModels = useStore((s) => s.openRouterModels)
+  const models = getModelsForProvider(win.provider, openRouterModels)
 
   const handlePersonaSelect = (e: React.ChangeEvent<HTMLSelectElement>): void => {
     const newId = e.target.value

@@ -1,6 +1,6 @@
 import type { CostMetadata } from '@/types'
 import type { TokenUsage } from './types'
-import { getModelById } from '@/features/modelSelector/model-registry'
+import { resolveModelById } from '@/features/modelSelector/model-resolve'
 
 /**
  * Builds cost metadata from token usage and model pricing info.
@@ -12,7 +12,7 @@ export function buildCostMetadata(
 ): CostMetadata | undefined {
   if (tokenUsage === undefined) return undefined
 
-  const model = getModelById(modelId)
+  const model = resolveModelById(modelId)
   const inputCost = tokenUsage.inputTokens * (model?.inputPricePerToken ?? 0)
   const outputCost = tokenUsage.outputTokens * (model?.outputPricePerToken ?? 0)
 

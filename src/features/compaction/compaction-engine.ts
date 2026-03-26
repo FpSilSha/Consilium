@@ -1,5 +1,5 @@
 import type { Message, AdvisorWindow } from '@/types'
-import { getModelById } from '@/features/modelSelector/model-registry'
+import { resolveModelById } from '@/features/modelSelector/model-resolve'
 import { estimateTokens } from '@/services/tokenizer/char-estimator'
 import { formatWithIdentityHeader } from '@/services/context-bus/identity-headers'
 
@@ -22,7 +22,7 @@ export function shouldCompact(
   messages: readonly Message[],
   window: AdvisorWindow,
 ): boolean {
-  const model = getModelById(window.model)
+  const model = resolveModelById(window.model)
   if (model === undefined) return false
 
   const tokenCount = estimateThreadTokens(messages)
@@ -105,7 +105,7 @@ export function getContextUsagePercent(
   messages: readonly Message[],
   modelId: string,
 ): number {
-  const model = getModelById(modelId)
+  const model = resolveModelById(modelId)
   if (model === undefined) return 0
 
   const tokens = estimateThreadTokens(messages)

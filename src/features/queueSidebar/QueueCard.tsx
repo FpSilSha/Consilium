@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import type { QueueCard as QueueCardType } from '@/types'
 import { useStore } from '@/store'
-import { getModelById } from '@/features/modelSelector'
+import { resolveModelById } from '@/features/modelSelector'
 
 interface QueueCardProps {
   readonly card: QueueCardType
@@ -36,7 +36,7 @@ export function QueueCardItem({
   const isSkipped = card.status === 'skipped'
   const isWaiting = card.status === 'waiting'
 
-  const modelInfo = getModelById(model)
+  const modelInfo = resolveModelById(model)
   const modelDisplay = modelInfo?.name ?? model
 
   const borderColor = isActive

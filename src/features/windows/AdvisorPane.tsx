@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from 'react'
 import type { AdvisorWindow } from '@/types'
 import { useStore } from '@/store'
-import { getModelsForProvider } from '@/features/modelSelector'
+import { getModelsForProvider } from '@/features/modelSelector/model-registry'
 import { performPersonaSwitch } from '@/features/compaction'
 import { WindowHeader } from './WindowHeader'
 
@@ -20,7 +20,8 @@ export function AdvisorPane({ window: win, onClose, children }: AdvisorPaneProps
 
   const updateWindow = useStore((s) => s.updateWindow)
   const personas = useStore((s) => s.personas)
-  const models = getModelsForProvider(win.provider)
+  const openRouterModels = useStore((s) => s.openRouterModels)
+  const models = getModelsForProvider(win.provider, openRouterModels)
 
   const pendingPersona = pendingPersonaId != null
     ? personas.find((p) => p.id === pendingPersonaId)
