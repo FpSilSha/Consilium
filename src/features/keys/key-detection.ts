@@ -1,13 +1,17 @@
 import type { Provider } from '@/types'
 
+/** Providers that have known API endpoints for key validation (excludes 'custom') */
+export type KnownProvider = Exclude<Provider, 'custom'>
+
 interface DetectionResult {
-  readonly provider: Provider
+  readonly provider: KnownProvider
   readonly confidence: 'high' | 'ambiguous'
 }
 
-const KEY_PREFIXES: readonly { readonly prefix: string; readonly provider: Provider; readonly confidence: 'high' | 'ambiguous' }[] = [
+const KEY_PREFIXES: readonly { readonly prefix: string; readonly provider: KnownProvider; readonly confidence: 'high' | 'ambiguous' }[] = [
   { prefix: 'sk-ant-', provider: 'anthropic', confidence: 'high' },
   { prefix: 'sk-proj-', provider: 'openai', confidence: 'high' },
+  { prefix: 'sk-or-', provider: 'openrouter', confidence: 'high' },
   { prefix: 'AIza', provider: 'google', confidence: 'high' },
   { prefix: 'xai-', provider: 'xai', confidence: 'high' },
   // DeepSeek uses generic 'sk-' prefix — ambiguous with legacy OpenAI keys
@@ -39,7 +43,8 @@ export function maskKey(apiKey: string): string {
 const KEY_PATTERNS: readonly RegExp[] = [
   /sk-ant-[A-Za-z0-9_-]{20,}/g,
   /sk-proj-[A-Za-z0-9_-]{20,}/g,
-  /sk-(?!ant-|proj-)[A-Za-z0-9_-]{20,}/g,
+  /sk-or-[A-Za-z0-9_-]{20,}/g,
+  /sk-(?!ant-|proj-|or-)[A-Za-z0-9_-]{20,}/g,
   /AIza[A-Za-z0-9_-]{30,}/g,
   /xai-[A-Za-z0-9_-]{20,}/g,
 ]
