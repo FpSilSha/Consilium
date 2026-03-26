@@ -5,7 +5,8 @@ import { createApiKeyEntry } from '@/features/keys/key-storage'
 import { storeRawKey } from '@/features/keys/key-vault'
 import { detectProvider } from '@/features/keys/key-detection'
 import { validateKey } from '@/features/keys/key-validation'
-import { getModelsForProvider, getAllModels } from '@/features/modelSelector/model-registry'
+import { getAllModels, getModelsForProvider } from '@/features/modelSelector/model-registry'
+import { fetchOpenRouterModels } from '@/features/modelSelector/openrouter-models'
 import { getAccentColor, BUILT_IN_THEMES } from '@/features/themes'
 import { createAgentCard } from '@/features/turnManager'
 import type { AdvisorWindow } from '@/types'
@@ -20,9 +21,13 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
   const [step, setStep] = useState<WizardStep>('welcome')
   const [keyInput, setKeyInput] = useState('')
   const [keyError, setKeyError] = useState('')
+  const [customUrl, setCustomUrl] = useState('')
+  const [showCustomUrl, setShowCustomUrl] = useState(false)
   const [validating, setValidating] = useState(false)
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null)
+  const keys = useStore((s) => s.keys)
+  const openRouterModels = useStore((s) => s.openRouterModels)
   const addKey = useStore((s) => s.addKey)
   const addWindow = useStore((s) => s.addWindow)
   const addToQueue = useStore((s) => s.addToQueue)
@@ -41,42 +46,75 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
     }
 
     const detected = detectProvider(trimmed)
-    if (detected === null) {
-      setKeyError('Could not detect provider. Supported: Anthropic (sk-ant-), OpenAI (sk-proj-), Google (AIza), xAI (xai-), DeepSeek (sk-)')
+
+    // If not detected and custom URL not yet shown, prompt for it
+    if (detected === null && !showCustomUrl) {
+      setShowCustomUrl(true)
+      setKeyError('Unknown key format. Enter the provider\u2019s base URL below.')
       return
     }
 
-    const entry = createApiKeyEntry(trimmed)
+    // If custom URL mode, validate URL
+    if (detected === null && showCustomUrl) {
+      const urlTrimmed = customUrl.trim()
+      if (urlTrimmed === '') {
+        setKeyError('Please enter a base URL for this provider (e.g. https://api.example.com/v1)')
+        return
+      }
+      try {
+        const parsed = new URL(urlTrimmed)
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+          setKeyError('URL must use http or https')
+          return
+        }
+      } catch {
+        setKeyError('Invalid URL format')
+        return
+      }
+    }
+
+    const provider = detected?.provider ?? 'custom'
+    const entry = createApiKeyEntry(trimmed, provider)
     if (entry === null) {
       setKeyError('Invalid API key format')
       return
     }
 
-    // Validate key with a lightweight API call
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
+    // Add baseUrl for custom providers
+    const baseUrl = detected === null ? customUrl.trim() : undefined
+    const entryWithUrl = baseUrl !== undefined ? { ...entry, baseUrl } : entry
 
-    setValidating(true)
-    setKeyError('')
-    const result = await validateKey(trimmed, detected.provider, controller.signal)
-    setValidating(false)
+    // Validate key with a lightweight API call (skip for custom — we can't know the endpoint)
+    let verified = false
+    if (detected !== null) {
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
 
-    if (controller.signal.aborted) return
+      setValidating(true)
+      setKeyError('')
+      const result = await validateKey(trimmed, detected.provider, controller.signal)
+      setValidating(false)
 
-    if (!result.valid && result.reason === 'auth_failure') {
-      setKeyError('This API key is invalid or revoked. Please check and try again.')
-      return
+      if (controller.signal.aborted) return
+
+      if (!result.valid && result.reason === 'auth_failure') {
+        setKeyError('This API key is invalid or revoked. Please check and try again.')
+        return
+      }
+
+      if (!result.valid && result.reason === 'cancelled') return
+      verified = result.valid
     }
 
-    if (!result.valid && result.reason === 'cancelled') return
-
-    const verified = result.valid
-    const verifiedEntry = { ...entry, verified }
+    const verifiedEntry = { ...entryWithUrl, verified }
 
     // Persist encrypted via IPC if available
     try {
-      await window.consiliumAPI?.keysSave(verifiedEntry.id, trimmed)
+      const metadata = verifiedEntry.baseUrl != null
+        ? { provider: verifiedEntry.provider, baseUrl: verifiedEntry.baseUrl }
+        : { provider: verifiedEntry.provider }
+      await window.consiliumAPI?.keysSave(verifiedEntry.id, trimmed, metadata)
     } catch {
       // Non-fatal — key still works in memory for this session
     }
@@ -85,14 +123,27 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
     storeRawKey(verifiedEntry.id, trimmed)
 
     // Pre-select a model from this provider
-    const models = getModelsForProvider(detected.provider)
-    if (models.length > 0) {
-      setSelectedModel(models[0]!.id)
+    if (detected !== null) {
+      if (detected.provider === 'openrouter') {
+        // Fetch dynamic model list for OpenRouter
+        fetchOpenRouterModels(trimmed).then((models) => {
+          if (models.length > 0) {
+            setSelectedModel(models[0]!.id)
+          }
+        }).catch(() => {})
+      } else {
+        const models = getModelsForProvider(detected.provider)
+        if (models.length > 0) {
+          setSelectedModel(models[0]!.id)
+        }
+      }
     }
 
-    setKeyError(verified ? '' : `Key saved as unverified: ${result.error ?? 'could not reach provider'}`)
+    setKeyError('')
+    setShowCustomUrl(false)
+    setCustomUrl('')
     setStep('model')
-  }, [keyInput, addKey])
+  }, [keyInput, addKey, showCustomUrl, customUrl])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950">
@@ -118,39 +169,72 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
             <h2 className="mb-1 text-lg font-medium text-gray-100">Add an API Key</h2>
             <p className="mb-4 text-xs text-gray-400">
               Paste any supported provider key. We&apos;ll auto-detect the provider.
+              You can also skip this and add keys later.
             </p>
             <input
               type="password"
               value={keyInput}
-              onChange={(e) => { setKeyInput(e.target.value); setKeyError('') }}
+              onChange={(e) => {
+                setKeyInput(e.target.value)
+                setKeyError('')
+                setShowCustomUrl(false)
+                setCustomUrl('')
+              }}
               placeholder="sk-ant-..., sk-proj-..., AIza..., xai-..."
               className="mb-2 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
               autoFocus
               disabled={validating}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddKey()}
+              onKeyDown={(e) => e.key === 'Enter' && !showCustomUrl && handleAddKey()}
             />
             {keyError !== '' && (
-              <p className="mb-2 text-xs text-red-400">{keyError}</p>
+              <p className={`mb-2 text-xs ${showCustomUrl ? 'text-yellow-400' : 'text-red-400'}`}>{keyError}</p>
+            )}
+            {showCustomUrl && (
+              <div className="mb-2">
+                <label className="mb-1 block text-xs text-gray-400">
+                  Provider Base URL
+                </label>
+                <input
+                  type="url"
+                  value={customUrl}
+                  onChange={(e) => { setCustomUrl(e.target.value); setKeyError('') }}
+                  placeholder="https://api.example.com/v1"
+                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
+                  disabled={validating}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddKey()}
+                />
+                <p className="mt-1 text-[10px] text-gray-500">
+                  The base URL for this provider's API (e.g. https://api.example.com/v1).
+                </p>
+              </div>
             )}
             <div className="mb-4 rounded border border-gray-800 bg-gray-950 p-3 text-xs text-gray-500">
               You are responsible for your own API keys and must comply with each
               provider&apos;s Terms of Service. This application does not store, proxy,
               or redistribute your API access.
             </div>
-            <div className="flex justify-between">
+            <div className="flex items-center justify-between">
               <button
-                onClick={() => setStep('welcome')}
+                onClick={() => { setStep('welcome'); setShowCustomUrl(false); setCustomUrl(''); setKeyError('') }}
                 className="rounded px-4 py-2 text-xs text-gray-400 hover:bg-gray-800"
               >
                 Back
               </button>
-              <button
-                onClick={handleAddKey}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-                disabled={validating}
-              >
-                {validating ? 'Validating...' : 'Add Key'}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setStep('model'); setShowCustomUrl(false); setCustomUrl(''); setKeyError('') }}
+                  className="rounded px-4 py-2 text-xs text-gray-500 hover:bg-gray-800 hover:text-gray-300"
+                >
+                  Skip
+                </button>
+                <button
+                  onClick={handleAddKey}
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                  disabled={validating}
+                >
+                  {validating ? 'Validating...' : showCustomUrl ? 'Add Custom Key' : 'Add Key'}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -166,7 +250,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
               onChange={(e) => setSelectedModel(e.target.value)}
               className="mb-6 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
             >
-              {getAllModels().map((m) => (
+              {getAllModels(openRouterModels).map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name} ({m.provider})
                 </option>
@@ -268,11 +352,10 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
               <button
                 onClick={() => {
                   // Create the first advisor window with selected settings
-                  const state = useStore.getState()
-                  const firstKey = state.keys[0]
+                  const firstKey = keys[0]
                   const persona = selectedPersonaId !== null
-                    ? state.personas.find((p) => p.id === selectedPersonaId)
-                    : state.personas[0]
+                    ? personas.find((p) => p.id === selectedPersonaId)
+                    : personas[0]
                   const defaultTheme = BUILT_IN_THEMES[0]!
                   const accentColor = getAccentColor(0, defaultTheme.colors.accentPalette)
 
