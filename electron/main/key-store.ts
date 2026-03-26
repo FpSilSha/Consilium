@@ -15,7 +15,13 @@ export function isValidProviderId(id: string): boolean {
   return id.length > 0 && id.length <= 128 && /^[A-Za-z0-9_-]+$/.test(id)
 }
 
-function readKeysFile(): Record<string, string> {
+interface StoredEntry {
+  readonly encrypted: string
+  readonly provider?: string | undefined
+  readonly baseUrl?: string | undefined
+}
+
+function readKeysFile(): Record<string, StoredEntry | string> {
   const filePath = getKeysFilePath()
   if (!existsSync(filePath)) return {}
 
@@ -24,12 +30,25 @@ function readKeysFile(): Record<string, string> {
     const parsed: unknown = JSON.parse(content)
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {}
 
-    // Validate each entry: skip prototype pollution keys, require string values
-    const result: Record<string, string> = {}
+    // Validate each entry: skip prototype pollution keys
+    const result: Record<string, StoredEntry | string> = {}
     for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
       if (PROTO_KEYS.has(k)) continue
+      // Legacy format: plain string (base64 encrypted)
       if (typeof v === 'string') {
         result[k] = v
+      }
+      // New format: object with encrypted + optional metadata
+      else if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+        const obj = v as Record<string, unknown>
+        if (typeof obj['encrypted'] === 'string') {
+          const entry: StoredEntry = {
+            encrypted: obj['encrypted'],
+            provider: typeof obj['provider'] === 'string' ? obj['provider'] : undefined,
+            baseUrl: typeof obj['baseUrl'] === 'string' ? obj['baseUrl'] : undefined,
+          }
+          result[k] = entry
+        }
       }
     }
     return result
@@ -38,7 +57,7 @@ function readKeysFile(): Record<string, string> {
   }
 }
 
-function writeKeysFile(entries: Readonly<Record<string, string>>): void {
+function writeKeysFile(entries: Readonly<Record<string, StoredEntry | string>>): void {
   const filePath = getKeysFilePath()
   const dir = dirname(filePath)
 
@@ -64,18 +83,24 @@ export function isEncryptionAvailable(): boolean {
  * Returns an array of { providerId, rawKey } objects.
  * Logs a count of failed decryptions (not key data) to stderr.
  */
-export function loadEncryptedKeys(): readonly { providerId: string; rawKey: string }[] {
+export function loadEncryptedKeys(): readonly { providerId: string; rawKey: string; provider?: string; baseUrl?: string }[] {
   if (!isEncryptionAvailable()) return []
 
   const entries = readKeysFile()
-  const result: { providerId: string; rawKey: string }[] = []
+  const result: { providerId: string; rawKey: string; provider?: string; baseUrl?: string }[] = []
   let failedCount = 0
 
-  for (const [providerId, base64Encrypted] of Object.entries(entries)) {
+  for (const [providerId, entry] of Object.entries(entries)) {
     try {
+      const base64Encrypted = typeof entry === 'string' ? entry : entry.encrypted
       const buffer = Buffer.from(base64Encrypted, 'base64')
       const rawKey = safeStorage.decryptString(buffer)
-      result.push({ providerId, rawKey })
+      result.push({
+        providerId,
+        rawKey,
+        ...(typeof entry === 'object' && entry.provider != null ? { provider: entry.provider } : {}),
+        ...(typeof entry === 'object' && entry.baseUrl != null ? { baseUrl: entry.baseUrl } : {}),
+      })
     } catch {
       failedCount += 1
     }
@@ -92,7 +117,11 @@ export function loadEncryptedKeys(): readonly { providerId: string; rawKey: stri
  * Encrypts and saves a key for a provider.
  * Overwrites any existing key for that provider.
  */
-export function saveEncryptedKey(providerId: string, rawKey: string): void {
+export function saveEncryptedKey(
+  providerId: string,
+  rawKey: string,
+  metadata?: { provider?: string; baseUrl?: string },
+): void {
   if (!isValidProviderId(providerId)) {
     throw new Error('Invalid provider ID format')
   }
@@ -104,7 +133,12 @@ export function saveEncryptedKey(providerId: string, rawKey: string): void {
   const base64 = encrypted.toString('base64')
 
   const entries = readKeysFile()
-  const updated = { ...entries, [providerId]: base64 }
+  const storedEntry: StoredEntry = {
+    encrypted: base64,
+    ...(metadata?.provider != null ? { provider: metadata.provider } : {}),
+    ...(metadata?.baseUrl != null ? { baseUrl: metadata.baseUrl } : {}),
+  }
+  const updated = { ...entries, [providerId]: storedEntry }
   writeKeysFile(updated)
 }
 

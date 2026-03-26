@@ -79,7 +79,7 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('keys:load', () => loadEncryptedKeys())
 
-  ipcMain.handle('keys:save', async (_event, providerId: unknown, rawKey: unknown) => {
+  ipcMain.handle('keys:save', async (_event, providerId: unknown, rawKey: unknown, metadata: unknown) => {
     if (typeof providerId !== 'string' || typeof rawKey !== 'string') {
       throw new Error('Invalid arguments: expected (string, string)')
     }
@@ -89,7 +89,16 @@ function registerIpcHandlers(): void {
     if (rawKey.length === 0 || rawKey.length > 512) {
       throw new Error('Invalid key length')
     }
-    saveEncryptedKey(providerId, rawKey)
+    // Validate optional metadata
+    let validatedMetadata: { provider?: string; baseUrl?: string } | undefined
+    if (metadata != null && typeof metadata === 'object' && !Array.isArray(metadata)) {
+      const m = metadata as Record<string, unknown>
+      validatedMetadata = {
+        ...(typeof m['provider'] === 'string' ? { provider: m['provider'] } : {}),
+        ...(typeof m['baseUrl'] === 'string' ? { baseUrl: m['baseUrl'] } : {}),
+      }
+    }
+    saveEncryptedKey(providerId, rawKey, validatedMetadata)
   })
 
   ipcMain.handle('keys:delete', async (_event, providerId: unknown) => {

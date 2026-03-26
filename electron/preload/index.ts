@@ -14,7 +14,7 @@ const api: ConsiliumAPI = {
 
   keysAvailable: () => ipcRenderer.invoke('keys:available'),
   keysLoad: () => ipcRenderer.invoke('keys:load'),
-  keysSave: (providerId, rawKey) => ipcRenderer.invoke('keys:save', providerId, rawKey),
+  keysSave: (providerId, rawKey, metadata) => ipcRenderer.invoke('keys:save', providerId, rawKey, metadata),
   keysDelete: (providerId) => ipcRenderer.invoke('keys:delete', providerId),
 }
 

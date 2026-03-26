@@ -1,6 +1,8 @@
 export interface StoredKey {
   readonly providerId: string
   readonly rawKey: string
+  readonly provider?: string | undefined
+  readonly baseUrl?: string | undefined
 }
 
 export interface ConsiliumAPI {
@@ -11,6 +13,6 @@ export interface ConsiliumAPI {
   openFolder(path: string): Promise<void>
   keysAvailable(): Promise<boolean>
   keysLoad(): Promise<readonly StoredKey[]>
-  keysSave(providerId: string, rawKey: string): Promise<void>
+  keysSave(providerId: string, rawKey: string, metadata?: { provider?: string; baseUrl?: string }): Promise<void>
   keysDelete(providerId: string): Promise<void>
 }
