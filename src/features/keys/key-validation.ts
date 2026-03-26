@@ -1,4 +1,4 @@
-import type { Provider } from '@/types'
+import type { KnownProvider } from './key-detection'
 
 export type ValidationFailureReason = 'auth_failure' | 'cancelled' | 'network_error' | 'unexpected_status'
 
@@ -8,19 +8,20 @@ export interface ValidationResult {
   readonly error?: string | undefined
 }
 
-const PROVIDER_ENDPOINTS: Readonly<Record<Provider, string>> = {
+const PROVIDER_ENDPOINTS: Readonly<Record<KnownProvider, string>> = {
   anthropic: 'https://api.anthropic.com/v1/messages',
   openai: 'https://api.openai.com/v1/models',
   google: 'https://generativelanguage.googleapis.com/v1beta/models',
   xai: 'https://api.x.ai/v1/models',
   deepseek: 'https://api.deepseek.com/v1/models',
+  openrouter: 'https://openrouter.ai/api/v1/models',
 }
 
 const VALIDATION_TIMEOUT_MS = 15_000
 
 export async function validateKey(
   rawKey: string,
-  provider: Provider,
+  provider: KnownProvider,
   signal?: AbortSignal,
 ): Promise<ValidationResult> {
   const endpoint = PROVIDER_ENDPOINTS[provider]
@@ -75,7 +76,7 @@ export async function validateKey(
 
 function buildAuthHeaders(
   rawKey: string,
-  provider: Provider,
+  provider: KnownProvider,
 ): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
