@@ -1,19 +1,25 @@
 import type { Provider } from '@/types'
+import type { KnownProvider } from '@/features/keys/key-detection'
 import type { ApiRequestConfig, StreamChunk, ProviderAdapter } from './types'
 import { anthropicAdapter } from './adapters/anthropic'
 import { openaiAdapter } from './adapters/openai'
 import { googleAdapter } from './adapters/google'
-import { xaiAdapter, deepseekAdapter } from './adapters/openai-compatible'
+import { xaiAdapter, deepseekAdapter, openrouterAdapter } from './adapters/openai-compatible'
 
-const adapters: Readonly<Record<Provider, ProviderAdapter>> = {
+const adapters: Readonly<Record<KnownProvider, ProviderAdapter>> = {
   anthropic: anthropicAdapter,
   openai: openaiAdapter,
   google: googleAdapter,
   xai: xaiAdapter,
   deepseek: deepseekAdapter,
+  openrouter: openrouterAdapter,
 }
 
 export function getAdapter(provider: Provider): ProviderAdapter {
+  if (provider === 'custom') {
+    // Custom providers use OpenAI-compatible API
+    return openaiAdapter
+  }
   return adapters[provider]
 }
 
