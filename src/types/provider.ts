@@ -1,4 +1,4 @@
-export type Provider = 'anthropic' | 'openai' | 'google' | 'xai' | 'deepseek'
+export type Provider = 'anthropic' | 'openai' | 'google' | 'xai' | 'deepseek' | 'openrouter' | 'custom'
 
 export interface ApiKey {
   readonly id: string
@@ -6,6 +6,7 @@ export interface ApiKey {
   readonly maskedKey: string
   readonly createdAt: number
   readonly verified: boolean
+  readonly baseUrl?: string | undefined
 }
 
 export interface ModelInfo {
