@@ -29,7 +29,7 @@ export function TurnControls(): ReactNode {
   }, [setTurnMode, setQueue, windowOrder])
 
   return (
-    <div className="flex flex-col gap-3 border-b border-edge-subtle px-3 py-3">
+    <div className="flex flex-col gap-2 px-3 pb-2">
       {/* Mode selector */}
       <div role="group" aria-label="Turn mode" className="flex gap-1">
         {MODES.map((mode) => (
@@ -38,10 +38,10 @@ export function TurnControls(): ReactNode {
             onClick={() => handleModeChange(mode.value)}
             disabled={isRunning}
             aria-pressed={turnMode === mode.value}
-            className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
+            className={`flex-1 rounded-full px-2 py-1 text-xs font-medium transition-colors ${
               turnMode === mode.value
                 ? 'bg-accent-blue text-content-inverse'
-                : 'bg-surface-hover text-content-muted hover:bg-surface-active hover:text-content-primary'
+                : 'bg-surface-base text-content-muted hover:bg-surface-hover hover:text-content-primary'
             } disabled:opacity-50`}
           >
             {mode.label}
@@ -55,14 +55,14 @@ export function TurnControls(): ReactNode {
           <>
             <button
               onClick={startRun}
-              className="flex-1 rounded-md bg-accent-green py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-green/90"
+              className="flex-1 rounded-full bg-accent-green py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-green/90"
             >
               Start
             </button>
             {queueLength > 0 && (
               <button
                 onClick={resetQueue}
-                className="rounded-md bg-surface-hover px-3 py-1.5 text-xs text-content-muted transition-colors hover:bg-surface-active"
+                className="rounded-full bg-surface-base px-3 py-1.5 text-xs text-content-muted transition-colors hover:bg-surface-active"
               >
                 Reset
               </button>
@@ -73,7 +73,7 @@ export function TurnControls(): ReactNode {
             {isPaused ? (
               <button
                 onClick={() => setPaused(false)}
-                className="flex-1 rounded-md bg-accent-green py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-green/90"
+                className="flex-1 rounded-full bg-accent-green py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-green/90"
               >
                 Resume
               </button>
@@ -87,7 +87,7 @@ export function TurnControls(): ReactNode {
             )}
             <button
               onClick={stopAll}
-              className="flex-1 rounded-md bg-accent-red py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-red/90"
+              className="flex-1 rounded-full bg-accent-red py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-red/90"
             >
               Stop
             </button>

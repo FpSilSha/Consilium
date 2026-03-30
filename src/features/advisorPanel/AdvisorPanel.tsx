@@ -21,51 +21,56 @@ export function AdvisorPanel(): ReactNode {
 
   return (
     <aside className="flex h-full w-full flex-col border-l border-edge-subtle bg-surface-panel">
-      {/* Turn mode + controls */}
-      <TurnControls />
-
-      {/* Add advisor + actions */}
-      <div className="flex items-center gap-2 border-b border-edge-subtle px-3 py-2">
-        <button
-          onClick={handleAddAdvisor}
-          className="flex-1 rounded-md bg-accent-blue py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-blue/90"
-        >
-          + Add Advisor
-        </button>
-        <CallForVoteButton />
-        <ExportButton />
-      </div>
-
-      {/* Two sections: Advisors (who's in session) + Queue (turn order) */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {/* Advisors */}
-        <div className="shrink-0 border-b border-edge-subtle">
-          <h2 className="px-3 pt-3 text-xs font-medium uppercase tracking-wider text-content-muted">
+      {/* ── Advisors section (top) ──────────────── */}
+      <div className="shrink-0 border-b border-edge-subtle">
+        <div className="flex items-center justify-between px-3 pt-3 pb-1">
+          <h2 className="text-xs font-medium uppercase tracking-wider text-content-muted">
             Advisors ({windowOrder.length})
           </h2>
-          <div className="mt-1 max-h-48 overflow-y-auto px-1 pb-2">
-            {windowOrder.length === 0 ? (
-              <p className="px-3 py-3 text-xs text-content-disabled">
-                No advisors yet. Add one above.
-              </p>
-            ) : (
-              windowOrder.map((id) => {
-                const advisor = windows[id]
-                if (advisor == null) return null
-                return <AdvisorListItem key={id} advisor={advisor} />
-              })
-            )}
+          <div className="flex items-center gap-1.5">
+            <CallForVoteButton />
+            <ExportButton />
           </div>
         </div>
 
-        {/* Queue */}
-        <div className="flex min-h-0 flex-1 flex-col">
-          <h2 className="px-3 pt-3 text-xs font-medium uppercase tracking-wider text-content-muted">
-            Queue
-          </h2>
-          <div className="mt-1 flex-1 overflow-y-auto">
-            <QueueList />
-          </div>
+        {/* Add advisor pill */}
+        <div className="px-3 pb-2">
+          <button
+            onClick={handleAddAdvisor}
+            className="w-full rounded-full border border-edge-subtle bg-surface-base py-1.5 text-xs font-medium text-content-muted transition-colors hover:border-accent-blue hover:text-accent-blue"
+          >
+            + Add Advisor
+          </button>
+        </div>
+
+        {/* Advisor list */}
+        <div className="max-h-56 overflow-y-auto px-1 pb-2">
+          {windowOrder.length === 0 ? (
+            <p className="px-3 py-3 text-xs text-content-disabled">
+              No advisors yet. Add one above.
+            </p>
+          ) : (
+            windowOrder.map((id) => {
+              const advisor = windows[id]
+              if (advisor == null) return null
+              return <AdvisorListItem key={id} advisor={advisor} />
+            })
+          )}
+        </div>
+      </div>
+
+      {/* ── Queue section (bottom) ─────────────── */}
+      <div className="flex min-h-0 flex-1 flex-col">
+        <h2 className="px-3 pt-3 pb-1 text-xs font-medium uppercase tracking-wider text-content-muted">
+          Queue
+        </h2>
+
+        {/* Turn mode + Start/Stop moved here */}
+        <TurnControls />
+
+        {/* Queue cards */}
+        <div className="flex-1 overflow-y-auto">
+          <QueueList />
         </div>
       </div>
     </aside>
