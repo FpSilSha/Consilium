@@ -1,0 +1,42 @@
+/*
+ * Consilium — Deep Ocean Palette
+ *
+ * Tailwind v4 @theme inline — values baked at compile time.
+ * NOT available as runtime CSS variables (var(--color-*)).
+ * Remove `inline` if dynamic theming is ever needed.
+ *
+ * Usage examples:
+ *   bg-surface-base       — deep navy background
+ *   text-content-primary  — off-white body text
+ *   border-edge-subtle    — panel edge glow
+ *   bg-accent-blue        — CTA buttons
+ */
+
+@theme inline {
+  /* ── Surfaces ─────────────────────────────────── */
+  --color-surface-base:     #0A192F;
+  --color-surface-panel:    #1E2A3A;
+  --color-surface-hover:    #253444;
+  --color-surface-active:   #2A3D50;
+  --color-surface-selected: #1F3A5A;
+  --color-surface-disabled: #141F2D;
+
+  /* ── Content (text / icons) ───────────────────── */
+  --color-content-primary:  #E0E6ED;
+  --color-content-muted:    #9BA8B5;
+  --color-content-disabled: #4A5568;
+  --color-content-inverse:  #0A192F;
+
+  /* ── Accents ──────────────────────────────────── */
+  --color-accent-blue:      #007BFF;
+  --color-accent-red:       #EF5350;
+  --color-accent-green:     #66BB6A;
+
+  /* ── Borders ──────────────────────────────────── */
+  --color-edge-subtle:      #1E3A5F;
+  --color-edge-focus:       #007BFF;
+
+  /* ── Semantic aliases (match accents) ─────────── */
+  --color-error:            #EF5350;
+  --color-success:          #66BB6A;
+}
