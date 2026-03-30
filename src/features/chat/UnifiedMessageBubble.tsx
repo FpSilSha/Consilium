@@ -9,13 +9,14 @@ interface UnifiedMessageBubbleProps {
 
 export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): ReactNode {
   const isUser = message.role === 'user'
-  const advisorWindow = useStore((s) => s.windows[message.windowId])
+
+  // Subscribe to stable fields only — accentColor and model don't change during streaming
+  const accentColor = useStore((s) => s.windows[message.windowId]?.accentColor) ?? '#9BA8B5'
+  const model = useStore((s) => s.windows[message.windowId]?.model)
   const openRouterModels = useStore((s) => s.openRouterModels)
 
-  // Resolve color from window store; fall back to neutral for deleted windows
-  const accentColor = advisorWindow?.accentColor ?? '#9BA8B5'
-  const modelName = advisorWindow != null
-    ? (getModelById(advisorWindow.model, openRouterModels)?.name ?? advisorWindow.model)
+  const modelName = model != null
+    ? (getModelById(model, openRouterModels)?.name ?? model)
     : undefined
 
   if (isUser) {
@@ -30,14 +31,12 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
 
   return (
     <div className="flex justify-start gap-3 px-4 py-2">
-      {/* Persona color dot */}
       <div
         className="mt-1 h-3 w-3 shrink-0 rounded-full"
         style={{ backgroundColor: accentColor }}
       />
 
       <div className="min-w-0 max-w-[80%]">
-        {/* Header: persona name + model */}
         <div className="mb-1 flex items-baseline gap-2">
           <span className="text-xs font-semibold" style={{ color: accentColor }}>
             {message.personaLabel}
@@ -49,7 +48,6 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
           )}
         </div>
 
-        {/* Message body */}
         <div className="rounded-lg bg-surface-panel px-3 py-2.5 text-sm text-content-primary">
           <div className="whitespace-pre-wrap break-words">{message.content}</div>
           {message.costMetadata != null && (
