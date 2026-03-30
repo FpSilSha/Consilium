@@ -19,10 +19,6 @@ export function UnifiedChatThread(): ReactNode {
   const scrollRef = useRef<HTMLDivElement>(null)
   const isPinnedRef = useRef(true)
 
-  const anyStreaming = useStore((s) =>
-    s.windowOrder.some((id) => s.windows[id]?.isStreaming === true),
-  )
-
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
     if (el == null) return
@@ -30,12 +26,29 @@ export function UnifiedChatThread(): ReactNode {
     isPinnedRef.current = distanceFromBottom < SCROLL_PIN_THRESHOLD
   }, [])
 
-  // Auto-scroll only when pinned to bottom
+  // Auto-scroll when new messages are added (not during streaming — that
+  // would fire on every token and risk exceeding React's update depth limit)
   useEffect(() => {
     const el = scrollRef.current
     if (el == null || !isPinnedRef.current) return
     el.scrollTop = el.scrollHeight
-  }, [messages.length, anyStreaming])
+  }, [messages.length])
+
+  // Scroll to bottom when streaming content changes, using a passive
+  // MutationObserver instead of a store-driven effect to avoid re-render loops
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el == null) return
+
+    const observer = new MutationObserver(() => {
+      if (isPinnedRef.current) {
+        el.scrollTop = el.scrollHeight
+      }
+    })
+
+    observer.observe(el, { childList: true, subtree: true, characterData: true })
+    return () => observer.disconnect()
+  }, [])
 
   if (messages.length === 0) {
     return (
