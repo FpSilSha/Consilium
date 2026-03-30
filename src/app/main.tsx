@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
+import { ErrorBoundary } from './ErrorBoundary'
 import { loadPersistedKeys } from '@/features/keys/key-loader'
 import { installGlobalErrorHandlers, safeLog } from '@/features/errorHandling'
 import './app.css'
@@ -20,7 +21,9 @@ loadPersistedKeys().catch((err: unknown) => {
 }).finally(() => {
   createRoot(rootElement).render(
     <StrictMode>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </StrictMode>,
   )
 })
