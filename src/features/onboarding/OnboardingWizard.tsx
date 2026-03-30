@@ -1,5 +1,4 @@
 import { type ReactNode, useState, useCallback, useRef, useEffect } from 'react'
-import { v4 as uuidv4 } from 'uuid'
 import { useStore } from '@/store'
 import { createApiKeyEntry } from '@/features/keys/key-storage'
 import { storeRawKey } from '@/features/keys/key-vault'
@@ -7,11 +6,20 @@ import { detectProvider } from '@/features/keys/key-detection'
 import { validateKey } from '@/features/keys/key-validation'
 import { getAllModels, getModelsForProvider } from '@/features/modelSelector/model-registry'
 import { fetchOpenRouterModels } from '@/features/modelSelector/openrouter-models'
-import { getAccentColor, BUILT_IN_THEMES } from '@/features/themes'
 import { createAgentCard } from '@/features/turnManager'
-import type { AdvisorWindow } from '@/types'
+import { createDefaultAdvisorWindow } from '@/features/windows/advisor-factory'
+import { ModelTile } from './ModelTile'
+import { PersonaTile } from './PersonaTile'
 
-type WizardStep = 'welcome' | 'api-key' | 'model' | 'persona' | 'tour' | 'done'
+const TOUR_ITEMS = [
+  { num: 1, title: 'Shared Context', desc: 'All advisors see the same conversation. Every message is part of a shared thread.' },
+  { num: 2, title: 'Turn Modes', desc: 'Sequential (round-robin), Parallel (all at once), Manual (you choose), or Queue (custom order).' },
+  { num: 3, title: '@Mentions', desc: 'Type @AgentName to direct a question to a specific advisor.' },
+  { num: 4, title: 'Personas', desc: 'Each advisor has a role defined by a .md file in the personas folder.' },
+  { num: 5, title: 'Voting', desc: 'Use "Call for Vote" to get YAY/NAY/ABSTAIN from all advisors on any question.' },
+] as const
+
+type WizardStep = 'welcome' | 'api-key' | 'configure' | 'tour'
 
 interface OnboardingWizardProps {
   readonly onComplete: () => void
@@ -26,6 +34,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
   const [validating, setValidating] = useState(false)
   const [selectedModel, setSelectedModel] = useState('')
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null)
+
   const keys = useStore((s) => s.keys)
   const openRouterModels = useStore((s) => s.openRouterModels)
   const addKey = useStore((s) => s.addKey)
@@ -47,18 +56,16 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
 
     const detected = detectProvider(trimmed)
 
-    // If not detected and custom URL not yet shown, prompt for it
     if (detected === null && !showCustomUrl) {
       setShowCustomUrl(true)
       setKeyError('Unknown key format. Enter the provider\u2019s base URL below.')
       return
     }
 
-    // If custom URL mode, validate URL
     if (detected === null && showCustomUrl) {
       const urlTrimmed = customUrl.trim()
       if (urlTrimmed === '') {
-        setKeyError('Please enter a base URL for this provider (e.g. https://api.example.com/v1)')
+        setKeyError('Please enter a base URL (e.g. https://api.example.com/v1)')
         return
       }
       try {
@@ -80,11 +87,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
       return
     }
 
-    // Add baseUrl for custom providers
     const baseUrl = detected === null ? customUrl.trim() : undefined
     const entryWithUrl = baseUrl !== undefined ? { ...entry, baseUrl } : entry
 
-    // Validate key with a lightweight API call (skip for custom — we can't know the endpoint)
     let verified = false
     if (detected !== null) {
       abortRef.current?.abort()
@@ -109,67 +114,87 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
 
     const verifiedEntry = { ...entryWithUrl, verified }
 
-    // Persist encrypted via IPC if available
     try {
       const metadata = verifiedEntry.baseUrl != null
         ? { provider: verifiedEntry.provider, baseUrl: verifiedEntry.baseUrl }
         : { provider: verifiedEntry.provider }
       await window.consiliumAPI?.keysSave(verifiedEntry.id, trimmed, metadata)
     } catch {
-      // Non-fatal — key still works in memory for this session
+      // Non-fatal
     }
 
     addKey(verifiedEntry)
     storeRawKey(verifiedEntry.id, trimmed)
 
-    // Pre-select a model from this provider
     if (detected !== null) {
       if (detected.provider === 'openrouter') {
-        // Fetch dynamic model list for OpenRouter
+        const signal = abortRef.current?.signal
         fetchOpenRouterModels(trimmed).then((models) => {
-          if (models.length > 0) {
-            setSelectedModel(models[0]!.id)
-          }
+          if (signal?.aborted) return
+          if (models.length > 0) setSelectedModel(models[0]!.id)
         }).catch(() => {})
       } else {
         const models = getModelsForProvider(detected.provider)
-        if (models.length > 0) {
-          setSelectedModel(models[0]!.id)
-        }
+        if (models.length > 0) setSelectedModel(models[0]!.id)
       }
     }
 
     setKeyError('')
     setShowCustomUrl(false)
     setCustomUrl('')
-    setStep('model')
+    setStep('configure')
   }, [keyInput, addKey, showCustomUrl, customUrl])
 
+  const windowOrder = useStore((s) => s.windowOrder)
+
+  const handleFinish = useCallback(() => {
+    const persona = selectedPersonaId !== null
+      ? personas.find((p) => p.id === selectedPersonaId)
+      : personas[0]
+
+    const base = createDefaultAdvisorWindow(windowOrder, personas, keys)
+    const newWindow = {
+      ...base,
+      ...(selectedModel !== '' ? { model: selectedModel } : {}),
+      ...(persona != null ? { personaId: persona.id, personaLabel: persona.name } : {}),
+    }
+
+    addWindow(newWindow)
+    addToQueue(createAgentCard(newWindow.id))
+    onComplete()
+  }, [windowOrder, keys, selectedModel, selectedPersonaId, personas, addWindow, addToQueue, onComplete])
+
+  const allModels = getAllModels(openRouterModels)
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950">
-      <div className="mx-4 w-full max-w-lg rounded-xl border border-gray-800 bg-gray-900 p-8">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-base">
+      <div className="mx-4 w-full max-w-2xl rounded-xl border border-edge-subtle bg-surface-panel p-8">
+
+        {/* ── Welcome ─────────────────────────────── */}
         {step === 'welcome' && (
           <div className="text-center">
-            <h1 className="mb-2 text-xl font-semibold text-gray-100">Welcome to Consilium</h1>
-            <p className="mb-6 text-sm text-gray-400">
+            <h1 className="mb-2 text-xl font-semibold text-content-primary">
+              Welcome to Consilium
+            </h1>
+            <p className="mb-6 text-sm text-content-muted">
               Your multi-agent AI advisory board. Lead a panel of AI advisors,
               each with its own model, provider, and persona.
             </p>
             <button
               onClick={() => setStep('api-key')}
-              className="rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-blue-500"
+              className="rounded-lg bg-accent-blue px-6 py-2.5 text-sm font-medium text-content-inverse transition-colors hover:bg-accent-blue/90"
             >
               Get Started
             </button>
           </div>
         )}
 
+        {/* ── API Key ─────────────────────────────── */}
         {step === 'api-key' && (
           <div>
-            <h2 className="mb-1 text-lg font-medium text-gray-100">Add an API Key</h2>
-            <p className="mb-4 text-xs text-gray-400">
+            <h2 className="mb-1 text-lg font-medium text-content-primary">Add an API Key</h2>
+            <p className="mb-4 text-xs text-content-muted">
               Paste any supported provider key. We&apos;ll auto-detect the provider.
-              You can also skip this and add keys later.
             </p>
             <input
               type="password"
@@ -180,18 +205,20 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
                 setShowCustomUrl(false)
                 setCustomUrl('')
               }}
-              placeholder="sk-ant-..., sk-proj-..., AIza..., xai-..."
-              className="mb-2 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
+              placeholder="sk-ant-..., sk-proj-..., sk-or-..., AIza..., xai-..."
+              className="mb-2 w-full rounded-lg border border-edge-subtle bg-surface-base px-3 py-2 text-sm text-content-primary placeholder-content-disabled outline-none focus:border-edge-focus"
               autoFocus
               disabled={validating}
               onKeyDown={(e) => e.key === 'Enter' && !showCustomUrl && handleAddKey()}
             />
             {keyError !== '' && (
-              <p className={`mb-2 text-xs ${showCustomUrl ? 'text-yellow-400' : 'text-red-400'}`}>{keyError}</p>
+              <p className={`mb-2 text-xs ${showCustomUrl ? 'text-content-muted' : 'text-error'}`}>
+                {keyError}
+              </p>
             )}
             {showCustomUrl && (
               <div className="mb-2">
-                <label className="mb-1 block text-xs text-gray-400">
+                <label className="mb-1 block text-xs text-content-muted">
                   Provider Base URL
                 </label>
                 <input
@@ -199,37 +226,33 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
                   value={customUrl}
                   onChange={(e) => { setCustomUrl(e.target.value); setKeyError('') }}
                   placeholder="https://api.example.com/v1"
-                  className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
+                  className="w-full rounded-lg border border-edge-subtle bg-surface-base px-3 py-2 text-sm text-content-primary placeholder-content-disabled outline-none focus:border-edge-focus"
                   disabled={validating}
                   onKeyDown={(e) => e.key === 'Enter' && handleAddKey()}
                 />
-                <p className="mt-1 text-[10px] text-gray-500">
-                  The base URL for this provider's API (e.g. https://api.example.com/v1).
-                </p>
               </div>
             )}
-            <div className="mb-4 rounded border border-gray-800 bg-gray-950 p-3 text-xs text-gray-500">
+            <div className="mb-4 rounded-lg border border-edge-subtle bg-surface-base p-3 text-xs text-content-disabled">
               You are responsible for your own API keys and must comply with each
-              provider&apos;s Terms of Service. This application does not store, proxy,
-              or redistribute your API access.
+              provider&apos;s Terms of Service.
             </div>
             <div className="flex items-center justify-between">
               <button
                 onClick={() => { setStep('welcome'); setShowCustomUrl(false); setCustomUrl(''); setKeyError('') }}
-                className="rounded px-4 py-2 text-xs text-gray-400 hover:bg-gray-800"
+                className="rounded-lg px-4 py-2 text-xs text-content-muted transition-colors hover:bg-surface-hover"
               >
                 Back
               </button>
               <div className="flex gap-2">
                 <button
-                  onClick={() => { setStep('model'); setShowCustomUrl(false); setCustomUrl(''); setKeyError('') }}
-                  className="rounded px-4 py-2 text-xs text-gray-500 hover:bg-gray-800 hover:text-gray-300"
+                  onClick={() => { setStep('configure'); setShowCustomUrl(false); setCustomUrl(''); setKeyError('') }}
+                  className="rounded-lg px-4 py-2 text-xs text-content-disabled transition-colors hover:bg-surface-hover hover:text-content-muted"
                 >
                   Skip
                 </button>
                 <button
                   onClick={handleAddKey}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                  className="rounded-lg bg-accent-blue px-4 py-2 text-sm font-medium text-content-inverse transition-colors hover:bg-accent-blue/90 disabled:opacity-50"
                   disabled={validating}
                 >
                   {validating ? 'Validating...' : showCustomUrl ? 'Add Custom Key' : 'Add Key'}
@@ -239,77 +262,63 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
           </div>
         )}
 
-        {step === 'model' && (
+        {/* ── Configure Advisor (Model + Persona grid) ── */}
+        {step === 'configure' && (
           <div>
-            <h2 className="mb-1 text-lg font-medium text-gray-100">Select a Model</h2>
-            <p className="mb-4 text-xs text-gray-400">
-              Choose a default model for your first advisor.
+            <h2 className="mb-1 text-lg font-medium text-content-primary">
+              Configure your first Advisor
+            </h2>
+            <p className="mb-4 text-xs text-content-muted">
+              Choose a model and persona to define your advisor&apos;s capabilities.
             </p>
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="mb-6 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 outline-none focus:border-gray-500"
-            >
-              {getAllModels(openRouterModels).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name} ({m.provider})
-                </option>
-              ))}
-            </select>
-            <div className="flex justify-between">
-              <button
-                onClick={() => setStep('api-key')}
-                className="rounded px-4 py-2 text-xs text-gray-400 hover:bg-gray-800"
-              >
-                Back
-              </button>
-              <button
-                onClick={() => setStep('persona')}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
-              >
-                Next
-              </button>
-            </div>
-          </div>
-        )}
 
-        {step === 'persona' && (
-          <div>
-            <h2 className="mb-1 text-lg font-medium text-gray-100">Choose a Persona</h2>
-            <p className="mb-4 text-xs text-gray-400">
-              Personas define each advisor&apos;s role and expertise. Select a default
-              or use your own .md files later.
-            </p>
-            <div className="mb-6 grid grid-cols-2 gap-2">
+            {/* Model Selection */}
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-content-muted">
+              Model Selection
+            </h3>
+            <div className="mb-5 max-h-48 overflow-y-auto rounded-lg border border-edge-subtle p-2">
+              <div className="grid grid-cols-3 gap-2">
+                {allModels.map((m) => (
+                  <ModelTile
+                    key={m.id}
+                    model={m}
+                    isSelected={selectedModel === m.id}
+                    onClick={() => setSelectedModel(m.id)}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Persona Configuration */}
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-content-muted">
+              Persona Configuration
+            </h3>
+            <div className="mb-5 grid grid-cols-2 gap-2">
               {personas.map((p) => (
-                <button
+                <PersonaTile
                   key={p.id}
+                  persona={p}
+                  isSelected={selectedPersonaId === p.id}
                   onClick={() => setSelectedPersonaId(p.id)}
-                  className={`rounded border px-3 py-2 text-left transition-colors ${
-                    selectedPersonaId === p.id
-                      ? 'border-blue-500 bg-blue-900/30'
-                      : 'border-gray-700 bg-gray-800 hover:border-gray-600'
-                  }`}
-                >
-                  <span className="text-xs font-medium text-gray-300">{p.name}</span>
-                </button>
+                />
               ))}
               {personas.length === 0 && (
-                <p className="col-span-2 text-xs text-gray-500">
+                <p className="col-span-2 text-xs text-content-disabled">
                   No personas found. Default advisor persona will be used.
                 </p>
               )}
             </div>
+
             <div className="flex justify-between">
               <button
-                onClick={() => setStep('model')}
-                className="rounded px-4 py-2 text-xs text-gray-400 hover:bg-gray-800"
+                onClick={() => setStep('api-key')}
+                className="rounded-lg px-4 py-2 text-xs text-content-muted transition-colors hover:bg-surface-hover"
               >
                 Back
               </button>
               <button
                 onClick={() => setStep('tour')}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+                className="rounded-lg bg-accent-blue px-4 py-2 text-sm font-medium text-content-inverse transition-colors hover:bg-accent-blue/90"
               >
                 Next
               </button>
@@ -317,70 +326,36 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
           </div>
         )}
 
+        {/* ── Quick Tour ──────────────────────────── */}
         {step === 'tour' && (
           <div>
-            <h2 className="mb-4 text-lg font-medium text-gray-100">Quick Tour</h2>
-            <div className="mb-6 space-y-3 text-xs text-gray-400">
-              <div className="flex gap-3">
-                <span className="shrink-0 text-blue-400">1.</span>
-                <span><strong className="text-gray-300">Shared Context</strong> — All advisors see the same conversation. Every message is part of a shared thread.</span>
-              </div>
-              <div className="flex gap-3">
-                <span className="shrink-0 text-blue-400">2.</span>
-                <span><strong className="text-gray-300">Turn Modes</strong> — Sequential (round-robin), Parallel (all at once), Manual (you choose), or Queue (custom order).</span>
-              </div>
-              <div className="flex gap-3">
-                <span className="shrink-0 text-blue-400">3.</span>
-                <span><strong className="text-gray-300">@Mentions</strong> — Type @AgentName to direct a question to a specific advisor.</span>
-              </div>
-              <div className="flex gap-3">
-                <span className="shrink-0 text-blue-400">4.</span>
-                <span><strong className="text-gray-300">Personas</strong> — Each advisor has a role defined by a .md file in the personas folder.</span>
-              </div>
-              <div className="flex gap-3">
-                <span className="shrink-0 text-blue-400">5.</span>
-                <span><strong className="text-gray-300">Voting</strong> — Use "Call for Vote" to get YAY/NAY/ABSTAIN from all advisors on any question.</span>
-              </div>
+            <h2 className="mb-4 text-lg font-medium text-content-primary">Quick Tour</h2>
+            {keys.length === 0 && (
+              <p className="mb-4 rounded-lg border border-edge-subtle bg-surface-base px-3 py-2 text-xs text-error">
+                No API key added. Add one later via the Keys panel before sending messages.
+              </p>
+            )}
+            <div className="mb-6 space-y-3 text-xs text-content-muted">
+              {TOUR_ITEMS.map((item) => (
+                <div key={item.num} className="flex gap-3">
+                  <span className="shrink-0 text-accent-blue">{item.num}.</span>
+                  <span>
+                    <strong className="text-content-primary">{item.title}</strong>
+                    {' — '}{item.desc}
+                  </span>
+                </div>
+              ))}
             </div>
             <div className="flex justify-between">
               <button
-                onClick={() => setStep('persona')}
-                className="rounded px-4 py-2 text-xs text-gray-400 hover:bg-gray-800"
+                onClick={() => setStep('configure')}
+                className="rounded-lg px-4 py-2 text-xs text-content-muted transition-colors hover:bg-surface-hover"
               >
                 Back
               </button>
               <button
-                onClick={() => {
-                  // Create the first advisor window with selected settings
-                  const firstKey = keys[0]
-                  const persona = selectedPersonaId !== null
-                    ? personas.find((p) => p.id === selectedPersonaId)
-                    : personas[0]
-                  const defaultTheme = BUILT_IN_THEMES[0]!
-                  const accentColor = getAccentColor(0, defaultTheme.colors.accentPalette)
-
-                  const newWindow: AdvisorWindow = {
-                    id: uuidv4(),
-                    provider: firstKey?.provider ?? 'anthropic',
-                    keyId: firstKey?.id ?? '',
-                    model: selectedModel !== '' ? selectedModel : 'claude-sonnet-4-5-20241022',
-                    personaId: persona?.id ?? '',
-                    personaLabel: persona?.name ?? 'Advisor',
-                    accentColor,
-                    runningCost: 0,
-                    isStreaming: false,
-                    streamContent: '',
-                    error: null,
-                    isCompacted: false,
-                    compactedSummary: null,
-                    bufferSize: 15,
-                  }
-
-                  addWindow(newWindow)
-                  addToQueue(createAgentCard(newWindow.id))
-                  onComplete()
-                }}
-                className="rounded-lg bg-green-600 px-6 py-2.5 text-sm font-medium text-white hover:bg-green-500"
+                onClick={handleFinish}
+                className="rounded-lg bg-accent-green px-6 py-2.5 text-sm font-medium text-content-inverse transition-colors hover:bg-accent-green/90"
               >
                 Start Using Consilium
               </button>
