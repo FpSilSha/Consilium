@@ -2,17 +2,14 @@ import type { ReactNode } from 'react'
 import { NavSidebar } from '@/features/sidebar'
 import { UnifiedChatThread } from '@/features/chat/UnifiedChatThread'
 import { SharedInputBar } from '@/features/input'
-import { QueueSidebar } from '@/features/queueSidebar'
+import { AdvisorPanel } from '@/features/advisorPanel'
 
 /**
  * Three-column dashboard layout.
  *
  * Column 1 (20%): Navigation sidebar — keys, sessions
  * Column 2 (flex): Unified context window — chat + input
- * Column 3 (224px): Advisor panel — turn controls + advisor list
- *
- * Column 2 now uses UnifiedChatThread (single interleaved thread).
- * Column 3 still uses QueueSidebar — will be replaced in Phase 4.
+ * Column 3 (25%): Advisor panel — turn controls + advisor list
  */
 export function AppLayout(): ReactNode {
   return (
@@ -30,9 +27,9 @@ export function AppLayout(): ReactNode {
         </footer>
       </main>
 
-      {/* Column 3: Advisor Panel (QueueSidebar placeholder) */}
-      <div className="w-56 shrink-0">
-        <QueueSidebar />
+      {/* Column 3: Advisor Panel */}
+      <div className="w-1/4 min-w-[220px] max-w-[320px] shrink-0">
+        <AdvisorPanel />
       </div>
     </div>
   )
