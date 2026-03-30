@@ -33,10 +33,11 @@ export async function performPersonaSwitch(
   const oldLabel = win.personaLabel
   const newLabel = newPersona.name
 
-  // 1. Announce in shared context bus
+  // 1. Announce in shared context bus (attributed to the new persona)
   const announcement = createSystemMessage(
     `${oldLabel} has left but ${newLabel} has joined.`,
     windowId,
+    newLabel,
   )
   state.appendMessage(announcement)
 

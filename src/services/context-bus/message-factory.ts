@@ -39,12 +39,13 @@ export function createAssistantMessage(
 export function createSystemMessage(
   content: string,
   windowId: string,
+  personaLabel?: string,
 ): Message {
   return {
     id: generateMessageId(),
     role: 'system',
     content,
-    personaLabel: 'System',
+    personaLabel: personaLabel ?? 'System',
     timestamp: Date.now(),
     windowId,
     costMetadata: undefined,
