@@ -1,13 +1,2 @@
 @import "tailwindcss";
 @import "./theme.css";
-
-/* Hide react-mosaic's default toolbar — we use our own WindowHeader */
-.consilium-mosaic .mosaic-window-toolbar {
-  display: none !important;
-}
-
-/* Let window body fill the full tile height */
-.consilium-mosaic .mosaic-window-body {
-  flex: 1 !important;
-  height: 100% !important;
-}
