@@ -10,7 +10,6 @@ interface UnifiedMessageBubbleProps {
 export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): ReactNode {
   const isUser = message.role === 'user'
 
-  // Subscribe to stable fields only — accentColor and model don't change during streaming
   const accentColor = useStore((s) => s.windows[message.windowId]?.accentColor) ?? '#9BA8B5'
   const model = useStore((s) => s.windows[message.windowId]?.model)
   const openRouterModels = useStore((s) => s.openRouterModels)
@@ -29,6 +28,8 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
     )
   }
 
+  const cost = message.costMetadata
+
   return (
     <div className="flex justify-start gap-3 px-4 py-2">
       <div
@@ -37,24 +38,39 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
       />
 
       <div className="min-w-0 max-w-[80%]">
+        {/* Header: persona name */}
         <div className="mb-1 flex items-baseline gap-2">
           <span className="text-xs font-semibold" style={{ color: accentColor }}>
             {message.personaLabel}
           </span>
-          {modelName != null && (
-            <span className="text-xs text-content-muted">
-              {modelName}
-            </span>
-          )}
         </div>
 
+        {/* Message body */}
         <div className="rounded-lg bg-surface-panel px-3 py-2.5 text-sm text-content-primary">
           <div className="whitespace-pre-wrap break-words">{message.content}</div>
-          {message.costMetadata != null && (
-            <div className="mt-1.5 text-right text-xs text-content-muted">
-              ~${message.costMetadata.estimatedCost.toFixed(4)}
-              {message.costMetadata.isEstimate ? ' (est)' : ''}
-            </div>
+        </div>
+
+        {/* API call info bar */}
+        <div className="mt-1 flex items-center gap-2 text-[10px] text-content-disabled">
+          {modelName != null && (
+            <span>{modelName}</span>
+          )}
+          {cost != null && (
+            <>
+              {cost.inputTokens > 0 && (
+                <span>{cost.inputTokens.toLocaleString()} in</span>
+              )}
+              {cost.outputTokens > 0 && (
+                <span>{cost.outputTokens.toLocaleString()} out</span>
+              )}
+              <span>
+                ~${cost.estimatedCost.toFixed(4)}
+                {cost.isEstimate ? ' est' : ''}
+              </span>
+            </>
+          )}
+          {cost == null && modelName != null && (
+            <span>via API</span>
           )}
         </div>
       </div>
