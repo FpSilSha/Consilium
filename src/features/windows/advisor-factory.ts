@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import type { AdvisorWindow, ApiKey, Persona } from '@/types'
 import { getAccentColor, BUILT_IN_THEMES } from '@/features/themes'
 
-export const DEFAULT_MODEL_ID = 'claude-sonnet-4-5-20241022' as const
+export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6' as const
 
 /**
  * Creates a new AdvisorWindow with sensible defaults.

@@ -91,6 +91,26 @@ async function runStream(
 
   if (!response.ok) {
     const statusCode = response.status
+    let detail = ''
+
+    // Extract error detail from response body for diagnosable errors
+    if (statusCode === 400 || statusCode === 404 || statusCode === 422) {
+      try {
+        const body: unknown = await response.json()
+        if (typeof body === 'object' && body !== null) {
+          const err = (body as Record<string, unknown>)['error']
+          if (typeof err === 'object' && err !== null) {
+            const msg = (err as Record<string, unknown>)['message']
+            if (typeof msg === 'string') detail = `: ${msg}`
+          } else if (typeof err === 'string') {
+            detail = `: ${err}`
+          }
+        }
+      } catch {
+        // Response body not JSON — proceed with generic message
+      }
+    }
+
     const sanitizedMessage = statusCode === 401
       ? 'Authentication failed — check your API key'
       : statusCode === 429
@@ -99,7 +119,7 @@ async function runStream(
           ? 'Access forbidden — check API key permissions'
           : statusCode >= 500
             ? `Provider server error (${statusCode})`
-            : `API error (${statusCode})`
+            : `API error (${statusCode})${detail}`
     callbacks.onError(sanitizedMessage)
     return
   }
