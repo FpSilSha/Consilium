@@ -8,7 +8,7 @@ const SCROLL_PIN_THRESHOLD = 80
 
 /**
  * Single interleaved chat thread for the unified context bus.
- * Replaces the per-window ChatView / MosaicLayout approach.
+ * Replaces the per-window ChatView approach with a single interleaved thread.
  *
  * All advisor and user messages render in one scrollable column
  * with color-coded persona attribution. Auto-scrolls only when

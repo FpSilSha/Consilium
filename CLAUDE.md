@@ -22,7 +22,7 @@ This file provides guidance to Claude Code when working with code in this reposi
 - **Styling**: Tailwind CSS
 - **Desktop**: Electron (primary), Docker (secondary)
 - **Streaming**: EventSource / SSE + AbortController
-- **Tiling**: react-mosaic or equivalent
+- **Layout**: Three-column dashboard (sidebar, unified chat, advisor panel)
 - **Tokenizer**: tiktoken (OpenAI) + per-provider libs
 
 ## Architecture — 5-Phase Build
