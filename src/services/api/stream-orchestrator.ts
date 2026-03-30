@@ -17,10 +17,13 @@ const adapters: Readonly<Record<KnownProvider, ProviderAdapter>> = {
 
 export function getAdapter(provider: Provider): ProviderAdapter {
   if (provider === 'custom') {
-    // Custom providers use OpenAI-compatible API
     return openaiAdapter
   }
-  return adapters[provider]
+  const adapter = adapters[provider]
+  if (adapter == null) {
+    throw new Error(`Unsupported provider: ${provider}`)
+  }
+  return adapter
 }
 
 export interface StreamCallbacks {
