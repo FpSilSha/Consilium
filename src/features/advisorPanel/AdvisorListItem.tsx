@@ -1,10 +1,20 @@
 import { type ReactNode, useState, useCallback } from 'react'
-import type { AdvisorWindow } from '@/types'
+import type { AdvisorWindow, Provider } from '@/types'
 import { useStore } from '@/store'
 import { getModelById } from '@/features/modelSelector/model-registry'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
 import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
 import { performPersonaSwitch } from '@/features/compaction'
+
+const PROVIDERS: readonly { readonly value: Provider; readonly label: string }[] = [
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'google', label: 'Google' },
+  { value: 'xai', label: 'xAI' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'openrouter', label: 'OpenRouter' },
+  { value: 'custom', label: 'Custom' },
+]
 
 interface AdvisorListItemProps {
   readonly advisor: AdvisorWindow
@@ -14,19 +24,44 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   const updateWindow = useStore((s) => s.updateWindow)
   const removeWindow = useStore((s) => s.removeWindow)
   const personas = useStore((s) => s.personas)
+  const keys = useStore((s) => s.keys)
   const orModels = useStore((s) => s.catalogModels['openrouter']) ?? []
   const messageCount = useStore((s) => s.messages.length)
 
   const [editing, setEditing] = useState(false)
+  const [selectedProvider, setSelectedProvider] = useState<Provider>(advisor.provider)
   const [pendingPersonaId, setPendingPersonaId] = useState<string | null>(null)
   const [isSwitching, setIsSwitching] = useState(false)
 
   const modelName = getModelById(advisor.model, orModels)?.name ?? advisor.model
-  const models = useFilteredModels(advisor.provider)
+  const models = useFilteredModels(selectedProvider)
 
   const pendingPersona = pendingPersonaId !== null
     ? personas.find((p) => p.id === pendingPersonaId)
     : undefined
+
+  const handleProviderChange = useCallback((newProvider: Provider) => {
+    setSelectedProvider(newProvider)
+
+    // Find a key for this provider
+    const key = keys.find((k) => k.provider === newProvider)
+
+    // Pick first available model for the new provider
+    const state = useStore.getState()
+    const catalog = state.catalogModels[newProvider] ?? []
+    const allowed = state.allowedModels[newProvider] ?? []
+    const available = allowed.length > 0
+      ? catalog.filter((m) => allowed.includes(m.id))
+      : catalog
+
+    const firstModel = available[0]?.id ?? ''
+
+    updateWindow(advisor.id, {
+      provider: newProvider,
+      keyId: key?.id ?? '',
+      model: firstModel,
+    })
+  }, [advisor.id, keys, updateWindow])
 
   const handleModelChange = useCallback((modelId: string) => {
     updateWindow(advisor.id, { model: modelId })
@@ -35,11 +70,9 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   const handlePersonaSelect = useCallback((personaId: string) => {
     if (personaId === advisor.personaId) return
 
-    // If there are messages, show confirmation — switching will compact context
     if (messageCount > 0) {
       setPendingPersonaId(personaId)
     } else {
-      // No messages yet — safe to switch directly
       const persona = personas.find((p) => p.id === personaId)
       if (persona != null) {
         updateWindow(advisor.id, { personaId: persona.id, personaLabel: persona.name })
@@ -53,7 +86,6 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
     try {
       await performPersonaSwitch(advisor.id, pendingPersona)
     } catch {
-      // Fallback: just update the persona without compaction
       updateWindow(advisor.id, {
         personaId: pendingPersona.id,
         personaLabel: pendingPersona.name,
@@ -71,7 +103,7 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   if (editing) {
     return (
       <div className="rounded-lg border border-edge-subtle bg-surface-base px-3 py-2.5">
-        {/* Persona switch confirmation warning */}
+        {/* Persona switch confirmation */}
         {pendingPersona != null && !isSwitching && (
           <div className="mb-2 rounded-md border border-accent-red/30 bg-accent-red/10 px-2.5 py-2">
             <p className="text-xs text-content-primary">
@@ -97,7 +129,6 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
           </div>
         )}
 
-        {/* Switching in progress */}
         {isSwitching && (
           <div className="mb-2 flex items-center gap-2 rounded-md border border-accent-blue/30 bg-accent-blue/10 px-2.5 py-2">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-blue" />
@@ -119,6 +150,21 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
         >
           {personas.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+
+        {/* Provider select */}
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-disabled">
+          Provider
+        </label>
+        <select
+          value={selectedProvider}
+          onChange={(e) => handleProviderChange(e.target.value as Provider)}
+          disabled={isSwitching}
+          className="mb-2 w-full rounded-md border border-edge-subtle bg-surface-panel px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus disabled:opacity-50"
+        >
+          {PROVIDERS.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
           ))}
         </select>
 
@@ -157,18 +203,16 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
 
   return (
     <div className="group flex items-center gap-2.5 rounded-lg px-3 py-2 transition-colors hover:bg-surface-hover">
-      {/* Color dot */}
       <div
         className={`h-3 w-3 shrink-0 rounded-full ${advisor.isStreaming ? 'animate-pulse' : ''}`}
         style={{ backgroundColor: advisor.accentColor }}
       />
 
-      {/* Info — click to edit */}
       <button
-        onClick={() => setEditing(true)}
+        onClick={() => { setEditing(true); setSelectedProvider(advisor.provider) }}
         disabled={advisor.isStreaming}
         className="min-w-0 flex-1 text-left disabled:cursor-not-allowed"
-        title="Click to edit persona and model"
+        title="Click to edit persona, provider, and model"
       >
         <div className="truncate text-sm font-medium text-content-primary">
           {advisor.personaLabel}
@@ -183,7 +227,6 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
         )}
       </button>
 
-      {/* Status badges */}
       <div className="flex shrink-0 items-center gap-1">
         {advisor.isStreaming && (
           <span className="text-xs text-accent-green">typing</span>
@@ -193,7 +236,6 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
         )}
       </div>
 
-      {/* Remove button */}
       <button
         onClick={() => removeWindow(advisor.id)}
         className="shrink-0 rounded p-0.5 text-xs text-content-disabled opacity-0 transition-opacity hover:text-accent-red group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
