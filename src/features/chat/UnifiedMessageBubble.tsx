@@ -10,7 +10,7 @@ interface UnifiedMessageBubbleProps {
 export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): ReactNode {
   const isUser = message.role === 'user'
 
-  const accentColor = useStore((s) => s.windows[message.windowId]?.accentColor) ?? '#9BA8B5'
+  const accentColor = useStore((s) => s.windows[message.windowId]?.accentColor) ?? '#4A90D9'
   const model = useStore((s) => s.windows[message.windowId]?.model)
   const orModels = useStore((s) => s.catalogModels['openrouter']) ?? []
 
@@ -30,6 +30,10 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
 
   const cost = message.costMetadata
 
+  // Strip identity header prefix that LLMs sometimes echo back
+  // e.g. "[Security Engineer]: Okay." → "Okay."
+  const displayContent = stripIdentityHeader(message.content, message.personaLabel)
+
   return (
     <div className="flex justify-start gap-3 px-4 py-2">
       <div
@@ -47,7 +51,7 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
 
         {/* Message body */}
         <div className="rounded-lg bg-surface-panel px-3 py-2.5 text-sm text-content-primary">
-          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          <div className="whitespace-pre-wrap break-words">{displayContent}</div>
         </div>
 
         {/* API call info bar */}
@@ -76,4 +80,22 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
       </div>
     </div>
   )
+}
+
+/**
+ * Strips identity header prefix that LLMs sometimes echo back.
+ * e.g. "[Security Engineer]: Okay." → "Okay."
+ * Also handles "[You]: ..." for user messages echoed by agents.
+ */
+function stripIdentityHeader(content: string, personaLabel: string): string {
+  const prefix = `[${personaLabel}]: `
+  if (content.startsWith(prefix)) {
+    return content.slice(prefix.length)
+  }
+  // Generic pattern: [AnyLabel]: at the start of content
+  const match = content.match(/^\[[\w\s'-]+\]:\s*/)
+  if (match != null) {
+    return content.slice(match[0].length)
+  }
+  return content
 }
