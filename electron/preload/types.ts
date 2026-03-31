@@ -15,4 +15,6 @@ export interface ConsiliumAPI {
   keysLoad(): Promise<readonly StoredKey[]>
   keysSave(providerId: string, rawKey: string, metadata?: { provider?: string; baseUrl?: string }): Promise<void>
   keysDelete(providerId: string): Promise<void>
+  catalogPrefsLoad(): Promise<unknown>
+  catalogPrefsSave(data: unknown): Promise<void>
 }

@@ -1,7 +1,8 @@
 import { type ReactNode, useState, useCallback } from 'react'
 import type { AdvisorWindow } from '@/types'
 import { useStore } from '@/store'
-import { getModelById, getModelsForProvider } from '@/features/modelSelector/model-registry'
+import { getModelById } from '@/features/modelSelector/model-registry'
+import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
 import { performPersonaSwitch } from '@/features/compaction'
 
 interface AdvisorListItemProps {
@@ -20,9 +21,7 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   const [isSwitching, setIsSwitching] = useState(false)
 
   const modelName = getModelById(advisor.model, openRouterModels)?.name ?? advisor.model
-  const models = advisor.provider === 'openrouter'
-    ? openRouterModels
-    : getModelsForProvider(advisor.provider)
+  const models = useFilteredModels(advisor.provider)
 
   const pendingPersona = pendingPersonaId !== null
     ? personas.find((p) => p.id === pendingPersonaId)

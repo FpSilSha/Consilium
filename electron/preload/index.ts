@@ -16,6 +16,9 @@ const api: ConsiliumAPI = {
   keysLoad: () => ipcRenderer.invoke('keys:load'),
   keysSave: (providerId, rawKey, metadata) => ipcRenderer.invoke('keys:save', providerId, rawKey, metadata),
   keysDelete: (providerId) => ipcRenderer.invoke('keys:delete', providerId),
+
+  catalogPrefsLoad: () => ipcRenderer.invoke('catalog-prefs:load'),
+  catalogPrefsSave: (data) => ipcRenderer.invoke('catalog-prefs:save', data),
 }
 
 contextBridge.exposeInMainWorld('consiliumAPI', api)

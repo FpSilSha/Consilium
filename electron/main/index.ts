@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join, resolve, normalize, sep } from 'path'
+import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { loadEnvFile, writeEnvFile } from './env-loader'
 import { loadEncryptedKeys, saveEncryptedKey, deleteEncryptedKey, isEncryptionAvailable, isValidProviderId } from './key-store'
 
@@ -109,6 +110,30 @@ function registerIpcHandlers(): void {
       throw new Error('Invalid provider ID format')
     }
     deleteEncryptedKey(providerId)
+  })
+
+  ipcMain.handle('catalog-prefs:load', () => {
+    const filePath = join(app.getPath('userData'), 'catalog-preferences.json')
+    try {
+      const content = readFileSync(filePath, 'utf-8')
+      return JSON.parse(content) as unknown
+    } catch {
+      return null // File doesn't exist yet — caller uses defaults
+    }
+  })
+
+  ipcMain.handle('catalog-prefs:save', (_event, data: unknown) => {
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+      throw new Error('Invalid catalog preferences format')
+    }
+    const serialized = JSON.stringify(data, null, 2)
+    if (serialized.length > 512_000) {
+      throw new Error('Catalog preferences payload exceeds 512KB limit')
+    }
+    const dirPath = app.getPath('userData')
+    mkdirSync(dirPath, { recursive: true })
+    const filePath = join(dirPath, 'catalog-preferences.json')
+    writeFileSync(filePath, serialized, 'utf-8')
   })
 
   ipcMain.handle('open-folder', async (_event, path: unknown) => {
