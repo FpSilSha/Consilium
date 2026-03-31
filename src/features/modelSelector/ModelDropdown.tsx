@@ -13,7 +13,7 @@ interface ModelDropdownProps {
 }
 
 export function ModelDropdown({ provider, keyId, selectedModel, onSelect }: ModelDropdownProps): ReactNode {
-  const openRouterModels = useStore((s) => s.openRouterModels)
+  const openRouterModels = useStore((s) => s.catalogModels['openrouter']) ?? []
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {

@@ -12,12 +12,10 @@ import { getModelsForProvider } from '@/features/modelSelector/model-registry'
 export function useFilteredModels(provider: Provider): readonly ModelInfo[] {
   const catalogModels = useStore((s) => s.catalogModels[provider]) ?? []
   const allowedIds = useStore((s) => s.allowedModels[provider]) ?? []
-  const openRouterModels = useStore((s) => s.openRouterModels)
-
   // Use catalog if available, else static fallback
   const allModels = catalogModels.length > 0
     ? catalogModels
-    : getModelsForProvider(provider, openRouterModels)
+    : getModelsForProvider(provider)
 
   // Empty allowed list = all models permitted
   if (allowedIds.length === 0) return allModels

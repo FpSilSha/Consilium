@@ -12,10 +12,10 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
 
   const accentColor = useStore((s) => s.windows[message.windowId]?.accentColor) ?? '#9BA8B5'
   const model = useStore((s) => s.windows[message.windowId]?.model)
-  const openRouterModels = useStore((s) => s.openRouterModels)
+  const orModels = useStore((s) => s.catalogModels['openrouter']) ?? []
 
   const modelName = model != null
-    ? (getModelById(model, openRouterModels)?.name ?? model)
+    ? (getModelById(model, orModels)?.name ?? model)
     : undefined
 
   if (isUser) {

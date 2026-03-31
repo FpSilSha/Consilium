@@ -13,14 +13,14 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   const updateWindow = useStore((s) => s.updateWindow)
   const removeWindow = useStore((s) => s.removeWindow)
   const personas = useStore((s) => s.personas)
-  const openRouterModels = useStore((s) => s.openRouterModels)
+  const orModels = useStore((s) => s.catalogModels['openrouter']) ?? []
   const messageCount = useStore((s) => s.messages.length)
 
   const [editing, setEditing] = useState(false)
   const [pendingPersonaId, setPendingPersonaId] = useState<string | null>(null)
   const [isSwitching, setIsSwitching] = useState(false)
 
-  const modelName = getModelById(advisor.model, openRouterModels)?.name ?? advisor.model
+  const modelName = getModelById(advisor.model, orModels)?.name ?? advisor.model
   const models = useFilteredModels(advisor.provider)
 
   const pendingPersona = pendingPersonaId !== null

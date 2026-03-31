@@ -32,7 +32,7 @@ function parsePrice(s: string | undefined): number {
  * Results are cached in the Zustand store. Concurrent calls are deduplicated.
  */
 export async function fetchOpenRouterModels(apiKey: string): Promise<readonly ModelInfo[]> {
-  const cached = useStore.getState().openRouterModels
+  const cached = useStore.getState().catalogModels['openrouter'] ?? []
   if (cached.length > 0) return cached
   if (pendingFetch != null) return pendingFetch
 
@@ -64,7 +64,7 @@ async function doFetch(apiKey: string): Promise<readonly ModelInfo[]> {
       }))
       .sort((a, b) => a.name.localeCompare(b.name))
 
-    useStore.getState().setOpenRouterModels(models)
+    useStore.getState().setCatalogModels('openrouter', models)
     return models
   } catch {
     return []

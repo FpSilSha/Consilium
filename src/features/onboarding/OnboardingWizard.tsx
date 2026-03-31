@@ -36,7 +36,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null)
 
   const keys = useStore((s) => s.keys)
-  const openRouterModels = useStore((s) => s.openRouterModels)
+  const openRouterModels = useStore((s) => s.catalogModels['openrouter']) ?? []
   const addKey = useStore((s) => s.addKey)
   const addWindow = useStore((s) => s.addWindow)
   const addToQueue = useStore((s) => s.addToQueue)

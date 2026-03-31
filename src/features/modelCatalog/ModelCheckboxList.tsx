@@ -14,14 +14,12 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
   const setAllowedModels = useStore((s) => s.setAllowedModels)
   const catalogStatus = useStore((s) => s.catalogStatus[provider])
   const priceOverrides = useStore((s) => s.priceOverrides)
-  const openRouterModels = useStore((s) => s.openRouterModels)
-
   const [search, setSearch] = useState('')
 
   // Use catalog if available, else static fallback
   const allModels = catalogModels.length > 0
     ? catalogModels
-    : getModelsForProvider(provider, openRouterModels)
+    : getModelsForProvider(provider)
 
   const filteredModels = useMemo(() => {
     if (search.trim() === '') return allModels
