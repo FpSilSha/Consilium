@@ -1,6 +1,7 @@
 import type { AdvisorWindow } from '@/types'
 import type { SessionFile, SessionWindow } from './session-types'
 import { useStore } from '@/store'
+import { detectModelMismatches } from './model-mismatch'
 
 /**
  * Restores app state from a session file.
@@ -34,6 +35,13 @@ export function restoreSession(session: SessionFile): void {
   for (const sw of session.windows) {
     const window = sessionWindowToAdvisor(sw, state)
     state.addWindow(window)
+  }
+
+  // Check for model mismatches against allowed models
+  const freshState = useStore.getState()
+  const mismatches = detectModelMismatches(freshState.windows, freshState.allowedModels)
+  if (mismatches.length > 0) {
+    freshState.setPendingMismatches(mismatches)
   }
 }
 

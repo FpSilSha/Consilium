@@ -4,21 +4,17 @@ import { UnifiedChatThread } from '@/features/chat/UnifiedChatThread'
 import { SharedInputBar } from '@/features/input'
 import { AdvisorPanel } from '@/features/advisorPanel'
 import { ConfigModal } from '@/features/modelCatalog/ConfigModal'
+import { ModelMismatchModal } from '@/features/sessions/ModelMismatchModal'
 import { useStore } from '@/store'
 import { useStartupCatalogFetch } from './useStartupCatalogFetch'
 
-/**
- * Three-column dashboard layout.
- *
- * Column 1 (20%): Navigation sidebar — models & keys, sessions
- * Column 2 (flex): Unified context window — chat + input
- * Column 3 (25%): Advisor panel — turn controls + advisor list
- */
 export function AppLayout(): ReactNode {
   useStartupCatalogFetch()
 
   const configModalOpen = useStore((s) => s.configModalOpen)
   const setConfigModalOpen = useStore((s) => s.setConfigModalOpen)
+  const pendingMismatches = useStore((s) => s.pendingMismatches)
+  const setPendingMismatches = useStore((s) => s.setPendingMismatches)
 
   return (
     <div className="flex h-screen bg-surface-base">
@@ -43,6 +39,14 @@ export function AppLayout(): ReactNode {
       {/* Config Modal */}
       {configModalOpen && (
         <ConfigModal onClose={() => setConfigModalOpen(false)} />
+      )}
+
+      {/* Model Mismatch Modal (blocks until resolved) */}
+      {pendingMismatches.length > 0 && (
+        <ModelMismatchModal
+          mismatches={pendingMismatches}
+          onResolved={() => setPendingMismatches([])}
+        />
       )}
     </div>
   )
