@@ -3,6 +3,7 @@ import type { AdvisorWindow } from '@/types'
 import { useStore } from '@/store'
 import { getModelById } from '@/features/modelSelector/model-registry'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
+import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
 import { performPersonaSwitch } from '@/features/compaction'
 
 interface AdvisorListItemProps {
@@ -126,16 +127,12 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
           Model
         </label>
         {models.length > 0 ? (
-          <select
+          <SearchableModelSelect
+            models={models}
             value={advisor.model}
-            onChange={(e) => handleModelChange(e.target.value)}
+            onChange={handleModelChange}
             disabled={isSwitching}
-            className="mb-2 w-full rounded-md border border-edge-subtle bg-surface-panel px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus disabled:opacity-50"
-          >
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>{m.name}</option>
-            ))}
-          </select>
+          />
         ) : (
           <input
             type="text"
