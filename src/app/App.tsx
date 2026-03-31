@@ -1,17 +1,23 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useState, useRef } from 'react'
 import { OnboardingWizard } from '@/features/onboarding'
 import { useStore } from '@/store'
 import { AppLayout } from './AppLayout'
 
 export function App(): ReactNode {
   const keysLoaded = useStore((s) => s.keysLoaded)
-  const keys = useStore((s) => s.keys)
+  const keyCount = useStore((s) => s.keys.length)
   const [onboardingComplete, setOnboardingComplete] = useState(false)
 
-  // Set to true to force-show onboarding wizard for testing
+  // Track if the user has ever had keys — once they've entered the dashboard,
+  // removing all keys should NOT kick them back to onboarding
+  const hasEverHadKeys = useRef(false)
+  if (keyCount > 0) hasEverHadKeys.current = true
+
   const FORCE_ONBOARDING = false
 
-  const showOnboarding = FORCE_ONBOARDING || (keysLoaded && keys.length === 0 && !onboardingComplete)
+  const showOnboarding = FORCE_ONBOARDING || (
+    keysLoaded && keyCount === 0 && !onboardingComplete && !hasEverHadKeys.current
+  )
 
   if (showOnboarding) {
     return <OnboardingWizard onComplete={() => setOnboardingComplete(true)} />
