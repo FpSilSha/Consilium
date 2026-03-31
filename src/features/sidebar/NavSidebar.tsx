@@ -3,15 +3,12 @@ import { useStore } from '@/store'
 import { NavButton } from './NavButton'
 import { SessionHistoryList } from './SessionHistoryList'
 import { BudgetBar } from '@/features/budget'
-import { KeyManager } from '@/features/keys'
-
-type SidebarPanel = 'none' | 'keys'
 
 export function NavSidebar(): ReactNode {
   const windowCount = useStore((s) => s.windowOrder.length)
   const messageCount = useStore((s) => s.messages.length)
+  const setConfigModalOpen = useStore((s) => s.setConfigModalOpen)
 
-  const [activePanel, setActivePanel] = useState<SidebarPanel>('none')
   const [confirmNewSession, setConfirmNewSession] = useState(false)
 
   const handleNewConsilium = useCallback(() => {
@@ -40,10 +37,9 @@ export function NavSidebar(): ReactNode {
       {/* Navigation */}
       <nav className="flex flex-col gap-1 px-2 py-3">
         <NavButton
-          icon={<KeyIcon />}
-          label="Keys"
-          isActive={activePanel === 'keys'}
-          onClick={() => setActivePanel(activePanel === 'keys' ? 'none' : 'keys')}
+          icon={<SettingsIcon />}
+          label="Models & Keys"
+          onClick={() => setConfigModalOpen(true)}
         />
       </nav>
 
@@ -66,11 +62,6 @@ export function NavSidebar(): ReactNode {
           <SessionHistoryList />
         </div>
       </div>
-
-      {/* Key Manager modal */}
-      {activePanel === 'keys' && (
-        <KeyManager onClose={() => setActivePanel('none')} />
-      )}
 
       {/* New session confirmation */}
       {confirmNewSession && (
@@ -111,15 +102,10 @@ export function NavSidebar(): ReactNode {
   )
 }
 
-/** Simple key SVG icon — avoids emoji in source */
-function KeyIcon(): ReactNode {
+function SettingsIcon(): ReactNode {
   return (
     <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
-      <path
-        fillRule="evenodd"
-        d="M8 7a5 5 0 1 1 3.61 4.804l-1.903 1.903A1 1 0 0 1 9 14H8v1a1 1 0 0 1-1 1H6v1a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2a1 1 0 0 1 .293-.707L8.196 8.39A5.002 5.002 0 0 1 8 7Zm5-3a.75.75 0 0 0 0 1.5A1.5 1.5 0 0 1 14.5 7 .75.75 0 0 0 16 7a3 3 0 0 0-3-3Z"
-        clipRule="evenodd"
-      />
+      <path fillRule="evenodd" d="M7.84 1.804A1 1 0 0 1 8.82 1h2.36a1 1 0 0 1 .98.804l.331 1.652a6.993 6.993 0 0 1 1.929 1.115l1.598-.54a1 1 0 0 1 1.186.447l1.18 2.044a1 1 0 0 1-.205 1.251l-1.267 1.113a7.047 7.047 0 0 1 0 2.228l1.267 1.113a1 1 0 0 1 .206 1.25l-1.18 2.045a1 1 0 0 1-1.187.447l-1.598-.54a6.993 6.993 0 0 1-1.929 1.115l-.33 1.652a1 1 0 0 1-.98.804H8.82a1 1 0 0 1-.98-.804l-.331-1.652a6.993 6.993 0 0 1-1.929-1.115l-1.598.54a1 1 0 0 1-1.186-.447l-1.18-2.044a1 1 0 0 1 .205-1.251l1.267-1.114a7.05 7.05 0 0 1 0-2.227L1.821 7.773a1 1 0 0 1-.206-1.25l1.18-2.045a1 1 0 0 1 1.187-.447l1.598.54A6.992 6.992 0 0 1 7.51 3.456l.33-1.652ZM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clipRule="evenodd" />
     </svg>
   )
 }
