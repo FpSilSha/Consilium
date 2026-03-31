@@ -88,14 +88,17 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
  * Also handles "[You]: ..." for user messages echoed by agents.
  */
 function stripIdentityHeader(content: string, personaLabel: string): string {
+  // Trim leading whitespace first, then check for prefix
+  const trimmed = content.trimStart()
+
   const prefix = `[${personaLabel}]: `
-  if (content.startsWith(prefix)) {
-    return content.slice(prefix.length)
+  if (trimmed.startsWith(prefix)) {
+    return trimmed.slice(prefix.length)
   }
-  // Generic pattern: [AnyLabel]: at the start of content
-  const match = content.match(/^\[[\w\s'-]+\]:\s*/)
+  // Generic pattern: [AnyLabel]: at the start
+  const match = trimmed.match(/^\[[\w\s'-]+\]:\s*/)
   if (match != null) {
-    return content.slice(match[0].length)
+    return trimmed.slice(match[0].length)
   }
   return content
 }
