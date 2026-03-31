@@ -14,9 +14,9 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
   const setAllowedModels = useStore((s) => s.setAllowedModels)
   const catalogStatus = useStore((s) => s.catalogStatus[provider])
   const priceOverrides = useStore((s) => s.priceOverrides)
+
   const [search, setSearch] = useState('')
 
-  // Use catalog if available, else static fallback
   const allModels = catalogModels.length > 0
     ? catalogModels
     : getModelsForProvider(provider)
@@ -29,12 +29,13 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
     )
   }, [allModels, search])
 
-  // Empty allowedIds = all selected
-  const isAllSelected = allowedIds.length === 0
+  // Empty allowedIds = no curation, all models available, checkboxes unchecked
+  const isCurated = allowedIds.length > 0
 
   const isModelChecked = useCallback((modelId: string) => {
-    return isAllSelected || allowedIds.includes(modelId)
-  }, [isAllSelected, allowedIds])
+    if (!isCurated) return false // uncurated = all unchecked visually
+    return allowedIds.includes(modelId)
+  }, [isCurated, allowedIds])
 
   const persistAllowed = useCallback((newAllowed: readonly string[]) => {
     setAllowedModels(provider, newAllowed)
@@ -45,21 +46,23 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
 
   const toggleModel = useCallback((modelId: string) => {
     const currentAllowed = useStore.getState().allowedModels[provider] ?? []
-    const currentlyAll = currentAllowed.length === 0
+    const currentlyCurated = currentAllowed.length > 0
 
     let newAllowed: readonly string[]
-    if (currentlyAll) {
-      newAllowed = allModels.filter((m) => m.id !== modelId).map((m) => m.id)
+    if (!currentlyCurated) {
+      // First check starts curation with just this model
+      newAllowed = [modelId]
     } else if (currentAllowed.includes(modelId)) {
+      // Unchecking — if empty, revert to uncurated (all available)
       newAllowed = currentAllowed.filter((id) => id !== modelId)
     } else {
       newAllowed = [...currentAllowed, modelId]
     }
 
     persistAllowed(newAllowed)
-  }, [allModels, provider, persistAllowed])
+  }, [provider, persistAllowed])
 
-  const selectAll = useCallback(() => {
+  const clearCuration = useCallback(() => {
     persistAllowed([])
   }, [persistAllowed])
 
@@ -75,21 +78,36 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
 
   return (
     <div>
-      {/* Search + bulk actions */}
-      <div className="mb-2 flex items-center gap-2">
+      {/* Curation status banner */}
+      <div className="mb-2 flex items-center justify-between rounded-md bg-surface-base px-3 py-2">
+        {isCurated ? (
+          <>
+            <span className="text-xs text-content-muted">
+              {allowedIds.length} model{allowedIds.length !== 1 ? 's' : ''} selected — only these will appear in advisor dropdowns
+            </span>
+            <button
+              onClick={clearCuration}
+              className="text-xs text-accent-blue transition-colors hover:text-accent-blue/80"
+            >
+              Clear selection
+            </button>
+          </>
+        ) : (
+          <span className="text-xs text-content-disabled">
+            All models available. Check models below to curate a list.
+          </span>
+        )}
+      </div>
+
+      {/* Search */}
+      <div className="mb-2">
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search models..."
-          className="flex-1 rounded-md border border-edge-subtle bg-surface-base px-3 py-1.5 text-xs text-content-primary placeholder-content-disabled outline-none focus:border-edge-focus"
+          className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1.5 text-xs text-content-primary placeholder-content-disabled outline-none focus:border-edge-focus"
         />
-        <button
-          onClick={selectAll}
-          className="rounded-md bg-surface-base px-2 py-1 text-[10px] text-content-muted transition-colors hover:bg-surface-hover"
-        >
-          Select All
-        </button>
       </div>
 
       {/* Table header */}
@@ -167,7 +185,6 @@ function ModelRow({ model, checked, onToggle, priceOverride }: {
   )
 }
 
-/** Format price per token as price per 1M tokens for readability */
 function formatTokenPrice(pricePerToken: number): string {
   const perMillion = pricePerToken * 1_000_000
   if (perMillion >= 100) return perMillion.toFixed(0)
