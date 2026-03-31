@@ -2,10 +2,11 @@ import { type ReactNode, useState, useCallback, useRef, useEffect } from 'react'
 import type { Provider } from '@/types'
 import { useStore } from '@/store'
 import { createApiKeyEntry } from '@/features/keys/key-storage'
-import { storeRawKey, removeRawKey } from '@/features/keys/key-vault'
+import { storeRawKey, removeRawKey, getRawKey } from '@/features/keys/key-vault'
 import { detectProvider } from '@/features/keys/key-detection'
 import { validateKey } from '@/features/keys/key-validation'
 import type { KnownProvider } from '@/features/keys/key-detection'
+import { fetchOpenRouterCatalog, fetchOpenAICatalog, fetchGoogleCatalog, fetchXAICatalog, fetchDeepSeekCatalog } from '@/services/api/catalog'
 import { ModelCheckboxList } from './ModelCheckboxList'
 
 interface ProviderTabProps {
@@ -192,9 +193,97 @@ export function ProviderTab({ provider }: ProviderTabProps): ReactNode {
 
       {/* Model selection */}
       <div>
-        <h3 className="mb-2 text-xs font-medium text-content-muted">Available Models</h3>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="text-xs font-medium text-content-muted">Available Models</h3>
+          <RefreshButton provider={provider} />
+        </div>
         <ModelCheckboxList provider={provider} />
       </div>
+    </div>
+  )
+}
+
+const DIRECT_FETCHERS: Partial<Record<Provider, (apiKey: string, signal?: AbortSignal) => Promise<import('@/services/api/catalog').CatalogFetchResult>>> = {
+  openai: fetchOpenAICatalog,
+  google: fetchGoogleCatalog,
+  xai: fetchXAICatalog,
+  deepseek: fetchDeepSeekCatalog,
+}
+
+function RefreshButton({ provider }: { readonly provider: Provider }): ReactNode {
+  const catalogStatus = useStore((s) => s.catalogStatus[provider])
+  const setCatalogModels = useStore((s) => s.setCatalogModels)
+  const setCatalogStatus = useStore((s) => s.setCatalogStatus)
+  const keys = useStore((s) => s.keys)
+
+  const [refreshError, setRefreshError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true)
+    setRefreshError(null)
+    setCatalogStatus(provider, 'loading')
+
+    try {
+      let result: import('@/services/api/catalog').CatalogFetchResult
+
+      if (provider === 'openrouter') {
+        result = await fetchOpenRouterCatalog()
+      } else {
+        const fetcher = DIRECT_FETCHERS[provider]
+        if (fetcher == null) {
+          setRefreshError('No fetcher available for this provider')
+          setCatalogStatus(provider, 'error')
+          setRefreshing(false)
+          return
+        }
+
+        const key = keys.find((k) => k.provider === provider)
+        if (key == null) {
+          setRefreshError('Add an API key first to fetch models')
+          setCatalogStatus(provider, 'error')
+          setRefreshing(false)
+          return
+        }
+
+        const rawKey = getRawKey(key.id)
+        if (rawKey == null) {
+          setRefreshError('API key not accessible')
+          setCatalogStatus(provider, 'error')
+          setRefreshing(false)
+          return
+        }
+
+        result = await fetcher(rawKey)
+      }
+
+      if (result.error != null) {
+        setRefreshError(result.error)
+        setCatalogStatus(provider, 'error')
+      } else {
+        setCatalogModels(provider, result.models)
+        setCatalogStatus(provider, 'loaded')
+      }
+    } catch {
+      setRefreshError('Unexpected error during refresh')
+      setCatalogStatus(provider, 'error')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [provider, keys, setCatalogModels, setCatalogStatus])
+
+  return (
+    <div className="flex items-center gap-2">
+      {refreshError != null && (
+        <span className="text-[10px] text-error">{refreshError}</span>
+      )}
+      <button
+        onClick={handleRefresh}
+        disabled={refreshing || catalogStatus === 'loading'}
+        className="rounded-md bg-surface-base px-2 py-1 text-[10px] text-content-muted transition-colors hover:bg-surface-hover hover:text-content-primary disabled:opacity-50"
+      >
+        {refreshing ? 'Refreshing...' : 'Refresh List'}
+      </button>
     </div>
   )
 }
