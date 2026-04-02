@@ -6,6 +6,7 @@ import { handleUserMessage, startRun } from '@/features/turnManager'
 import { isUserTurn } from '@/features/turnManager'
 import { hasMentions, executeAgentExchange, repeatLastExchange, hasLastExchange } from '@/features/agentInteraction'
 import { AttachButton } from './AttachButton'
+import { CompileDocumentButton } from '@/features/chat/CompileDocumentButton'
 
 export function SharedInputBar(): ReactNode {
   const [input, setInput] = useState('')
@@ -66,14 +67,18 @@ export function SharedInputBar(): ReactNode {
 
   return (
     <div className="flex flex-col gap-2">
-      {showRepeat && hasLastExchange() && (
-        <button
-          onClick={handleRepeat}
-          className="self-start rounded-md bg-surface-hover px-2.5 py-1 text-xs text-content-muted transition-colors hover:bg-surface-active hover:text-content-primary"
-        >
-          Repeat Last Agent-to-Agent
-        </button>
-      )}
+      {/* Action buttons above input */}
+      <div className="flex items-center gap-2">
+        {showRepeat && hasLastExchange() && (
+          <button
+            onClick={handleRepeat}
+            className="rounded-md bg-surface-hover px-2.5 py-1 text-xs text-content-muted transition-colors hover:bg-surface-active hover:text-content-primary"
+          >
+            Repeat Last Agent-to-Agent
+          </button>
+        )}
+        <CompileDocumentButton />
+      </div>
 
       {/* Attachment previews */}
       {attachments.length > 0 && (

@@ -136,6 +136,27 @@ function registerIpcHandlers(): void {
     writeFileSync(filePath, serialized, 'utf-8')
   })
 
+  ipcMain.handle('dialog:save-file', async (_event, defaultName: unknown, content: unknown, filters: unknown) => {
+    if (mainWindow == null) return false
+    if (typeof defaultName !== 'string' || typeof content !== 'string') return false
+
+    const dialogFilters = Array.isArray(filters)
+      ? filters.filter((f): f is { name: string; extensions: string[] } =>
+          typeof f === 'object' && f != null && typeof f.name === 'string' && Array.isArray(f.extensions),
+        )
+      : [{ name: 'Markdown', extensions: ['md'] }, { name: 'All Files', extensions: ['*'] }]
+
+    const result = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultName,
+      filters: dialogFilters,
+    })
+
+    if (result.canceled || result.filePath == null) return false
+
+    writeFileSync(result.filePath, content, 'utf-8')
+    return true
+  })
+
   ipcMain.handle('dialog:open-file', async (_event, filters: unknown) => {
     if (mainWindow == null) return []
 

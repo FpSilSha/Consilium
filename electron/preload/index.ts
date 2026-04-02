@@ -20,6 +20,7 @@ const api: ConsiliumAPI = {
   catalogPrefsLoad: () => ipcRenderer.invoke('catalog-prefs:load'),
   catalogPrefsSave: (data) => ipcRenderer.invoke('catalog-prefs:save', data),
   openFileDialog: (filters) => ipcRenderer.invoke('dialog:open-file', filters),
+  saveFileDialog: (defaultName, content, filters) => ipcRenderer.invoke('dialog:save-file', defaultName, content, filters),
 }
 
 contextBridge.exposeInMainWorld('consiliumAPI', api)

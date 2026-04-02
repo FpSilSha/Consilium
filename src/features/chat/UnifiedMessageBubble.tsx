@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { type ReactNode, useState, useCallback } from 'react'
 import type { Message } from '@/types'
 import { useStore } from '@/store'
 import { getModelById } from '@/features/modelSelector/model-registry'
@@ -55,6 +55,76 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
   // e.g. "[Security Engineer]: Okay." → "Okay."
   const displayContent = stripIdentityHeader(message.content, message.personaLabel)
 
+  // Detect if message is "document-like" — long with markdown headings
+  const isDocumentLike = displayContent.length > 500 && /^#{1,3}\s/m.test(displayContent)
+
+  return (
+    <AssistantBubble
+      message={message}
+      displayContent={displayContent}
+      accentColor={accentColor}
+      modelName={modelName}
+      isDocumentLike={isDocumentLike}
+    />
+  )
+}
+
+function AssistantBubble({ message, displayContent, accentColor, modelName, isDocumentLike }: {
+  readonly message: Message
+  readonly displayContent: string
+  readonly accentColor: string
+  readonly modelName: string | undefined
+  readonly isDocumentLike: boolean
+}): ReactNode {
+  const [documentView, setDocumentView] = useState(false)
+  const cost = message.costMetadata
+
+  const handleExport = useCallback(async () => {
+    const api = (window as { consiliumAPI?: { saveFileDialog: (name: string, content: string) => Promise<boolean> } }).consiliumAPI
+    if (api == null) return
+    const filename = `${message.personaLabel.toLowerCase().replace(/\s+/g, '-')}-${new Date(message.timestamp).toISOString().slice(0, 10)}.md`
+    await api.saveFileDialog(filename, displayContent)
+  }, [message.personaLabel, message.timestamp, displayContent])
+
+  // Full-width document view
+  if (documentView) {
+    return (
+      <div className="px-4 py-2">
+        <div className="rounded-lg border border-edge-subtle bg-surface-panel">
+          {/* Document header */}
+          <div className="flex items-center justify-between border-b border-edge-subtle px-4 py-2">
+            <div className="flex items-center gap-2">
+              <div className="h-3 w-3 rounded-full" style={{ backgroundColor: accentColor }} />
+              <span className="text-xs font-semibold" style={{ color: accentColor }}>
+                {message.personaLabel}
+              </span>
+              <span className="text-[10px] text-content-disabled">Document</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExport}
+                className="text-[10px] text-content-disabled transition-colors hover:text-accent-blue"
+              >
+                Export .md
+              </button>
+              <button
+                onClick={() => setDocumentView(false)}
+                className="text-[10px] text-content-disabled transition-colors hover:text-content-muted"
+              >
+                Chat view
+              </button>
+            </div>
+          </div>
+
+          {/* Document body — full width */}
+          <div className="prose-sm px-6 py-4 text-sm text-content-primary">
+            <MarkdownContent content={displayContent} />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex justify-start gap-3 px-4 py-2">
       <div
@@ -77,7 +147,7 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
           </div>
         </div>
 
-        {/* API call info bar */}
+        {/* API call info bar + actions */}
         <div className="mt-1 flex items-center gap-2 text-[10px] text-content-disabled">
           {modelName != null && (
             <span>{modelName}</span>
@@ -98,6 +168,22 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
           )}
           {cost == null && message.role === 'assistant' && (
             <span className="text-content-disabled italic">unable to track cost</span>
+          )}
+          {/* Action buttons */}
+          <span className="text-content-disabled">·</span>
+          <button
+            onClick={handleExport}
+            className="transition-colors hover:text-accent-blue"
+          >
+            Export .md
+          </button>
+          {isDocumentLike && (
+            <button
+              onClick={() => setDocumentView(true)}
+              className="transition-colors hover:text-accent-blue"
+            >
+              View as Document
+            </button>
           )}
         </div>
       </div>
