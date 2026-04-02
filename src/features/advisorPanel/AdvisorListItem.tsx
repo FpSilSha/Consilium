@@ -180,14 +180,9 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
             disabled={isSwitching}
           />
         ) : (
-          <input
-            type="text"
-            value={advisor.model}
-            onChange={(e) => handleModelChange(e.target.value)}
-            placeholder="e.g. anthropic/claude-sonnet-4"
-            disabled={isSwitching}
-            className="mb-2 w-full rounded-md border border-edge-subtle bg-surface-panel px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus disabled:opacity-50"
-          />
+          <p className="mb-2 text-[10px] text-content-disabled">
+            No models available. Add models via Models & Keys in the sidebar.
+          </p>
         )}
 
         <button

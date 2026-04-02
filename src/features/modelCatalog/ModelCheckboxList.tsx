@@ -1,8 +1,10 @@
-import { type ReactNode, useState, useCallback, useMemo } from 'react'
+import { type ReactNode, useState, useCallback, useMemo, useRef } from 'react'
 import type { Provider, ModelInfo } from '@/types'
 import { useStore } from '@/store'
 import { getModelsForProvider } from '@/features/modelSelector/model-registry'
+import { getRawKey } from '@/features/keys/key-vault'
 import { saveCatalogPreferences } from './catalog-persistence'
+import { testModelId, testWillCost } from './model-validation'
 
 interface ModelCheckboxListProps {
   readonly provider: Provider
@@ -99,6 +101,9 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
         )}
       </div>
 
+      {/* Add custom model ID */}
+      <CustomModelInput provider={provider} onAdded={toggleModel} />
+
       {/* Search */}
       <div className="mb-2">
         <input
@@ -182,6 +187,125 @@ function ModelRow({ model, checked, onToggle, priceOverride }: {
         )}
       </span>
     </label>
+  )
+}
+
+function CustomModelInput({ provider, onAdded }: {
+  readonly provider: Provider
+  readonly onAdded: (modelId: string) => void
+}): ReactNode {
+  const keys = useStore((s) => s.keys)
+  const setCatalogModels = useStore((s) => s.setCatalogModels)
+  const catalogModels = useStore((s) => s.catalogModels[provider]) ?? []
+
+  const [customId, setCustomId] = useState('')
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState<string | null>(null)
+  const [showCostWarning, setShowCostWarning] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const willCost = testWillCost(provider)
+
+  const doTest = useCallback(async () => {
+    const trimmed = customId.trim()
+    if (trimmed === '') return
+
+    const key = keys.find((k) => k.provider === provider)
+    if (key == null) {
+      setTestResult('No API key for this provider')
+      return
+    }
+    const rawKey = getRawKey(key.id)
+    if (rawKey == null) {
+      setTestResult('Key not accessible')
+      return
+    }
+
+    // If it costs money, confirm first
+    if (willCost && !showCostWarning) {
+      setShowCostWarning(true)
+      return
+    }
+
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    setTesting(true)
+    setTestResult(null)
+    setShowCostWarning(false)
+
+    const result = await testModelId(provider, trimmed, rawKey, controller.signal)
+    setTesting(false)
+
+    if (controller.signal.aborted) return
+
+    if (result.valid) {
+      setTestResult('Valid — model added')
+      // Add to catalog so it appears in the list
+      const newModel: ModelInfo = {
+        id: trimmed,
+        name: trimmed,
+        provider,
+        contextWindow: 0,
+        inputPricePerToken: 0,
+        outputPricePerToken: 0,
+      }
+      setCatalogModels(provider, [...catalogModels, newModel])
+      onAdded(trimmed)
+      setCustomId('')
+    } else {
+      setTestResult(result.error ?? 'Invalid model ID')
+    }
+  }, [customId, keys, provider, willCost, showCostWarning, catalogModels, setCatalogModels, onAdded])
+
+  return (
+    <div className="mb-2 rounded-md border border-edge-subtle bg-surface-base px-3 py-2">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={customId}
+          onChange={(e) => { setCustomId(e.target.value); setTestResult(null); setShowCostWarning(false) }}
+          placeholder="Custom model ID..."
+          disabled={testing}
+          className="flex-1 rounded-md border border-edge-subtle bg-surface-panel px-2 py-1 text-xs text-content-primary placeholder-content-disabled outline-none focus:border-edge-focus disabled:opacity-50"
+          onKeyDown={(e) => { if (e.key === 'Enter') doTest() }}
+        />
+        <button
+          onClick={doTest}
+          disabled={testing || customId.trim() === ''}
+          className="rounded-md bg-surface-hover px-2.5 py-1 text-[10px] font-medium text-content-muted transition-colors hover:bg-surface-active disabled:opacity-50"
+        >
+          {testing ? 'Testing...' : 'Test'}
+        </button>
+      </div>
+
+      {showCostWarning && (
+        <div className="mt-1.5 flex items-center gap-2 rounded-md bg-accent-red/10 px-2 py-1.5">
+          <span className="text-[10px] text-content-muted">
+            No free validation for {provider}. Testing will send a minimal API call that may incur cost.
+          </span>
+          <button
+            onClick={doTest}
+            className="shrink-0 rounded-md bg-accent-blue px-2 py-0.5 text-[10px] text-content-inverse transition-colors hover:bg-accent-blue/90"
+          >
+            Confirm
+          </button>
+          <button
+            onClick={() => setShowCostWarning(false)}
+            className="shrink-0 text-[10px] text-content-disabled hover:text-content-muted"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {testResult != null && (
+        <p className={`mt-1 text-[10px] ${testResult.startsWith('Valid') ? 'text-success' : 'text-error'}`}>
+          {testResult}
+        </p>
+      )}
+    </div>
   )
 }
 
