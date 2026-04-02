@@ -70,8 +70,27 @@ function parseOpenAIEvent(event: unknown): StreamChunk | null {
   if (typeof event !== 'object' || event === null) return null
   const obj = event as Record<string, unknown>
 
-  // Check for usage first — some providers send it alongside choices,
-  // others send it as a standalone event after finish_reason.
+  const choices = obj['choices'] as readonly Record<string, unknown>[] | undefined
+
+  // Check choices first — content takes priority over usage in the same event
+  if (choices !== undefined && choices.length > 0) {
+    const choice = choices[0]!
+    const delta = choice['delta'] as Record<string, unknown> | undefined
+
+    if (delta !== undefined && typeof delta['content'] === 'string' && delta['content'] !== '') {
+      return { type: 'content', content: delta['content'] }
+    }
+
+    const finishReason = choice['finish_reason']
+    if (finishReason !== null && finishReason !== undefined) {
+      if (finishReason === 'content_filter') {
+        return { type: 'error', content: 'Response blocked by provider content filter' }
+      }
+      // Don't return yet — usage may be in this same event (fall through)
+    }
+  }
+
+  // Usage event — standalone or alongside an empty/finish choices event
   const usage = obj['usage'] as Record<string, unknown> | undefined | null
   if (usage != null && typeof usage === 'object') {
     const inputTokens = typeof usage['prompt_tokens'] === 'number' ? usage['prompt_tokens'] : 0
@@ -82,25 +101,6 @@ function parseOpenAIEvent(event: unknown): StreamChunk | null {
         content: '',
         tokenUsage: { inputTokens, outputTokens },
       }
-    }
-  }
-
-  const choices = obj['choices'] as readonly Record<string, unknown>[] | undefined
-
-  if (choices !== undefined && choices.length > 0) {
-    const choice = choices[0]!
-    const delta = choice['delta'] as Record<string, unknown> | undefined
-
-    if (delta !== undefined && typeof delta['content'] === 'string') {
-      return { type: 'content', content: delta['content'] }
-    }
-
-    const finishReason = choice['finish_reason']
-    if (finishReason !== null && finishReason !== undefined) {
-      if (finishReason === 'content_filter') {
-        return { type: 'error', content: 'Response blocked by provider content filter' }
-      }
-      return null // wait for usage event
     }
   }
 

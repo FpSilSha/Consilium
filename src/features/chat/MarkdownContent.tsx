@@ -185,7 +185,7 @@ function PreBlock({ children }: { readonly children: ReactNode }): ReactNode {
         <div className="p-3">
           <iframe
             srcDoc={rawText}
-            sandbox="allow-scripts"
+            sandbox=""
             className="h-64 w-full rounded border border-edge-subtle bg-white"
             title="HTML Preview"
           />

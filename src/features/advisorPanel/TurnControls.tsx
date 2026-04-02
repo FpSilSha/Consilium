@@ -2,7 +2,7 @@ import { type ReactNode, useCallback } from 'react'
 import type { TurnMode } from '@/types'
 import { useStore } from '@/store'
 import { buildInitialQueue } from '@/features/turnManager/queue-builder'
-import { startRun, stopAll } from '@/features/turnManager'
+import { startRun, stopAll, dispatchNextTurn } from '@/features/turnManager'
 
 const MODES: readonly { readonly value: TurnMode; readonly label: string }[] = [
   { value: 'sequential', label: 'Seq' },
@@ -97,7 +97,7 @@ export function TurnControls(): ReactNode {
           <>
             {isPaused ? (
               <button
-                onClick={() => setPaused(false)}
+                onClick={() => { setPaused(false); dispatchNextTurn() }}
                 className="flex-1 rounded-full bg-accent-green py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-green/90"
               >
                 Resume

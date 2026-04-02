@@ -27,7 +27,6 @@ export function CompileDocumentButton(): ReactNode {
   const windowOrder = useStore((s) => s.windowOrder)
   const windows = useStore((s) => s.windows)
   const messages = useStore((s) => s.messages)
-  const appendMessage = useStore((s) => s.appendMessage)
   const keys = useStore((s) => s.keys)
   const personas = useStore((s) => s.personas)
 
@@ -106,7 +105,7 @@ export function CompileDocumentButton(): ReactNode {
       },
       callbacks,
     )
-  }, [windows, keys, personas, messages, appendMessage])
+  }, [windows, keys, personas, messages])
 
   if (messages.length < 3) return null // Not enough conversation to compile
 

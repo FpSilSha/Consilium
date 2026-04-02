@@ -146,8 +146,9 @@ function registerIpcHandlers(): void {
         )
       : [{ name: 'Markdown', extensions: ['md'] }, { name: 'All Files', extensions: ['*'] }]
 
+    const safeName = basename(defaultName)
     const result = await dialog.showSaveDialog(mainWindow, {
-      defaultPath: defaultName,
+      defaultPath: safeName,
       filters: dialogFilters,
     })
 

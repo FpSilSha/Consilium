@@ -50,9 +50,8 @@ export async function testModelId(
       },
     )
 
-    // If caller aborts, resolve as cancelled
+    // If caller aborts, resolve as cancelled (signal is already linked via streamResponse)
     signal?.addEventListener('abort', () => {
-      controller.abort()
       resolve({ valid: false, error: 'Cancelled' })
     }, { once: true })
   })

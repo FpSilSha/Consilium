@@ -102,13 +102,13 @@ export const createTurnSlice: StateCreator<TurnSlice> = (set) => ({
       const card = state.queue.find((c) => c.id === cardId)
       if (card === undefined || card.status !== 'skipped') return state
 
-      // Find the last waiting card's position and insert after it
-      const lastWaitingIndex = state.queue.reduce(
+      const withoutCard = state.queue.filter((c) => c.id !== cardId)
+      // Find insert position: after the last waiting card in the filtered queue
+      const lastWaitingIndex = withoutCard.reduce(
         (acc, c, i) => (c.status === 'waiting' ? i : acc),
         -1,
       )
-      const withoutCard = state.queue.filter((c) => c.id !== cardId)
-      const insertAt = lastWaitingIndex === -1 ? 0 : lastWaitingIndex
+      const insertAt = lastWaitingIndex === -1 ? 0 : lastWaitingIndex + 1
       const restored: QueueCard = { ...card, status: 'waiting' }
       return {
         queue: [...withoutCard.slice(0, insertAt), restored, ...withoutCard.slice(insertAt)],

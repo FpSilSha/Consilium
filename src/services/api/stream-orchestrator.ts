@@ -96,9 +96,9 @@ async function runStream(
     // Extract error detail from response body for diagnosable errors
     if (statusCode === 400 || statusCode === 404 || statusCode === 408 || statusCode === 422) {
       try {
-        const body: unknown = await response.json()
-        if (typeof body === 'object' && body !== null) {
-          const err = (body as Record<string, unknown>)['error']
+        const errorBody: unknown = await response.json()
+        if (typeof errorBody === 'object' && errorBody !== null) {
+          const err = (errorBody as Record<string, unknown>)['error']
           if (typeof err === 'object' && err !== null) {
             const msg = (err as Record<string, unknown>)['message']
             if (typeof msg === 'string') detail = `: ${msg}`
