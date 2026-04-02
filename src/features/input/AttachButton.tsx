@@ -10,9 +10,27 @@ interface AttachButtonProps {
 export function AttachButton({ onAttach }: AttachButtonProps): ReactNode {
   const handleClick = useCallback(async () => {
     const api = (window as { consiliumAPI?: { openFileDialog: (f?: unknown) => Promise<readonly { name: string; mimeType: string; data: string; sizeBytes: number }[]> } }).consiliumAPI
-    if (api == null) return
+    if (api == null) {
+      // Fallback: use browser file input when Electron IPC isn't available
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.multiple = true
+      input.accept = 'image/*,.txt,.md,.json,.csv,.xml,.html,.css,.js,.ts,.py'
+      input.onchange = () => {
+        if (input.files == null || input.files.length === 0) return
+        const promises = Array.from(input.files).map((file) => readBrowserFile(file))
+        Promise.all(promises).then(onAttach).catch(() => {})
+      }
+      input.click()
+      return
+    }
 
-    const files = await api.openFileDialog()
+    let files: readonly { name: string; mimeType: string; data: string; sizeBytes: number }[]
+    try {
+      files = await api.openFileDialog()
+    } catch {
+      return
+    }
     if (files.length === 0) return
 
     const attachments: Attachment[] = files.map((f) => ({
@@ -39,4 +57,32 @@ export function AttachButton({ onAttach }: AttachButtonProps): ReactNode {
       </svg>
     </button>
   )
+}
+
+/** Reads a browser File object into an Attachment */
+async function readBrowserFile(file: File): Promise<Attachment> {
+  const isImage = file.type.startsWith('image/')
+  const data = await (isImage ? readAsBase64(file) : file.text())
+  return {
+    id: crypto.randomUUID(),
+    name: file.name,
+    mimeType: file.type || 'application/octet-stream',
+    data,
+    type: isImage ? 'image' : 'text',
+    sizeBytes: file.size,
+  }
+}
+
+function readAsBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      // Strip the data:mime;base64, prefix
+      const base64 = result.split(',')[1] ?? ''
+      resolve(base64)
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
 }
