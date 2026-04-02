@@ -136,9 +136,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
 
         const current = useStore.getState()
         const freshWindow = current.windows[windowId]
-        const model = freshWindow?.model ?? window.model
-        const inputApprox = systemPrompt + messages.map((m) => m.content).join('\n')
-        const costMeta = buildCostMetadata(tokenUsage, model, inputApprox, fullContent)
+        const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
         const message = createAssistantMessage(
           fullContent,
           freshWindow?.personaLabel ?? window.personaLabel,
@@ -150,7 +148,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
         current.updateWindow(windowId, {
           isStreaming: false,
           streamContent: '',
-          runningCost: (freshWindow?.runningCost ?? 0) + costMeta.estimatedCost,
+          runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
         })
 
         resolve(false)
@@ -172,7 +170,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
           isStreaming: false,
           streamContent: '',
           error,
-          runningCost: (freshWindow?.runningCost ?? 0) + errorCostMeta.estimatedCost,
+          runningCost: (freshWindow?.runningCost ?? 0) + (errorCostMeta?.estimatedCost ?? 0),
         })
 
         resolve(false)

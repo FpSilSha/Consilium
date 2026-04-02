@@ -2,40 +2,29 @@ import type { CostMetadata } from '@/types'
 import type { TokenUsage } from './types'
 import { resolvePrice } from '@/features/modelCatalog/price-resolver'
 
-/** Rough estimate: ~4 characters per token for English text */
-const CHARS_PER_TOKEN = 4
-
 /**
- * Builds cost metadata from token usage and model pricing.
- * Uses the pricing fallback chain: user override > OpenRouter > catalog > static > 0.
+ * Builds cost metadata from API-returned token usage and resolved pricing.
  *
- * If tokenUsage is undefined (provider didn't return counts), estimates
- * from content length so cost tracking is never completely blank.
+ * Pricing fallback chain (via resolvePrice):
+ *   user override > OpenRouter catalog > provider catalog > static registry > 0
+ *
+ * If the API didn't return token counts, returns undefined — we don't estimate.
  */
 export function buildCostMetadata(
   tokenUsage: TokenUsage | undefined,
   modelId: string,
-  inputText?: string,
-  outputText?: string,
-): CostMetadata {
+): CostMetadata | undefined {
+  if (tokenUsage == null) return undefined
+  if (tokenUsage.inputTokens === 0 && tokenUsage.outputTokens === 0) return undefined
+
   const price = resolvePrice(modelId)
-  const isEstimate = tokenUsage === undefined
-
-  const inputTokens = tokenUsage?.inputTokens ?? estimateTokens(inputText ?? '')
-  const outputTokens = tokenUsage?.outputTokens ?? estimateTokens(outputText ?? '')
-
-  const inputCost = inputTokens * price.input
-  const outputCost = outputTokens * price.output
+  const inputCost = tokenUsage.inputTokens * price.input
+  const outputCost = tokenUsage.outputTokens * price.output
 
   return {
-    inputTokens,
-    outputTokens,
+    inputTokens: tokenUsage.inputTokens,
+    outputTokens: tokenUsage.outputTokens,
     estimatedCost: inputCost + outputCost,
-    isEstimate: isEstimate || (price.input === 0 && price.output === 0),
+    isEstimate: price.input === 0 && price.output === 0,
   }
-}
-
-function estimateTokens(text: string): number {
-  if (text.length === 0) return 0
-  return Math.ceil(text.length / CHARS_PER_TOKEN)
 }
