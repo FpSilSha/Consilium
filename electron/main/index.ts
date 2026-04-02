@@ -2,6 +2,38 @@ import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
 import { join, resolve, normalize, sep, basename, extname } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync } from 'fs'
 import { loadEnvFile, writeEnvFile } from './env-loader'
+
+// ── App Configuration ─────────────────────────────────────────
+
+interface AppConfig {
+  readonly maxSessionSizeMB: number
+}
+
+const DEFAULT_CONFIG: AppConfig = {
+  maxSessionSizeMB: 100,
+}
+
+function loadAppConfig(): AppConfig {
+  const configPath = join(app.getPath('userData'), 'config.json')
+  try {
+    const content = readFileSync(configPath, 'utf-8')
+    const parsed = JSON.parse(content) as Record<string, unknown>
+    return {
+      maxSessionSizeMB: typeof parsed['maxSessionSizeMB'] === 'number'
+        ? parsed['maxSessionSizeMB']
+        : DEFAULT_CONFIG.maxSessionSizeMB,
+    }
+  } catch {
+    // File doesn't exist yet — create with defaults
+    try {
+      mkdirSync(app.getPath('userData'), { recursive: true })
+      writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2), 'utf-8')
+    } catch { /* non-fatal */ }
+    return DEFAULT_CONFIG
+  }
+}
+
+let appConfig = DEFAULT_CONFIG
 import { loadEncryptedKeys, saveEncryptedKey, deleteEncryptedKey, isEncryptionAvailable, isValidProviderId } from './key-store'
 
 let mainWindow: BrowserWindow | null = null
@@ -158,6 +190,10 @@ function registerIpcHandlers(): void {
     return true
   })
 
+  // ── App config ─────────────────────────────────────────────
+
+  ipcMain.handle('config:load', () => appConfig)
+
   // ── Session persistence ────────────────────────────────────
 
   const sessionsDir = join(app.getPath('userData'), 'sessions')
@@ -165,7 +201,8 @@ function registerIpcHandlers(): void {
   ipcMain.handle('session:save', (_event, id: unknown, content: unknown) => {
     if (typeof id !== 'string' || typeof content !== 'string') throw new Error('Invalid args')
     if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error('Invalid session ID')
-    if (content.length > 50_000_000) throw new Error('Session payload exceeds 50MB limit')
+    const maxBytes = appConfig.maxSessionSizeMB * 1024 * 1024
+    if (content.length > maxBytes) throw new Error(`Session payload exceeds ${appConfig.maxSessionSizeMB}MB limit (configurable in config.json)`)
     mkdirSync(sessionsDir, { recursive: true })
     writeFileSync(join(sessionsDir, `${id}.council`), content, 'utf-8')
   })
@@ -282,6 +319,7 @@ function registerIpcHandlers(): void {
 }
 
 app.whenReady().then(() => {
+  appConfig = loadAppConfig()
   registerIpcHandlers()
   createWindow()
 
