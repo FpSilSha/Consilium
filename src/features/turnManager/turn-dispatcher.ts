@@ -150,7 +150,11 @@ function dispatchAgentTurn(card: QueueCard): void {
 
       const current = useStore.getState()
       const freshWindow = current.windows[card.windowId]
-      const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
+      const model = freshWindow?.model ?? window.model
+
+      // Build input text approximation for token estimation when API doesn't return counts
+      const inputApprox = systemPrompt + threadMessages.map((m) => m.content).join('\n')
+      const costMeta = buildCostMetadata(tokenUsage, model, inputApprox, fullContent)
 
       const message = createAssistantMessage(
         fullContent,
@@ -163,7 +167,7 @@ function dispatchAgentTurn(card: QueueCard): void {
       current.updateWindow(card.windowId, {
         isStreaming: false,
         streamContent: '',
-        runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
+        runningCost: (freshWindow?.runningCost ?? 0) + costMeta.estimatedCost,
       })
       current.setCardStatus(card.id, 'completed')
       current.removeActiveCard(card.id)
@@ -185,7 +189,7 @@ function dispatchAgentTurn(card: QueueCard): void {
         isStreaming: false,
         streamContent: '',
         error,
-        runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
+        runningCost: (freshWindow?.runningCost ?? 0) + costMeta.estimatedCost,
       })
       current.setCardStatus(card.id, 'errored', error)
       current.removeActiveCard(card.id)
