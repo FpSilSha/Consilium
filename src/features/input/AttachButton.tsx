@@ -28,7 +28,16 @@ export function AttachButton({ onAttach }: AttachButtonProps): ReactNode {
     let files: readonly { name: string; mimeType: string; data: string; sizeBytes: number }[]
     try {
       files = await api.openFileDialog()
-    } catch {
+    } catch (err) {
+      // IPC failed — push to error log so user can see what happened
+      const addErrorLog = (await import('@/store')).useStore.getState().addErrorLog
+      addErrorLog({
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        advisorLabel: 'System',
+        accentColor: '#4A90D9',
+        message: `File dialog failed: ${err instanceof Error ? err.message : String(err)}`,
+      })
       return
     }
     if (files.length === 0) return
