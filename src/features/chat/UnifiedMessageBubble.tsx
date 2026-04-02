@@ -73,8 +73,8 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
               </span>
             </>
           )}
-          {cost == null && modelName != null && (
-            <span>via API</span>
+          {cost == null && message.role === 'assistant' && (
+            <span className="text-content-disabled italic">unable to track cost</span>
           )}
         </div>
       </div>

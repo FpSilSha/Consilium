@@ -9,6 +9,7 @@ export function BudgetBar(): ReactNode {
   const dismissBudgetWarning = useStore((s) => s.dismissBudgetWarning)
   const windowOrder = useStore((s) => s.windowOrder)
   const windows = useStore((s) => s.windows)
+  const messages = useStore((s) => s.messages)
 
   const [showBudgetInput, setShowBudgetInput] = useState(false)
   const [budgetValue, setBudgetValue] = useState('')
@@ -18,6 +19,11 @@ export function BudgetBar(): ReactNode {
     const w = windows[id]
     return sum + (w?.runningCost ?? 0)
   }, 0)
+
+  // Count assistant messages with no cost data
+  const untrackedCount = messages.filter(
+    (m) => m.role === 'assistant' && m.costMetadata == null,
+  ).length
 
   const showWarning = sessionBudget > 0 && isBudgetWarning(sessionBudget) && !budgetWarningDismissed
   const exceeded = sessionBudget > 0 && isBudgetExceeded(sessionBudget)
@@ -38,6 +44,11 @@ export function BudgetBar(): ReactNode {
       {/* Total cost display */}
       <span className="text-xs text-gray-500">
         ~${totalCost.toFixed(4)}
+        {untrackedCount > 0 && (
+          <span className="ml-1 text-content-disabled" title={`${untrackedCount} response${untrackedCount !== 1 ? 's' : ''} without cost data`}>
+            + {untrackedCount} unknown
+          </span>
+        )}
       </span>
 
       {/* Budget indicator */}
