@@ -1,0 +1,72 @@
+/*
+ * Syntax highlighting for code blocks — matches the Deep Ocean theme.
+ * Based on highlight.js "atom-one-dark" with palette adjustments.
+ */
+
+.hljs {
+  color: #abb2bf;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-title,
+.hljs-section {
+  color: #c678dd;
+}
+
+.hljs-string,
+.hljs-attr,
+.hljs-template-tag,
+.hljs-template-variable {
+  color: #98c379;
+}
+
+.hljs-number,
+.hljs-literal {
+  color: #d19a66;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #5c6370;
+  font-style: italic;
+}
+
+.hljs-built_in,
+.hljs-type {
+  color: #e6c07b;
+}
+
+.hljs-function .hljs-title,
+.hljs-title.function_ {
+  color: #61afef;
+}
+
+.hljs-params {
+  color: #abb2bf;
+}
+
+.hljs-meta {
+  color: #56b6c2;
+}
+
+.hljs-variable,
+.hljs-name {
+  color: #e06c75;
+}
+
+.hljs-attribute {
+  color: #d19a66;
+}
+
+.hljs-selector-class {
+  color: #e06c75;
+}
+
+.hljs-selector-id {
+  color: #61afef;
+}
+
+.hljs-property {
+  color: #56b6c2;
+}

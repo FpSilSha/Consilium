@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { Message } from '@/types'
 import { useStore } from '@/store'
 import { getModelById } from '@/features/modelSelector/model-registry'
+import { MarkdownContent } from './MarkdownContent'
 
 interface UnifiedMessageBubbleProps {
   readonly message: Message
@@ -22,7 +23,9 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
     return (
       <div className="flex justify-end px-4 py-2">
         <div className="max-w-[70%] rounded-lg bg-accent-blue/20 px-4 py-2.5 text-sm text-content-primary">
-          <div className="whitespace-pre-wrap break-words">{message.content}</div>
+          <div className="break-words">
+            <MarkdownContent content={message.content} />
+          </div>
         </div>
       </div>
     )
@@ -51,7 +54,9 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
 
         {/* Message body */}
         <div className="rounded-lg bg-surface-panel px-3 py-2.5 text-sm text-content-primary">
-          <div className="whitespace-pre-wrap break-words">{displayContent}</div>
+          <div className="break-words">
+            <MarkdownContent content={displayContent} />
+          </div>
         </div>
 
         {/* API call info bar */}

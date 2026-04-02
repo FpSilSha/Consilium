@@ -14,7 +14,10 @@
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-markdown": "^10.1.0",
     "react-window": "^2.2.7",
+    "rehype-highlight": "^7.0.2",
+    "remark-gfm": "^4.0.1",
     "uuid": "^13.0.0",
     "zustand": "^5.0.0"
   },
