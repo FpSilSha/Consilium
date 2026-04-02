@@ -94,7 +94,7 @@ async function runStream(
     let detail = ''
 
     // Extract error detail from response body for diagnosable errors
-    if (statusCode === 400 || statusCode === 404 || statusCode === 422) {
+    if (statusCode === 400 || statusCode === 404 || statusCode === 408 || statusCode === 422) {
       try {
         const body: unknown = await response.json()
         if (typeof body === 'object' && body !== null) {
@@ -113,13 +113,15 @@ async function runStream(
 
     const sanitizedMessage = statusCode === 401
       ? 'Authentication failed — check your API key'
-      : statusCode === 429
-        ? 'Rate limit exceeded — try again later'
-        : statusCode === 403
-          ? 'Access forbidden — check API key permissions'
-          : statusCode >= 500
-            ? `Provider server error (${statusCode})`
-            : `API error (${statusCode})${detail}`
+      : statusCode === 408
+        ? `Request timeout — the provider took too long to respond${detail}`
+        : statusCode === 429
+          ? 'Rate limit exceeded — try again later'
+          : statusCode === 403
+            ? 'Access forbidden — check API key permissions'
+            : statusCode >= 500
+              ? `Provider server error (${statusCode})`
+              : `API error (${statusCode})${detail}`
     callbacks.onError(sanitizedMessage)
     return
   }
