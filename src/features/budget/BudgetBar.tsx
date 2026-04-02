@@ -1,6 +1,7 @@
 import { type ReactNode, useState, useCallback } from 'react'
 import { useStore } from '@/store'
 import { getSessionTotalCost, isBudgetWarning, isBudgetExceeded, getBudgetUsagePercent } from './budget-engine'
+import { CostBreakdownModal } from './CostBreakdownModal'
 
 export function BudgetBar(): ReactNode {
   const sessionBudget = useStore((s) => s.sessionBudget)
@@ -10,17 +11,17 @@ export function BudgetBar(): ReactNode {
   const windowOrder = useStore((s) => s.windowOrder)
   const windows = useStore((s) => s.windows)
   const messages = useStore((s) => s.messages)
+  const orModels = useStore((s) => s.catalogModels['openrouter']) ?? []
 
   const [showBudgetInput, setShowBudgetInput] = useState(false)
+  const [showBreakdown, setShowBreakdown] = useState(false)
   const [budgetValue, setBudgetValue] = useState('')
 
-  // Recompute total cost from windows
   const totalCost = windowOrder.reduce((sum, id) => {
     const w = windows[id]
     return sum + (w?.runningCost ?? 0)
   }, 0)
 
-  // Count assistant messages with no cost data
   const untrackedCount = messages.filter(
     (m) => m.role === 'assistant' && m.costMetadata == null,
   ).length
@@ -32,7 +33,6 @@ export function BudgetBar(): ReactNode {
   const handleSetBudget = useCallback(() => {
     const parsed = parseFloat(budgetValue)
     if (!isNaN(parsed) && parsed >= 0) {
-      // Cap budget at $10,000 to prevent unreasonable values
       setSessionBudget(Math.min(parsed, 10_000))
     }
     setShowBudgetInput(false)
@@ -41,46 +41,60 @@ export function BudgetBar(): ReactNode {
 
   return (
     <div className="flex items-center gap-2">
-      {/* Total cost display */}
-      <span className="text-xs text-gray-500">
+      {/* Total cost display — clickable for breakdown */}
+      <button
+        onClick={() => setShowBreakdown(true)}
+        className="text-xs text-content-disabled transition-colors hover:text-content-muted"
+        title="Click for cost breakdown"
+      >
         ~${totalCost.toFixed(4)}
         {untrackedCount > 0 && (
-          <span className="ml-1 text-content-disabled" title={`${untrackedCount} response${untrackedCount !== 1 ? 's' : ''} without cost data`}>
-            + {untrackedCount} unknown
-          </span>
+          <span className="ml-1">+ {untrackedCount} unknown</span>
         )}
-      </span>
+      </button>
 
       {/* Budget indicator */}
       {sessionBudget > 0 && (
         <div className="flex items-center gap-1">
-          <div className="h-1.5 w-12 rounded-full bg-gray-700">
+          <div className="h-1.5 w-12 rounded-full bg-surface-active">
             <div
               className={`h-full rounded-full transition-all ${
-                exceeded ? 'bg-red-500' : usagePercent >= 80 ? 'bg-yellow-500' : 'bg-green-500'
+                exceeded ? 'bg-accent-red' : usagePercent >= 80 ? 'bg-yellow-500' : 'bg-accent-green'
               }`}
               style={{ width: `${Math.min(usagePercent, 100)}%` }}
             />
           </div>
-          <span className="text-xs text-gray-500">/${sessionBudget.toFixed(2)}</span>
+          <span className="text-xs text-content-disabled">/${sessionBudget.toFixed(2)}</span>
         </div>
       )}
 
       {/* Set/change budget button */}
       <button
         onClick={() => setShowBudgetInput(true)}
-        className="rounded px-1.5 py-0.5 text-xs text-gray-600 hover:text-gray-400"
+        className="rounded px-1.5 py-0.5 text-xs text-content-disabled hover:text-content-muted"
         title="Set session budget"
       >
         $
       </button>
 
+      {/* Cost breakdown modal */}
+      {showBreakdown && (
+        <CostBreakdownModal
+          messages={messages}
+          windows={windows}
+          windowOrder={windowOrder}
+          orModels={orModels}
+          totalCost={totalCost}
+          onClose={() => setShowBreakdown(false)}
+        />
+      )}
+
       {/* Budget input dialog */}
       {showBudgetInput && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="mx-4 max-w-xs rounded-lg border border-gray-700 bg-gray-900 p-4">
-            <h3 className="mb-2 text-sm font-medium text-gray-200">Session Budget</h3>
-            <p className="mb-3 text-xs text-gray-400">
+          <div className="mx-4 max-w-xs rounded-lg border border-edge-subtle bg-surface-panel p-4">
+            <h3 className="mb-2 text-sm font-medium text-content-primary">Session Budget</h3>
+            <p className="mb-3 text-xs text-content-muted">
               Set a spending cap. Warning at 80%, halt at 100%. Enter 0 for no limit.
             </p>
             <input
@@ -91,20 +105,20 @@ export function BudgetBar(): ReactNode {
               step="0.50"
               min="0"
               max="10000"
-              className="mb-3 w-full rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200 outline-none focus:border-gray-500"
+              className="mb-3 w-full rounded border border-edge-subtle bg-surface-base px-3 py-1.5 text-sm text-content-primary outline-none focus:border-edge-focus"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleSetBudget()}
             />
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => { setShowBudgetInput(false); setBudgetValue('') }}
-                className="rounded px-3 py-1 text-xs text-gray-400 hover:bg-gray-800"
+                className="rounded px-3 py-1 text-xs text-content-muted hover:bg-surface-hover"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSetBudget}
-                className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-500"
+                className="rounded bg-accent-blue px-3 py-1 text-xs font-medium text-content-inverse hover:bg-accent-blue/90"
               >
                 Set
               </button>
@@ -132,8 +146,8 @@ export function BudgetBar(): ReactNode {
 
       {/* Budget exceeded */}
       {exceeded && (
-        <div className="fixed bottom-16 right-4 z-40 rounded-lg border border-red-700 bg-red-900/90 px-4 py-2">
-          <span className="text-xs text-red-300">
+        <div className="fixed bottom-16 right-4 z-40 rounded-lg border border-accent-red bg-accent-red/20 px-4 py-2">
+          <span className="text-xs text-accent-red">
             Budget exceeded. All API calls halted.
           </span>
         </div>
