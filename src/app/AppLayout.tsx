@@ -7,9 +7,11 @@ import { ConfigModal } from '@/features/modelCatalog/ConfigModal'
 import { ModelMismatchModal } from '@/features/sessions/ModelMismatchModal'
 import { useStore } from '@/store'
 import { useStartupCatalogFetch } from './useStartupCatalogFetch'
+import { useSessionAutoSave } from './useSessionAutoSave'
 
 export function AppLayout(): ReactNode {
   useStartupCatalogFetch()
+  useSessionAutoSave()
 
   const configModalOpen = useStore((s) => s.configModalOpen)
   const setConfigModalOpen = useStore((s) => s.setConfigModalOpen)

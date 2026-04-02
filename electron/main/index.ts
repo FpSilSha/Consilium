@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
 import { join, resolve, normalize, sep, basename, extname } from 'path'
-import { readFileSync, writeFileSync, mkdirSync, statSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync } from 'fs'
 import { loadEnvFile, writeEnvFile } from './env-loader'
 import { loadEncryptedKeys, saveEncryptedKey, deleteEncryptedKey, isEncryptionAvailable, isValidProviderId } from './key-store'
 
@@ -156,6 +156,52 @@ function registerIpcHandlers(): void {
 
     writeFileSync(result.filePath, content, 'utf-8')
     return true
+  })
+
+  // ── Session persistence ────────────────────────────────────
+
+  const sessionsDir = join(app.getPath('userData'), 'sessions')
+
+  ipcMain.handle('session:save', (_event, id: unknown, content: unknown) => {
+    if (typeof id !== 'string' || typeof content !== 'string') throw new Error('Invalid args')
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error('Invalid session ID')
+    if (content.length > 50_000_000) throw new Error('Session payload exceeds 50MB limit')
+    mkdirSync(sessionsDir, { recursive: true })
+    writeFileSync(join(sessionsDir, `${id}.council`), content, 'utf-8')
+  })
+
+  ipcMain.handle('session:load', (_event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('Invalid arg')
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error('Invalid session ID')
+    const filePath = join(sessionsDir, `${id}.council`)
+    if (!existsSync(filePath)) return null
+    return readFileSync(filePath, 'utf-8')
+  })
+
+  ipcMain.handle('session:list', () => {
+    if (!existsSync(sessionsDir)) return []
+    const files = readdirSync(sessionsDir).filter((f) => f.endsWith('.council'))
+    return files.map((f) => {
+      const id = f.replace('.council', '')
+      try {
+        const content = readFileSync(join(sessionsDir, f), 'utf-8')
+        const parsed = JSON.parse(content) as { name?: string; updatedAt?: number }
+        return {
+          id,
+          name: typeof parsed.name === 'string' ? parsed.name : id,
+          updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0,
+        }
+      } catch {
+        return { id, name: id, updatedAt: 0 }
+      }
+    }).sort((a, b) => b.updatedAt - a.updatedAt)
+  })
+
+  ipcMain.handle('session:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('Invalid arg')
+    if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error('Invalid session ID')
+    const filePath = join(sessionsDir, `${id}.council`)
+    if (existsSync(filePath)) unlinkSync(filePath)
   })
 
   ipcMain.handle('dialog:open-file', async (_event, filters: unknown) => {

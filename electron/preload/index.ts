@@ -21,6 +21,10 @@ const api: ConsiliumAPI = {
   catalogPrefsSave: (data) => ipcRenderer.invoke('catalog-prefs:save', data),
   openFileDialog: (filters) => ipcRenderer.invoke('dialog:open-file', filters),
   saveFileDialog: (defaultName, content, filters) => ipcRenderer.invoke('dialog:save-file', defaultName, content, filters),
+  sessionSave: (id, content) => ipcRenderer.invoke('session:save', id, content),
+  sessionLoad: (id) => ipcRenderer.invoke('session:load', id),
+  sessionList: () => ipcRenderer.invoke('session:list'),
+  sessionDelete: (id) => ipcRenderer.invoke('session:delete', id),
 }
 
 contextBridge.exposeInMainWorld('consiliumAPI', api)

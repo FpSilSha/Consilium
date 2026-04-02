@@ -1,12 +1,11 @@
 import type { AdvisorWindow } from '@/types'
-import type { SessionFile, SessionWindow } from './session-types'
+import type { SessionFile, SessionWindow, SessionMetadata } from './session-types'
 import { useStore } from '@/store'
 import { detectModelMismatches } from './model-mismatch'
+import { setSessionLoadingFlag } from '@/app/useSessionAutoSave'
 
 /**
  * Restores app state from a session file.
- * Each window loads independently — missing personas/keys show errors
- * rather than failing the entire session.
  */
 export function restoreSession(session: SessionFile): void {
   const state = useStore.getState()
@@ -15,8 +14,8 @@ export function restoreSession(session: SessionFile): void {
   for (const windowId of state.windowOrder) {
     state.removeWindow(windowId)
   }
-  state.setMessages([])
-  state.resetQueue()
+  state.clearMessages()
+  state.setQueue([])
   state.resetBudgetWarning()
   state.setSessionBudget(0)
 
@@ -37,6 +36,9 @@ export function restoreSession(session: SessionFile): void {
     state.addWindow(window)
   }
 
+  // Set current session ID
+  state.setCurrentSessionId(session.id)
+
   // Check for model mismatches against allowed models
   const freshState = useStore.getState()
   const mismatches = detectModelMismatches(freshState.windows, freshState.allowedModels)
@@ -45,21 +47,15 @@ export function restoreSession(session: SessionFile): void {
   }
 }
 
-/**
- * Converts a session window back to an AdvisorWindow,
- * handling missing personas and keys gracefully.
- */
 function sessionWindowToAdvisor(
   sw: SessionWindow,
   state: ReturnType<typeof useStore.getState>,
 ): AdvisorWindow {
-  // Check if persona still exists
   const persona = state.personas.find((p) => p.id === sw.personaId)
   const personaError = persona === undefined
     ? `Persona "${sw.personaLabel}" not found. Select a replacement.`
     : null
 
-  // Check if key still exists
   const key = state.keys.find((k) => k.id === sw.keyId)
   const keyError = key === undefined
     ? `API key for ${sw.provider} not found. Configure a key.`
@@ -86,56 +82,131 @@ function sessionWindowToAdvisor(
 }
 
 /**
- * Saves a session file via the IPC bridge.
+ * Builds a SessionFile from the current app state.
  */
-export async function saveSessionFile(
-  session: SessionFile,
-): Promise<void> {
-  const api = getConsiliumAPI()
-  if (api === undefined) {
-    throw new Error('File system access not available')
+export function buildSessionFile(): SessionFile {
+  const state = useStore.getState()
+  const sessionId = state.currentSessionId ?? crypto.randomUUID()
+
+  const totalCost = state.windowOrder.reduce((sum, id) => {
+    const w = state.windows[id]
+    return sum + (w?.runningCost ?? 0)
+  }, 0)
+
+  // Derive a name from the first user message or advisors
+  const firstUserMsg = state.messages.find((m) => m.role === 'user')
+  const name = firstUserMsg != null
+    ? firstUserMsg.content.slice(0, 60).replace(/\n/g, ' ').trim() || 'Untitled'
+    : state.windowOrder.map((id) => state.windows[id]?.personaLabel).filter(Boolean).join(', ') || 'Untitled'
+
+  return {
+    version: 1,
+    id: sessionId,
+    name,
+    createdAt: state.messages[0]?.timestamp ?? Date.now(),
+    updatedAt: Date.now(),
+    windows: state.windowOrder
+      .map((id) => state.windows[id])
+      .filter((w): w is AdvisorWindow => w != null)
+      .map((w): SessionWindow => ({
+        id: w.id,
+        provider: w.provider,
+        keyId: w.keyId,
+        model: w.model,
+        personaId: w.personaId,
+        personaLabel: w.personaLabel,
+        personaFilename: '',
+        accentColor: w.accentColor,
+        runningCost: w.runningCost,
+        isCompacted: w.isCompacted,
+        bufferSize: w.bufferSize,
+      })),
+    messages: state.messages,
+    archivedMessages: state.archivedMessages,
+    queue: state.queue,
+    turnMode: state.turnMode,
+    sessionInstructions: state.sessionInstructions,
+    totalCost,
+    inputFiles: [],
+    outputFiles: [],
   }
-
-  const userDataPath = await api.getUserDataPath()
-  const sessionsDir = `${userDataPath}/sessions`
-  const filePath = `${sessionsDir}/${session.id}.council`
-  const content = JSON.stringify(session, null, 2)
-
-  // Write via env file API for now — this should use a dedicated write-file IPC handler
-  // For proper implementation, we'd add a writeFile handler to the preload bridge
-  await writeFileViaIPC(filePath, content)
 }
 
 /**
- * Lists available session files.
+ * Saves the current session to disk via IPC.
  */
-export async function listSessions(): Promise<readonly string[]> {
-  const api = getConsiliumAPI()
-  if (api === undefined) return []
+export async function saveCurrentSession(): Promise<void> {
+  const api = getSessionAPI()
+  if (api == null) return
 
-  const userDataPath = await api.getUserDataPath()
-  const sessionsDir = `${userDataPath}/sessions`
+  const session = buildSessionFile()
 
-  // This would need a readDir IPC handler
-  // For now, return empty — will be implemented with proper IPC
-  return []
+  // Ensure the store has the session ID
+  const state = useStore.getState()
+  if (state.currentSessionId == null) {
+    state.setCurrentSessionId(session.id)
+  }
+
+  await api.sessionSave(session.id, JSON.stringify(session))
 }
 
-function getConsiliumAPI(): ConsiliumAPIMinimal | undefined {
-  if (typeof window === 'undefined') return undefined
-  return (window as { consiliumAPI?: ConsiliumAPIMinimal }).consiliumAPI
+/**
+ * Lists available sessions from disk.
+ */
+export async function listSessions(): Promise<readonly SessionMetadata[]> {
+  const api = getSessionAPI()
+  if (api == null) return []
+
+  const entries = await api.sessionList()
+  return entries.map((e) => ({
+    id: e.id,
+    name: e.name,
+    createdAt: 0,
+    updatedAt: e.updatedAt,
+    windowCount: 0,
+    messageCount: 0,
+    totalCost: 0,
+  }))
 }
 
-interface ConsiliumAPIMinimal {
-  getUserDataPath(): Promise<string>
+/**
+ * Loads a session from disk and restores it.
+ */
+export async function loadSession(id: string): Promise<void> {
+  const api = getSessionAPI()
+  if (api == null) return
+
+  const content = await api.sessionLoad(id)
+  if (content == null) return
+
+  try {
+    const session = JSON.parse(content) as SessionFile
+    if (session.version !== 1) return
+    setSessionLoadingFlag(true)
+    restoreSession(session)
+    // Suppress auto-save for one render cycle after restore
+    setTimeout(() => setSessionLoadingFlag(false), 100)
+  } catch {
+    setSessionLoadingFlag(false)
+  }
 }
 
-async function writeFileViaIPC(
-  _filePath: string,
-  _content: string,
-): Promise<void> {
-  // TODO: Implement IPC handler for writing session files
-  // The actual implementation would use:
-  // ipcRenderer.invoke('write-session-file', filePath, content)
-  throw new Error('Session file writing not yet implemented — IPC handler needed')
+/**
+ * Deletes a session from disk.
+ */
+export async function deleteSession(id: string): Promise<void> {
+  const api = getSessionAPI()
+  if (api == null) return
+  await api.sessionDelete(id)
+}
+
+function getSessionAPI() {
+  if (typeof window === 'undefined') return null
+  const w = window as { consiliumAPI?: {
+    sessionSave(id: string, content: string): Promise<void>
+    sessionLoad(id: string): Promise<string | null>
+    sessionList(): Promise<readonly { id: string; name: string; updatedAt: number }[]>
+    sessionDelete(id: string): Promise<void>
+  } }
+  return w.consiliumAPI ?? null
 }

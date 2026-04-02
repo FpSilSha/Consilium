@@ -16,12 +16,14 @@ export interface UISlice {
   readonly configModalOpen: boolean
   readonly pendingMismatches: readonly ModelMismatch[]
   readonly errorLog: readonly ErrorLogEntry[]
+  readonly currentSessionId: string | null
   setUIMode: (mode: UIMode) => void
   setSessionInstructions: (instructions: string) => void
   setConfigModalOpen: (open: boolean) => void
   setPendingMismatches: (mismatches: readonly ModelMismatch[]) => void
   addErrorLog: (entry: ErrorLogEntry) => void
   clearErrorLog: () => void
+  setCurrentSessionId: (id: string | null) => void
 }
 
 export const createUISlice: StateCreator<UISlice> = (set) => ({
@@ -30,6 +32,7 @@ export const createUISlice: StateCreator<UISlice> = (set) => ({
   configModalOpen: false,
   pendingMismatches: [],
   errorLog: [],
+  currentSessionId: null,
 
   setUIMode: (mode) => set({ uiMode: mode }),
 
@@ -43,4 +46,6 @@ export const createUISlice: StateCreator<UISlice> = (set) => ({
     set((state) => ({ errorLog: [...state.errorLog, entry] })),
 
   clearErrorLog: () => set({ errorLog: [] }),
+
+  setCurrentSessionId: (id) => set({ currentSessionId: id }),
 })

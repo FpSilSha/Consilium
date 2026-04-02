@@ -19,4 +19,8 @@ export interface ConsiliumAPI {
   catalogPrefsSave(data: unknown): Promise<void>
   openFileDialog(filters?: readonly { name: string; extensions: string[] }[]): Promise<readonly { name: string; mimeType: string; data: string; sizeBytes: number }[]>
   saveFileDialog(defaultName: string, content: string, filters?: readonly { name: string; extensions: string[] }[]): Promise<boolean>
+  sessionSave(id: string, content: string): Promise<void>
+  sessionLoad(id: string): Promise<string | null>
+  sessionList(): Promise<readonly { id: string; name: string; updatedAt: number }[]>
+  sessionDelete(id: string): Promise<void>
 }

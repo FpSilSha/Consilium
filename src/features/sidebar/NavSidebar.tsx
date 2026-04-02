@@ -4,6 +4,7 @@ import { NavButton } from './NavButton'
 import { SessionHistoryList } from './SessionHistoryList'
 import { ErrorLog } from './ErrorLog'
 import { BudgetBar } from '@/features/budget'
+import { saveCurrentSession } from '@/features/sessions/session-manager'
 
 export function NavSidebar(): ReactNode {
   const windowCount = useStore((s) => s.windowOrder.length)
@@ -17,13 +18,13 @@ export function NavSidebar(): ReactNode {
     setConfirmNewSession(true)
   }, [windowCount, messageCount])
 
-  const executeNewConsilium = useCallback(() => {
-    const { messages, archiveMessages, setMessages, clearAllWindows } = useStore.getState()
-    if (messages.length > 0) {
-      archiveMessages([...messages])
-      setMessages([])
-    }
+  const executeNewConsilium = useCallback(async () => {
+    // Save current session before clearing
+    await saveCurrentSession().catch(() => {})
+    const { clearMessages, clearAllWindows } = useStore.getState()
+    clearMessages()
     clearAllWindows()
+    useStore.getState().setCurrentSessionId(null)
     setConfirmNewSession(false)
   }, [])
 

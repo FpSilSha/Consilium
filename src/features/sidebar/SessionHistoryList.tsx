@@ -1,20 +1,42 @@
-import { type ReactNode, useEffect, useState } from 'react'
-import { listSessions } from '@/features/sessions/session-manager'
+import { type ReactNode, useEffect, useState, useCallback } from 'react'
+import { useStore } from '@/store'
+import { listSessions, loadSession, deleteSession } from '@/features/sessions/session-manager'
+import type { SessionMetadata } from '@/features/sessions/session-types'
 
 export function SessionHistoryList(): ReactNode {
-  const [sessions, setSessions] = useState<readonly string[]>([])
+  const [sessions, setSessions] = useState<readonly SessionMetadata[]>([])
+  const currentSessionId = useStore((s) => s.currentSessionId)
+  const messageCount = useStore((s) => s.messages.length)
 
+  // Refresh session list on mount and when messages change (new saves)
   useEffect(() => {
     let cancelled = false
-    listSessions()
-      .then((result) => {
-        if (!cancelled) setSessions(result)
-      })
-      .catch(() => {
-        /* non-fatal — show empty state */
-      })
-    return () => { cancelled = true }
-  }, [])
+    const load = () => {
+      listSessions()
+        .then((result) => { if (!cancelled) setSessions(result) })
+        .catch(() => {})
+    }
+    load()
+
+    // Refresh after auto-save debounce (3s after message change)
+    const timer = setTimeout(load, 3000)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [messageCount])
+
+  const handleSelect = useCallback(async (id: string) => {
+    if (id === currentSessionId) return
+    await loadSession(id)
+  }, [currentSessionId])
+
+  const handleDelete = useCallback(async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    await deleteSession(id)
+    setSessions((prev) => prev.filter((s) => s.id !== id))
+    // If we deleted the current session, clear the ID
+    if (id === currentSessionId) {
+      useStore.getState().setCurrentSessionId(null)
+    }
+  }, [currentSessionId])
 
   if (sessions.length === 0) {
     return (
@@ -25,16 +47,47 @@ export function SessionHistoryList(): ReactNode {
   }
 
   return (
-    <div className="flex flex-col gap-1 px-2">
-      {sessions.map((sessionId) => (
+    <div className="flex flex-col gap-0.5 px-2">
+      {sessions.map((session) => (
         <div
-          key={sessionId}
-          className="rounded-md px-3 py-2 text-xs text-content-muted"
-          aria-label={`Session ${sessionId}`}
+          key={session.id}
+          className={`group flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 transition-colors hover:bg-surface-hover ${
+            session.id === currentSessionId ? 'bg-surface-selected' : ''
+          }`}
+          onClick={() => handleSelect(session.id)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSelect(session.id) }}
         >
-          {sessionId}
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-xs text-content-primary">
+              {session.name}
+            </div>
+            <div className="text-[10px] text-content-disabled">
+              {formatRelativeTime(session.updatedAt)}
+            </div>
+          </div>
+          <button
+            onClick={(e) => handleDelete(session.id, e)}
+            className="shrink-0 text-[10px] text-content-disabled opacity-0 transition-opacity hover:text-accent-red group-hover:opacity-100"
+            title="Delete session"
+          >
+            ✕
+          </button>
         </div>
       ))}
     </div>
   )
+}
+
+function formatRelativeTime(timestamp: number): string {
+  if (timestamp === 0) return ''
+  const diff = Date.now() - timestamp
+  const minutes = Math.floor(diff / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
 }
