@@ -19,8 +19,9 @@ export function TurnControls(): ReactNode {
   const isRunning = useStore((s) => s.isRunning)
   const isPaused = useStore((s) => s.isPaused)
   const setPaused = useStore((s) => s.setPaused)
-  const resetQueue = useStore((s) => s.resetQueue)
-  const queueLength = useStore((s) => s.queue.length)
+  const loopCount = useStore((s) => s.loopCount)
+  const setLoopCount = useStore((s) => s.setLoopCount)
+  const roundsCompleted = useStore((s) => s.roundsCompleted)
 
   const handleModeChange = useCallback((mode: TurnMode) => {
     setTurnMode(mode)
@@ -49,25 +50,49 @@ export function TurnControls(): ReactNode {
         ))}
       </div>
 
+      {/* Loop counter */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-content-disabled">Rounds</label>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setLoopCount(Math.max(0, loopCount - 1))}
+            disabled={isRunning || loopCount === 0}
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-base text-xs text-content-muted transition-colors hover:bg-surface-hover disabled:opacity-30"
+          >
+            −
+          </button>
+          <span className="w-8 text-center text-xs text-content-primary">
+            {loopCount === 0 ? '∞' : loopCount}
+          </span>
+          <button
+            onClick={() => setLoopCount(loopCount + 1)}
+            disabled={isRunning}
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-base text-xs text-content-muted transition-colors hover:bg-surface-hover disabled:opacity-30"
+          >
+            +
+          </button>
+        </div>
+        {isRunning && loopCount > 0 && (
+          <span className="text-[10px] text-content-disabled">
+            {roundsCompleted}/{loopCount}
+          </span>
+        )}
+        {isRunning && loopCount === 0 && roundsCompleted > 0 && (
+          <span className="text-[10px] text-content-disabled">
+            round {roundsCompleted}
+          </span>
+        )}
+      </div>
+
       {/* Action buttons */}
       <div className="flex gap-1.5">
         {!isRunning ? (
-          <>
-            <button
-              onClick={startRun}
-              className="flex-1 rounded-full bg-accent-green py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-green/90"
-            >
-              Start
-            </button>
-            {queueLength > 0 && (
-              <button
-                onClick={resetQueue}
-                className="rounded-full bg-surface-base px-3 py-1.5 text-xs text-content-muted transition-colors hover:bg-surface-active"
-              >
-                Reset
-              </button>
-            )}
-          </>
+          <button
+            onClick={startRun}
+            className="flex-1 rounded-full bg-accent-green py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-green/90"
+          >
+            Start
+          </button>
         ) : (
           <>
             {isPaused ? (
@@ -80,7 +105,7 @@ export function TurnControls(): ReactNode {
             ) : (
               <button
                 onClick={() => setPaused(true)}
-                className="flex-1 rounded-md bg-surface-hover py-1.5 text-xs font-medium text-content-muted transition-colors hover:bg-surface-active"
+                className="flex-1 rounded-full bg-surface-hover py-1.5 text-xs font-medium text-content-muted transition-colors hover:bg-surface-active"
               >
                 Pause
               </button>

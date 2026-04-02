@@ -7,6 +7,10 @@ export interface TurnSlice {
   readonly isPaused: boolean
   readonly isRunning: boolean
   readonly activeCardIds: readonly string[]
+  /** Rounds remaining. 0 = infinite (run until paused/stopped). */
+  readonly loopCount: number
+  /** Total rounds completed in this run. */
+  readonly roundsCompleted: number
   setTurnMode: (mode: TurnMode) => void
   setQueue: (queue: readonly QueueCard[]) => void
   addToQueue: (card: QueueCard) => void
@@ -20,6 +24,7 @@ export interface TurnSlice {
   removeActiveCard: (cardId: string) => void
   setPaused: (paused: boolean) => void
   setIsRunning: (running: boolean) => void
+  setLoopCount: (count: number) => void
   resetQueue: () => void
 }
 
@@ -29,6 +34,8 @@ export const createTurnSlice: StateCreator<TurnSlice> = (set) => ({
   isPaused: false,
   isRunning: false,
   activeCardIds: [],
+  loopCount: 0,
+  roundsCompleted: 0,
 
   setTurnMode: (mode) => set({ turnMode: mode }),
 
@@ -132,6 +139,8 @@ export const createTurnSlice: StateCreator<TurnSlice> = (set) => ({
   setPaused: (paused) => set({ isPaused: paused }),
 
   setIsRunning: (running) => set({ isRunning: running }),
+
+  setLoopCount: (count) => set({ loopCount: Math.max(0, count) }),
 
   resetQueue: () =>
     set((state) => ({

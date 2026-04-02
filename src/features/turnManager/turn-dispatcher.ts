@@ -64,6 +64,7 @@ export function handleUserMessage(): void {
  */
 export function startRun(): void {
   const state = useStore.getState()
+  useStore.setState({ roundsCompleted: 0 })
   state.setIsRunning(true)
   dispatchNextTurn()
 }
@@ -80,8 +81,15 @@ export function stopAll(): void {
     state.removeActiveCard(cardId)
     state.updateWindow(windowId, { isStreaming: false, streamContent: '' })
   }
-  state.setPaused(true)
+  // Prep queue for next start — reset all cards to waiting
+  state.setQueue(
+    state.queue
+      .filter((c) => c.status !== 'errored' && c.status !== 'skipped')
+      .map((c) => ({ ...c, status: 'waiting' as const, errorLabel: null })),
+  )
   state.setIsRunning(false)
+  state.setPaused(false)
+  useStore.setState({ roundsCompleted: 0 })
 }
 
 /**
@@ -227,10 +235,48 @@ function onTurnComplete(): void {
   }
 
   if (isCycleComplete(state.queue)) {
-    state.setIsRunning(false)
+    // Cycle complete — check loop counter
+    const roundsCompleted = state.roundsCompleted + 1
+    const loopCount = state.loopCount
+
+    if (loopCount > 0 && roundsCompleted >= loopCount) {
+      // Finite loop exhausted — stop and prep queue for next start
+      prepQueueForNextRound()
+      return
+    }
+
+    // Loop continues (infinite or rounds remaining) — reset queue and dispatch
+    useStore.setState({ roundsCompleted })
+    resetQueueForNextRound()
+    queueMicrotask(() => dispatchNextTurn())
     return
   }
 
-  // Continue dispatching next turns
+  // Continue dispatching next turns within the current cycle
   dispatchNextTurn()
+}
+
+/** Resets all queue cards to 'waiting' for the next round without stopping. */
+function resetQueueForNextRound(): void {
+  const state = useStore.getState()
+  state.setQueue(
+    state.queue.map((c) => ({
+      ...c,
+      status: 'waiting' as const,
+      errorLabel: null,
+    })),
+  )
+}
+
+/** Stops running and preps the queue so the user can hit Start again. */
+function prepQueueForNextRound(): void {
+  const state = useStore.getState()
+  state.setQueue(
+    state.queue
+      .filter((c) => c.status !== 'errored' && c.status !== 'skipped')
+      .map((c) => ({ ...c, status: 'waiting' as const, errorLabel: null })),
+  )
+  state.setIsRunning(false)
+  state.setPaused(false)
+  useStore.setState({ roundsCompleted: 0 })
 }
