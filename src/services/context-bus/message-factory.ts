@@ -1,4 +1,4 @@
-import type { Message, CostMetadata } from '@/types'
+import type { Message, CostMetadata, Attachment } from '@/types'
 
 function generateMessageId(): string {
   return `msg_${Date.now()}_${crypto.randomUUID()}`
@@ -7,6 +7,7 @@ function generateMessageId(): string {
 export function createUserMessage(
   content: string,
   windowId: string,
+  attachments?: readonly Attachment[],
 ): Message {
   return {
     id: generateMessageId(),
@@ -16,6 +17,7 @@ export function createUserMessage(
     timestamp: Date.now(),
     windowId,
     costMetadata: undefined,
+    ...(attachments != null && attachments.length > 0 ? { attachments } : {}),
   }
 }
 

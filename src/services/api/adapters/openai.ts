@@ -1,3 +1,4 @@
+import type { Attachment } from '@/types'
 import type { ProviderAdapter, ApiRequestConfig, StreamChunk } from '../types'
 
 export const openaiAdapter: ProviderAdapter = {
@@ -19,7 +20,7 @@ export const openaiAdapter: ProviderAdapter = {
           { role: 'system', content: config.systemPrompt },
           ...config.messages.map((m) => ({
             role: m.role,
-            content: m.content,
+            content: buildOpenAIContent(m.content, m.attachments),
           })),
         ],
       }),
@@ -104,4 +105,36 @@ function parseOpenAIEvent(event: unknown): StreamChunk | null {
   }
 
   return null
+}
+
+/**
+ * Builds OpenAI-compatible message content.
+ * Plain text when no attachments, content array for multimodal.
+ */
+function buildOpenAIContent(
+  text: string,
+  attachments?: readonly Attachment[],
+): string | readonly Record<string, unknown>[] {
+  if (attachments == null || attachments.length === 0) return text
+
+  const parts: Record<string, unknown>[] = [
+    { type: 'text', text },
+  ]
+
+  for (const att of attachments) {
+    if (att.type === 'image') {
+      parts.push({
+        type: 'image_url',
+        image_url: { url: `data:${att.mimeType};base64,${att.data}` },
+      })
+    } else {
+      // Text files — append as additional text content
+      parts.push({
+        type: 'text',
+        text: `[File: ${att.name}]\n${att.data}`,
+      })
+    }
+  }
+
+  return parts
 }

@@ -23,6 +23,24 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
     return (
       <div className="flex justify-end px-4 py-2">
         <div className="max-w-[70%] rounded-lg bg-accent-blue/20 px-4 py-2.5 text-sm text-content-primary">
+          {message.attachments != null && message.attachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {message.attachments.map((att) => (
+                att.type === 'image' ? (
+                  <img
+                    key={att.id}
+                    src={`data:${att.mimeType};base64,${att.data}`}
+                    alt={att.name}
+                    className="max-h-48 max-w-full rounded-md"
+                  />
+                ) : (
+                  <span key={att.id} className="rounded bg-surface-active px-2 py-0.5 text-xs text-content-muted">
+                    📄 {att.name}
+                  </span>
+                )
+              ))}
+            </div>
+          )}
           <div className="break-words">
             <MarkdownContent content={message.content} />
           </div>

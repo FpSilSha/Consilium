@@ -1,12 +1,15 @@
 import { type ReactNode, useState, useCallback } from 'react'
+import type { Attachment } from '@/types'
 import { useStore } from '@/store'
 import { createUserMessage } from '@/services/context-bus'
 import { handleUserMessage, startRun } from '@/features/turnManager'
 import { isUserTurn } from '@/features/turnManager'
 import { hasMentions, executeAgentExchange, repeatLastExchange, hasLastExchange } from '@/features/agentInteraction'
+import { AttachButton } from './AttachButton'
 
 export function SharedInputBar(): ReactNode {
   const [input, setInput] = useState('')
+  const [attachments, setAttachments] = useState<readonly Attachment[]>([])
   const appendMessage = useStore((s) => s.appendMessage)
   const isRunning = useStore((s) => s.isRunning)
   const turnMode = useStore((s) => s.turnMode)
@@ -17,9 +20,11 @@ export function SharedInputBar(): ReactNode {
 
   const handleSubmit = useCallback(() => {
     const trimmed = input.trim()
-    if (trimmed === '') return
+    if (trimmed === '' && attachments.length === 0) return
 
+    const currentAttachments = attachments
     setInput('')
+    setAttachments([])
 
     if (hasMentions(trimmed)) {
       setShowRepeat(true)
@@ -27,7 +32,11 @@ export function SharedInputBar(): ReactNode {
       return
     }
 
-    const message = createUserMessage(trimmed, 'user-input')
+    const message = createUserMessage(
+      trimmed,
+      'user-input',
+      currentAttachments.length > 0 ? currentAttachments : undefined,
+    )
     appendMessage(message)
 
     if (isRunning) {
@@ -35,7 +44,7 @@ export function SharedInputBar(): ReactNode {
     } else if (turnMode === 'parallel') {
       startRun()
     }
-  }, [input, appendMessage, isRunning, turnMode])
+  }, [input, attachments, appendMessage, isRunning, turnMode])
 
   const handleRepeat = useCallback(() => {
     repeatLastExchange().catch(() => {})
@@ -51,6 +60,10 @@ export function SharedInputBar(): ReactNode {
     [handleSubmit],
   )
 
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id))
+  }, [])
+
   return (
     <div className="flex flex-col gap-2">
       {showRepeat && hasLastExchange() && (
@@ -61,17 +74,43 @@ export function SharedInputBar(): ReactNode {
           Repeat Last Agent-to-Agent
         </button>
       )}
+
+      {/* Attachment previews */}
+      {attachments.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {attachments.map((att) => (
+            <div
+              key={att.id}
+              className="flex items-center gap-1.5 rounded-md border border-edge-subtle bg-surface-base px-2 py-1"
+            >
+              {att.type === 'image' ? (
+                <img
+                  src={`data:${att.mimeType};base64,${att.data}`}
+                  alt={att.name}
+                  className="h-8 w-8 rounded object-cover"
+                />
+              ) : (
+                <span className="text-[10px] text-content-disabled">📄</span>
+              )}
+              <span className="max-w-32 truncate text-xs text-content-muted">{att.name}</span>
+              <span className="text-[10px] text-content-disabled">
+                {formatFileSize(att.sizeBytes)}
+              </span>
+              <button
+                onClick={() => removeAttachment(att.id)}
+                className="text-xs text-content-disabled hover:text-accent-red"
+                aria-label={`Remove ${att.name}`}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-end gap-2">
-        {/* Attachment placeholder */}
-        <button
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-content-muted transition-colors hover:bg-surface-hover hover:text-content-primary disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
-          aria-label="Attach file (coming soon)"
-          disabled
-        >
-          <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-5 w-5">
-            <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
-          </svg>
-        </button>
+        {/* Attachment button */}
+        <AttachButton onAttach={(files) => setAttachments((prev) => [...prev, ...files])} />
 
         {/* Input area */}
         <textarea
@@ -92,7 +131,7 @@ export function SharedInputBar(): ReactNode {
         {/* Send button */}
         <button
           onClick={handleSubmit}
-          disabled={input.trim() === ''}
+          disabled={input.trim() === '' && attachments.length === 0}
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent-blue text-content-inverse transition-colors hover:bg-accent-blue/90 disabled:opacity-40"
           aria-label="Send message"
         >
@@ -103,4 +142,10 @@ export function SharedInputBar(): ReactNode {
       </div>
     </div>
   )
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`
 }

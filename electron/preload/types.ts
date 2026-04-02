@@ -17,4 +17,5 @@ export interface ConsiliumAPI {
   keysDelete(providerId: string): Promise<void>
   catalogPrefsLoad(): Promise<unknown>
   catalogPrefsSave(data: unknown): Promise<void>
+  openFileDialog(filters?: readonly { name: string; extensions: string[] }[]): Promise<readonly { name: string; mimeType: string; data: string; sizeBytes: number }[]>
 }

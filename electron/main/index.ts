@@ -1,6 +1,6 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
-import { join, resolve, normalize, sep } from 'path'
-import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
+import { join, resolve, normalize, sep, basename, extname } from 'path'
+import { readFileSync, writeFileSync, mkdirSync, statSync } from 'fs'
 import { loadEnvFile, writeEnvFile } from './env-loader'
 import { loadEncryptedKeys, saveEncryptedKey, deleteEncryptedKey, isEncryptionAvailable, isValidProviderId } from './key-store'
 
@@ -134,6 +134,61 @@ function registerIpcHandlers(): void {
     mkdirSync(dirPath, { recursive: true })
     const filePath = join(dirPath, 'catalog-preferences.json')
     writeFileSync(filePath, serialized, 'utf-8')
+  })
+
+  ipcMain.handle('dialog:open-file', async (_event, filters: unknown) => {
+    if (mainWindow == null) return []
+
+    const dialogFilters = Array.isArray(filters)
+      ? filters.filter((f): f is { name: string; extensions: string[] } =>
+          typeof f === 'object' && f != null && typeof f.name === 'string' && Array.isArray(f.extensions),
+        )
+      : [
+          { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp'] },
+          { name: 'Text', extensions: ['txt', 'md', 'json', 'csv', 'xml', 'html', 'css', 'js', 'ts', 'py'] },
+          { name: 'All Files', extensions: ['*'] },
+        ]
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile', 'multiSelections'],
+      filters: dialogFilters,
+    })
+
+    if (result.canceled || result.filePaths.length === 0) return []
+
+    const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
+    const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'])
+    const MIME_MAP: Record<string, string> = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+      '.svg': 'image/svg+xml', '.txt': 'text/plain', '.md': 'text/markdown',
+      '.json': 'application/json', '.csv': 'text/csv', '.xml': 'text/xml',
+      '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript',
+      '.ts': 'text/typescript', '.py': 'text/x-python',
+    }
+
+    const files: { name: string; mimeType: string; data: string; sizeBytes: number }[] = []
+
+    for (const filePath of result.filePaths) {
+      try {
+        const stat = statSync(filePath)
+        if (stat.size > MAX_FILE_SIZE) continue // skip oversized files
+
+        const ext = extname(filePath).toLowerCase()
+        const mimeType = MIME_MAP[ext] ?? 'application/octet-stream'
+        const name = basename(filePath)
+        const isImage = IMAGE_EXTS.has(ext)
+
+        const content = readFileSync(filePath)
+        const data = isImage ? content.toString('base64') : content.toString('utf-8')
+
+        files.push({ name, mimeType, data, sizeBytes: stat.size })
+      } catch {
+        // Skip unreadable files
+      }
+    }
+
+    return files
   })
 
   ipcMain.handle('open-folder', async (_event, path: unknown) => {

@@ -1,4 +1,4 @@
-import type { Provider } from '@/types'
+import type { Provider, Attachment } from '@/types'
 
 export interface StreamChunk {
   readonly type: 'content' | 'done' | 'error'
@@ -24,6 +24,7 @@ export interface ApiRequestConfig {
 export interface ApiMessage {
   readonly role: 'user' | 'assistant'
   readonly content: string
+  readonly attachments?: readonly Attachment[] | undefined
 }
 
 export interface ProviderAdapter {

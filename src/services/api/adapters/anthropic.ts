@@ -1,3 +1,4 @@
+import type { Attachment } from '@/types'
 import type { ProviderAdapter, ApiRequestConfig, StreamChunk } from '../types'
 
 export const anthropicAdapter: ProviderAdapter = {
@@ -18,7 +19,7 @@ export const anthropicAdapter: ProviderAdapter = {
         stream: true,
         messages: config.messages.map((m) => ({
           role: m.role,
-          content: m.content,
+          content: buildAnthropicContent(m.content, m.attachments),
         })),
       }),
     }
@@ -119,4 +120,39 @@ function parseAnthropicEvent(event: unknown): StreamChunk | null {
     default:
       return null
   }
+}
+
+/**
+ * Builds Anthropic-compatible message content.
+ * Plain text when no attachments, content blocks array for multimodal.
+ */
+function buildAnthropicContent(
+  text: string,
+  attachments?: readonly Attachment[],
+): string | readonly Record<string, unknown>[] {
+  if (attachments == null || attachments.length === 0) return text
+
+  const blocks: Record<string, unknown>[] = []
+
+  for (const att of attachments) {
+    if (att.type === 'image') {
+      blocks.push({
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: att.mimeType,
+          data: att.data,
+        },
+      })
+    } else {
+      blocks.push({
+        type: 'text',
+        text: `[File: ${att.name}]\n${att.data}`,
+      })
+    }
+  }
+
+  blocks.push({ type: 'text', text })
+
+  return blocks
 }
