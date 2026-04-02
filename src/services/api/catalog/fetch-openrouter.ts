@@ -1,8 +1,8 @@
 import type { ModelInfo } from '@/types'
 import type { CatalogFetchResult } from './catalog-types'
-import { CATALOG_FETCH_TIMEOUT_MS } from './fetch-openai-compat'
-
 const ENDPOINT = 'https://openrouter.ai/api/v1/models'
+/** Longer timeout for OpenRouter — the models payload is large (300+ entries) */
+const TIMEOUT_MS = 30_000
 
 interface OpenRouterModel {
   readonly id: string
@@ -24,11 +24,29 @@ export async function fetchOpenRouterCatalog(
 ): Promise<CatalogFetchResult> {
   try {
     const response = await fetch(ENDPOINT, {
-      signal: signal ?? AbortSignal.timeout(CATALOG_FETCH_TIMEOUT_MS),
+      signal: signal ?? AbortSignal.timeout(TIMEOUT_MS),
     })
 
     if (!response.ok) {
-      return { provider: 'openrouter', models: [], error: `HTTP ${response.status}` }
+      let detail = ''
+      try {
+        const body: unknown = await response.json()
+        if (typeof body === 'object' && body !== null) {
+          const err = (body as Record<string, unknown>)['error']
+          if (typeof err === 'string') detail = `: ${err}`
+          else if (typeof err === 'object' && err !== null) {
+            const msg = (err as Record<string, unknown>)['message']
+            if (typeof msg === 'string') detail = `: ${msg}`
+          }
+        }
+      } catch { /* no body */ }
+
+      const msg = response.status === 408
+        ? `Timeout — OpenRouter took too long to respond. Try again.${detail}`
+        : response.status === 429
+          ? `Rate limited — wait a moment and try again.${detail}`
+          : `HTTP ${response.status}${detail}`
+      return { provider: 'openrouter', models: [], error: msg }
     }
 
     let json: unknown
