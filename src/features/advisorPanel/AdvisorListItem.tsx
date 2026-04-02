@@ -227,7 +227,21 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
           <span className="text-xs text-accent-green">typing</span>
         )}
         {advisor.error != null && (
-          <span className="text-xs text-error" title={advisor.error}>err</span>
+          <button
+            onClick={() => {
+              useStore.getState().addErrorLog({
+                id: crypto.randomUUID(),
+                timestamp: Date.now(),
+                advisorLabel: advisor.personaLabel,
+                accentColor: advisor.accentColor,
+                message: advisor.error!,
+              })
+            }}
+            className="text-xs text-error transition-colors hover:text-accent-red"
+            title="Click to view error details"
+          >
+            err
+          </button>
         )}
       </div>
 

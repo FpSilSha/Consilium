@@ -2,6 +2,7 @@ import { type ReactNode, useState, useCallback } from 'react'
 import { useStore } from '@/store'
 import { NavButton } from './NavButton'
 import { SessionHistoryList } from './SessionHistoryList'
+import { ErrorLog } from './ErrorLog'
 import { BudgetBar } from '@/features/budget'
 
 export function NavSidebar(): ReactNode {
@@ -53,14 +54,19 @@ export function NavSidebar(): ReactNode {
         </button>
       </div>
 
-      {/* Session history */}
-      <div className="mt-4 flex min-h-0 flex-1 flex-col">
+      {/* Session history — max ~6 items before scroll */}
+      <div className="mt-4 shrink-0">
         <h3 className="px-4 text-xs font-medium uppercase tracking-wider text-content-muted">
           Sessions
         </h3>
-        <div className="mt-2 flex-1 overflow-y-auto">
+        <div className="mt-2 max-h-52 overflow-y-auto">
           <SessionHistoryList />
         </div>
+      </div>
+
+      {/* Error log — fills remaining space */}
+      <div className="min-h-0 flex-1">
+        <ErrorLog />
       </div>
 
       {/* New session confirmation */}
