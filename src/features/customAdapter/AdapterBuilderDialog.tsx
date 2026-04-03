@@ -3,6 +3,7 @@ import type { CustomAdapterDefinition, CustomRequestTemplate, CustomResponseTemp
 import { useStore } from '@/store'
 import { evictAdapterCache } from '@/services/api/stream-orchestrator'
 import { PRESETS, type AdapterPreset } from './presets'
+import { exportAdapterDefinition, importAdapterDefinition } from './adapter-io'
 import { RequestConfigForm } from './RequestConfigForm'
 import { ResponseConfigForm } from './ResponseConfigForm'
 import { TestConnectionPanel } from './TestConnectionPanel'
@@ -162,6 +163,26 @@ export function AdapterBuilderDialog({ existing, onSave, onClose }: AdapterBuild
                 Back
               </button>
             )}
+            <button
+              onClick={() => exportAdapterDefinition(liveDefinition)}
+              className="rounded-md bg-surface-hover px-2 py-1.5 text-[10px] text-content-disabled hover:bg-surface-active hover:text-content-muted"
+            >
+              Export
+            </button>
+            <button
+              onClick={async () => {
+                const imported = await importAdapterDefinition()
+                if (imported != null) {
+                  setName(imported.name)
+                  setRequest(imported.request)
+                  setResponse(imported.response)
+                  setStep('request')
+                }
+              }}
+              className="rounded-md bg-surface-hover px-2 py-1.5 text-[10px] text-content-disabled hover:bg-surface-active hover:text-content-muted"
+            >
+              Import
+            </button>
           </div>
           <div className="flex gap-2">
             {step !== 'test' && (
