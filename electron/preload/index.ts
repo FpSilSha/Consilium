@@ -17,6 +17,10 @@ const api: ConsiliumAPI = {
   keysSave: (providerId, rawKey, metadata) => ipcRenderer.invoke('keys:save', providerId, rawKey, metadata),
   keysDelete: (providerId) => ipcRenderer.invoke('keys:delete', providerId),
 
+  windowMinimize: () => ipcRenderer.invoke('window:minimize'),
+  windowMaximize: () => ipcRenderer.invoke('window:maximize'),
+  windowClose: () => ipcRenderer.invoke('window:close'),
+  windowIsMaximized: () => ipcRenderer.invoke('window:is-maximized'),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   onMenuAction: (callback) => {
     const actions = ['menu:new-consilium', 'menu:save-session', 'menu:set-budget', 'menu:edit-config', 'menu:about']

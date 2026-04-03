@@ -129,7 +129,14 @@ function createAppMenu(): void {
   ]
 
   const menu = Menu.buildFromTemplate(template)
+  // Always register the menu for keyboard accelerators (Ctrl+N, Ctrl+S, etc.)
   Menu.setApplicationMenu(menu)
+
+  // On Windows/Linux, hide the native menu bar since we use a custom title bar
+  if (process.platform !== 'darwin') {
+    mainWindow?.setMenuBarVisibility(false)
+    mainWindow?.setAutoHideMenuBar(true)
+  }
 }
 
 function setupContextMenu(): void {
@@ -151,11 +158,15 @@ import { loadEncryptedKeys, saveEncryptedKey, deleteEncryptedKey, isEncryptionAv
 let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
+  const isMac = process.platform === 'darwin'
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 800,
     minHeight: 600,
+    frame: isMac, // macOS keeps native frame for traffic lights; Windows/Linux frameless
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -209,6 +220,19 @@ function validateEnvEntries(entries: unknown): Record<string, string> | null {
 
 function registerIpcHandlers(): void {
   ipcMain.handle('get-user-data-path', () => app.getPath('userData'))
+
+  // ── Window controls ────────────────────────────────────────
+  ipcMain.handle('window:minimize', () => { mainWindow?.minimize() })
+  ipcMain.handle('window:maximize', () => {
+    if (mainWindow == null) return
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize()
+    } else {
+      mainWindow.maximize()
+    }
+  })
+  ipcMain.handle('window:close', () => { mainWindow?.close() })
+  ipcMain.handle('window:is-maximized', () => mainWindow?.isMaximized() ?? false)
 
   ipcMain.handle('shell:open-external', (_event, url: unknown) => {
     if (typeof url !== 'string') throw new Error('Invalid URL')
