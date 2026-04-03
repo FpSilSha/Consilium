@@ -25,6 +25,9 @@ export interface ConsiliumAPI {
   windowIsMaximized(): Promise<boolean>
   openExternal(url: string): Promise<void>
   onMenuAction(callback: (action: string) => void): () => void
+  adaptersLoad(): Promise<readonly Record<string, unknown>[]>
+  adaptersSave(def: Record<string, unknown>): Promise<void>
+  adaptersDelete(id: string): Promise<void>
   configLoad(): Promise<{ values: Record<string, unknown>; descriptions: Record<string, string> }>
   configSave(config: Record<string, unknown>): Promise<void>
   sessionSave(id: string, content: string): Promise<void>

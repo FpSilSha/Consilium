@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog, Menu } from 'electron'
 import { join, resolve, normalize, sep, basename, extname } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync } from 'fs'
 import { loadEnvFile, writeEnvFile } from './env-loader'
+import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition } from './adapter-store'
 
 // ── App Configuration ─────────────────────────────────────────
 
@@ -384,6 +385,22 @@ function registerIpcHandlers(): void {
     }
     appConfig = validated
     saveAppConfig(validated)
+  })
+
+  // ── Custom adapter definitions ─────────────────────────────
+
+  ipcMain.handle('adapters:load', () => loadAdapterDefinitions())
+
+  ipcMain.handle('adapters:save', (_event, def: unknown) => {
+    if (typeof def !== 'object' || def === null || Array.isArray(def)) throw new Error('Invalid adapter definition')
+    const d = def as Record<string, unknown>
+    if (typeof d['id'] !== 'string' || typeof d['name'] !== 'string') throw new Error('Missing id or name')
+    saveAdapterDefinition(def as { id: string; name: string; request: Record<string, unknown>; response: Record<string, unknown>; createdAt: number; updatedAt: number })
+  })
+
+  ipcMain.handle('adapters:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('Invalid adapter ID')
+    deleteAdapterDefinition(id)
   })
 
   // ── Session persistence ────────────────────────────────────
