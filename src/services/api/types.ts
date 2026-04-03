@@ -19,6 +19,8 @@ export interface ApiRequestConfig {
   readonly messages: readonly ApiMessage[]
   readonly maxTokens?: number | undefined
   readonly signal?: AbortSignal | undefined
+  /** Base URL for custom providers — overrides the adapter's default endpoint */
+  readonly baseUrl?: string | undefined
 }
 
 export interface ApiMessage {

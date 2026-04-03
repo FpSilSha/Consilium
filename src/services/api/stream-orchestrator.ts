@@ -15,8 +15,19 @@ const adapters: Readonly<Record<KnownProvider, ProviderAdapter>> = {
   openrouter: openrouterAdapter,
 }
 
-export function getAdapter(provider: Provider): ProviderAdapter {
+export function getAdapter(provider: Provider, baseUrl?: string): ProviderAdapter {
   if (provider === 'custom') {
+    if (baseUrl != null && baseUrl !== '') {
+      // Create a dynamic adapter using the custom baseUrl
+      return {
+        provider: 'custom',
+        buildRequest(config) {
+          const base = openaiAdapter.buildRequest(config)
+          return { ...base, url: `${baseUrl}/chat/completions` }
+        },
+        parseStream: openaiAdapter.parseStream,
+      }
+    }
     return openaiAdapter
   }
   const adapter = adapters[provider]
@@ -45,7 +56,7 @@ export function streamResponse(
   callbacks: StreamCallbacks,
 ): AbortController {
   const controller = new AbortController()
-  const adapter = getAdapter(config.provider)
+  const adapter = getAdapter(config.provider, config.baseUrl)
 
   // Link external signal to internal controller so both can cancel
   if (config.signal !== undefined) {

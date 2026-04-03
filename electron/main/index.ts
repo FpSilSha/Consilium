@@ -5,15 +5,25 @@ import { loadEnvFile, writeEnvFile } from './env-loader'
 
 // ── App Configuration ─────────────────────────────────────────
 
+interface CustomProviderDef {
+  readonly id: string
+  readonly name: string
+  readonly baseUrl: string
+  readonly modelListEndpoint: string | null
+  readonly healthCheckEndpoint: string | null
+  readonly costEndpoint: string | null
+}
+
 interface AppConfig {
   readonly maxSessionSizeMB: number
   readonly autoSaveDebounceMs: number
   readonly defaultTurnMode: string
   readonly maxFileAttachmentMB: number
+  readonly customProviders: readonly CustomProviderDef[]
 }
 
 /** Description for each config key — shown in the Edit Configuration modal */
-export const CONFIG_DESCRIPTIONS: Readonly<Record<keyof AppConfig, string>> = {
+export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
   maxSessionSizeMB: 'Maximum session file size in megabytes before save is rejected.',
   autoSaveDebounceMs: 'Delay in milliseconds before auto-saving after a change. Lower = more frequent saves.',
   defaultTurnMode: 'Default turn mode for new sessions: sequential, parallel, manual, or queue.',
@@ -25,6 +35,7 @@ const DEFAULT_CONFIG: AppConfig = {
   autoSaveDebounceMs: 2000,
   defaultTurnMode: 'sequential',
   maxFileAttachmentMB: 10,
+  customProviders: [],
 }
 
 function loadAppConfig(): AppConfig {
@@ -37,6 +48,7 @@ function loadAppConfig(): AppConfig {
       autoSaveDebounceMs: typeof parsed['autoSaveDebounceMs'] === 'number' ? parsed['autoSaveDebounceMs'] : DEFAULT_CONFIG.autoSaveDebounceMs,
       defaultTurnMode: typeof parsed['defaultTurnMode'] === 'string' ? parsed['defaultTurnMode'] : DEFAULT_CONFIG.defaultTurnMode,
       maxFileAttachmentMB: typeof parsed['maxFileAttachmentMB'] === 'number' ? parsed['maxFileAttachmentMB'] : DEFAULT_CONFIG.maxFileAttachmentMB,
+      customProviders: parseCustomProviders(parsed['customProviders']),
     }
   } catch {
     try {
@@ -45,6 +57,24 @@ function loadAppConfig(): AppConfig {
     } catch { /* non-fatal */ }
     return DEFAULT_CONFIG
   }
+}
+
+function parseCustomProviders(raw: unknown): readonly CustomProviderDef[] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((entry): entry is CustomProviderDef => {
+    if (entry == null || typeof entry !== 'object') return false
+    const e = entry as Record<string, unknown>
+    return typeof e['id'] === 'string' && e['id'] !== ''
+      && typeof e['name'] === 'string' && e['name'] !== ''
+      && typeof e['baseUrl'] === 'string' && e['baseUrl'] !== ''
+  }).map((e) => ({
+    id: e.id,
+    name: e.name,
+    baseUrl: e.baseUrl,
+    modelListEndpoint: typeof e.modelListEndpoint === 'string' ? e.modelListEndpoint : null,
+    healthCheckEndpoint: typeof e.healthCheckEndpoint === 'string' ? e.healthCheckEndpoint : null,
+    costEndpoint: typeof e.costEndpoint === 'string' ? e.costEndpoint : null,
+  }))
 }
 
 function saveAppConfig(config: AppConfig): void {
@@ -344,15 +374,13 @@ function registerIpcHandlers(): void {
     if (typeof newConfig !== 'object' || newConfig === null || Array.isArray(newConfig)) {
       throw new Error('Invalid config format')
     }
+    const raw = newConfig as Record<string, unknown>
     const validated: AppConfig = {
-      maxSessionSizeMB: typeof (newConfig as Record<string, unknown>)['maxSessionSizeMB'] === 'number'
-        ? (newConfig as Record<string, unknown>)['maxSessionSizeMB'] as number : appConfig.maxSessionSizeMB,
-      autoSaveDebounceMs: typeof (newConfig as Record<string, unknown>)['autoSaveDebounceMs'] === 'number'
-        ? (newConfig as Record<string, unknown>)['autoSaveDebounceMs'] as number : appConfig.autoSaveDebounceMs,
-      defaultTurnMode: typeof (newConfig as Record<string, unknown>)['defaultTurnMode'] === 'string'
-        ? (newConfig as Record<string, unknown>)['defaultTurnMode'] as string : appConfig.defaultTurnMode,
-      maxFileAttachmentMB: typeof (newConfig as Record<string, unknown>)['maxFileAttachmentMB'] === 'number'
-        ? (newConfig as Record<string, unknown>)['maxFileAttachmentMB'] as number : appConfig.maxFileAttachmentMB,
+      maxSessionSizeMB: typeof raw['maxSessionSizeMB'] === 'number' ? raw['maxSessionSizeMB'] : appConfig.maxSessionSizeMB,
+      autoSaveDebounceMs: typeof raw['autoSaveDebounceMs'] === 'number' ? raw['autoSaveDebounceMs'] : appConfig.autoSaveDebounceMs,
+      defaultTurnMode: typeof raw['defaultTurnMode'] === 'string' ? raw['defaultTurnMode'] : appConfig.defaultTurnMode,
+      maxFileAttachmentMB: typeof raw['maxFileAttachmentMB'] === 'number' ? raw['maxFileAttachmentMB'] : appConfig.maxFileAttachmentMB,
+      customProviders: parseCustomProviders(raw['customProviders'] ?? appConfig.customProviders),
     }
     appConfig = validated
     saveAppConfig(validated)

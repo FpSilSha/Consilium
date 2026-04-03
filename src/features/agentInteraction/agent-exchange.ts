@@ -185,6 +185,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
         systemPrompt,
         messages,
         signal: controller.signal,
+        ...(key.baseUrl != null ? { baseUrl: key.baseUrl } : {}),
       },
       callbacks,
     )
