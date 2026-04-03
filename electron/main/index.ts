@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, dialog, Menu } from 'electron'
 import { join, resolve, normalize, sep, basename, extname } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync } from 'fs'
 import { loadEnvFile, writeEnvFile } from './env-loader'
@@ -7,10 +7,24 @@ import { loadEnvFile, writeEnvFile } from './env-loader'
 
 interface AppConfig {
   readonly maxSessionSizeMB: number
+  readonly autoSaveDebounceMs: number
+  readonly defaultTurnMode: string
+  readonly maxFileAttachmentMB: number
+}
+
+/** Description for each config key — shown in the Edit Configuration modal */
+export const CONFIG_DESCRIPTIONS: Readonly<Record<keyof AppConfig, string>> = {
+  maxSessionSizeMB: 'Maximum session file size in megabytes before save is rejected.',
+  autoSaveDebounceMs: 'Delay in milliseconds before auto-saving after a change. Lower = more frequent saves.',
+  defaultTurnMode: 'Default turn mode for new sessions: sequential, parallel, manual, or queue.',
+  maxFileAttachmentMB: 'Maximum file size in megabytes for attachments.',
 }
 
 const DEFAULT_CONFIG: AppConfig = {
   maxSessionSizeMB: 100,
+  autoSaveDebounceMs: 2000,
+  defaultTurnMode: 'sequential',
+  maxFileAttachmentMB: 10,
 }
 
 function loadAppConfig(): AppConfig {
@@ -19,12 +33,12 @@ function loadAppConfig(): AppConfig {
     const content = readFileSync(configPath, 'utf-8')
     const parsed = JSON.parse(content) as Record<string, unknown>
     return {
-      maxSessionSizeMB: typeof parsed['maxSessionSizeMB'] === 'number'
-        ? parsed['maxSessionSizeMB']
-        : DEFAULT_CONFIG.maxSessionSizeMB,
+      maxSessionSizeMB: typeof parsed['maxSessionSizeMB'] === 'number' ? parsed['maxSessionSizeMB'] : DEFAULT_CONFIG.maxSessionSizeMB,
+      autoSaveDebounceMs: typeof parsed['autoSaveDebounceMs'] === 'number' ? parsed['autoSaveDebounceMs'] : DEFAULT_CONFIG.autoSaveDebounceMs,
+      defaultTurnMode: typeof parsed['defaultTurnMode'] === 'string' ? parsed['defaultTurnMode'] : DEFAULT_CONFIG.defaultTurnMode,
+      maxFileAttachmentMB: typeof parsed['maxFileAttachmentMB'] === 'number' ? parsed['maxFileAttachmentMB'] : DEFAULT_CONFIG.maxFileAttachmentMB,
     }
   } catch {
-    // File doesn't exist yet — create with defaults
     try {
       mkdirSync(app.getPath('userData'), { recursive: true })
       writeFileSync(configPath, JSON.stringify(DEFAULT_CONFIG, null, 2), 'utf-8')
@@ -33,7 +47,105 @@ function loadAppConfig(): AppConfig {
   }
 }
 
+function saveAppConfig(config: AppConfig): void {
+  const configPath = join(app.getPath('userData'), 'config.json')
+  mkdirSync(app.getPath('userData'), { recursive: true })
+  writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
+}
+
 let appConfig = DEFAULT_CONFIG
+
+// ── Menu & Context Menu ──────────────────────────────────────
+
+const IS_DEV = !app.isPackaged
+
+function createAppMenu(): void {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'New Consilium',
+          accelerator: 'CmdOrCtrl+N',
+          click: () => { mainWindow?.webContents.send('menu:new-consilium') },
+        },
+        { type: 'separator' },
+        {
+          label: 'Save Session',
+          accelerator: 'CmdOrCtrl+S',
+          click: () => { mainWindow?.webContents.send('menu:save-session') },
+        },
+        {
+          label: 'Set Budget',
+          click: () => { mainWindow?.webContents.send('menu:set-budget') },
+        },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        {
+          label: 'Edit Configuration',
+          click: () => { mainWindow?.webContents.send('menu:edit-config') },
+        },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'togglefullscreen' },
+        ...(IS_DEV ? [
+          { type: 'separator' as const },
+          { role: 'reload' as const },
+          { role: 'toggleDevTools' as const },
+        ] : []),
+      ],
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'About Consilium',
+          click: () => { mainWindow?.webContents.send('menu:about') },
+        },
+        { type: 'separator' },
+        {
+          label: 'Documentation',
+          click: () => { shell.openExternal('https://github.com/FpSilSha/Consilium/wiki') },
+        },
+        {
+          label: 'Report Issue',
+          click: () => { shell.openExternal('https://github.com/FpSilSha/Consilium/issues/new') },
+        },
+        { type: 'separator' },
+        {
+          label: 'GitHub',
+          click: () => { shell.openExternal('https://github.com/FpSilSha/Consilium') },
+        },
+      ],
+    },
+  ]
+
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
+}
+
+function setupContextMenu(): void {
+  if (mainWindow == null) return
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const menu = Menu.buildFromTemplate([
+      { role: 'cut', enabled: params.editFlags.canCut },
+      { role: 'copy', enabled: params.editFlags.canCopy },
+      { role: 'paste', enabled: params.editFlags.canPaste },
+      { type: 'separator' },
+      { role: 'selectAll' },
+    ])
+    menu.popup()
+  })
+}
+
 import { loadEncryptedKeys, saveEncryptedKey, deleteEncryptedKey, isEncryptionAvailable, isValidProviderId } from './key-store'
 
 let mainWindow: BrowserWindow | null = null
@@ -97,6 +209,13 @@ function validateEnvEntries(entries: unknown): Record<string, string> | null {
 
 function registerIpcHandlers(): void {
   ipcMain.handle('get-user-data-path', () => app.getPath('userData'))
+
+  ipcMain.handle('shell:open-external', (_event, url: unknown) => {
+    if (typeof url !== 'string') throw new Error('Invalid URL')
+    // Only allow http/https URLs to prevent file:// or other protocol abuse
+    if (!url.startsWith('https://') && !url.startsWith('http://')) throw new Error('Only http(s) URLs allowed')
+    return shell.openExternal(url)
+  })
 
   ipcMain.handle('read-env-file', () => loadEnvFile())
 
@@ -192,7 +311,28 @@ function registerIpcHandlers(): void {
 
   // ── App config ─────────────────────────────────────────────
 
-  ipcMain.handle('config:load', () => appConfig)
+  ipcMain.handle('config:load', () => ({
+    values: appConfig,
+    descriptions: CONFIG_DESCRIPTIONS,
+  }))
+
+  ipcMain.handle('config:save', (_event, newConfig: unknown) => {
+    if (typeof newConfig !== 'object' || newConfig === null || Array.isArray(newConfig)) {
+      throw new Error('Invalid config format')
+    }
+    const validated: AppConfig = {
+      maxSessionSizeMB: typeof (newConfig as Record<string, unknown>)['maxSessionSizeMB'] === 'number'
+        ? (newConfig as Record<string, unknown>)['maxSessionSizeMB'] as number : appConfig.maxSessionSizeMB,
+      autoSaveDebounceMs: typeof (newConfig as Record<string, unknown>)['autoSaveDebounceMs'] === 'number'
+        ? (newConfig as Record<string, unknown>)['autoSaveDebounceMs'] as number : appConfig.autoSaveDebounceMs,
+      defaultTurnMode: typeof (newConfig as Record<string, unknown>)['defaultTurnMode'] === 'string'
+        ? (newConfig as Record<string, unknown>)['defaultTurnMode'] as string : appConfig.defaultTurnMode,
+      maxFileAttachmentMB: typeof (newConfig as Record<string, unknown>)['maxFileAttachmentMB'] === 'number'
+        ? (newConfig as Record<string, unknown>)['maxFileAttachmentMB'] as number : appConfig.maxFileAttachmentMB,
+    }
+    appConfig = validated
+    saveAppConfig(validated)
+  })
 
   // ── Session persistence ────────────────────────────────────
 
@@ -320,12 +460,15 @@ function registerIpcHandlers(): void {
 
 app.whenReady().then(() => {
   appConfig = loadAppConfig()
+  createAppMenu()
   registerIpcHandlers()
   createWindow()
+  setupContextMenu()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
+      setupContextMenu()
     }
   })
 })

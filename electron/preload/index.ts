@@ -17,6 +17,22 @@ const api: ConsiliumAPI = {
   keysSave: (providerId, rawKey, metadata) => ipcRenderer.invoke('keys:save', providerId, rawKey, metadata),
   keysDelete: (providerId) => ipcRenderer.invoke('keys:delete', providerId),
 
+  openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
+  onMenuAction: (callback) => {
+    const actions = ['menu:new-consilium', 'menu:save-session', 'menu:set-budget', 'menu:edit-config', 'menu:about']
+    const handlers = actions.map((action) => {
+      const handler = () => callback(action)
+      ipcRenderer.on(action, handler)
+      return { action, handler }
+    })
+    return () => {
+      for (const { action, handler } of handlers) {
+        ipcRenderer.removeListener(action, handler)
+      }
+    }
+  },
+  configLoad: () => ipcRenderer.invoke('config:load'),
+  configSave: (config) => ipcRenderer.invoke('config:save', config),
   catalogPrefsLoad: () => ipcRenderer.invoke('catalog-prefs:load'),
   catalogPrefsSave: (data) => ipcRenderer.invoke('catalog-prefs:save', data),
   openFileDialog: (filters) => ipcRenderer.invoke('dialog:open-file', filters),
