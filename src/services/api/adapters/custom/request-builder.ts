@@ -31,18 +31,11 @@ export function buildCustomRequest(
   }
 
   // System prompt placement
-  switch (template.body.systemPromptPlacement) {
-    case 'top-level':
-      bodyObj[template.body.systemPromptPath] = config.systemPrompt
-      break
-    case 'first-message':
-      // Handled below when building messages
-      break
-    case 'nested': {
-      const nested = setByPath(template.body.systemPromptPath, config.systemPrompt)
-      deepMerge(bodyObj, nested)
-      break
-    }
+  if (template.body.systemPromptPlacement !== 'first-message' && config.systemPrompt !== '') {
+    // Both 'top-level' and 'nested' use setByPath — handles simple keys
+    // ("system") and dotted paths ("systemInstruction.parts[0].text") uniformly
+    const nested = setByPath(template.body.systemPromptPath, config.systemPrompt)
+    deepMerge(bodyObj, nested)
   }
 
   // Messages
@@ -69,7 +62,7 @@ export function buildCustomRequest(
   return { url, headers, body: JSON.stringify(bodyObj) }
 }
 
-/** Shallow merge of source into target (mutates target) */
+/** Deep merge of source into target (mutates target — only used on locally-created objects) */
 function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): void {
   for (const [key, value] of Object.entries(source)) {
     if (

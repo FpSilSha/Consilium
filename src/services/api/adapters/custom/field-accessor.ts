@@ -74,6 +74,9 @@ export function setByPath(path: string, value: unknown): Record<string, unknown>
 /**
  * Parses a dot-notation path into segments.
  * "choices[0].delta.content" → ["choices", 0, "delta", "content"]
+ *
+ * Note: handles one bracket pair per dot-segment. Chained brackets
+ * like "a[0][1]" are not supported.
  */
 function parsePath(path: string): readonly (string | number)[] {
   const segments: (string | number)[] = []

@@ -112,9 +112,12 @@ async function* parseNDJSONStream(
 function extractChunk(event: unknown, template: CustomResponseTemplate): StreamChunk | null {
   if (event == null || typeof event !== 'object') return null
 
+  const isEventRouted = template.eventTypeField != null
+  let isContentEvent = false
+
   // Event type routing (Anthropic-style)
-  if (template.eventTypeField != null) {
-    const eventType = getByPath(event, template.eventTypeField) as string | undefined
+  if (isEventRouted) {
+    const eventType = getByPath(event, template.eventTypeField!) as string | undefined
 
     // Error event
     if (template.errorEventType != null && eventType === template.errorEventType) {
@@ -133,45 +136,52 @@ function extractChunk(event: unknown, template: CustomResponseTemplate): StreamC
       }
     }
 
-    // Content event — only extract if type matches (when configured)
-    if (template.contentEventType != null && eventType !== template.contentEventType) {
-      // Check for token usage in non-content events (e.g. message_start)
-      const usage = extractTokenUsage(event, template)
-      if (usage != null && (usage.inputTokens > 0 || usage.outputTokens > 0)) {
-        return { type: 'content', content: '', tokenUsage: usage }
+    // Content event check
+    if (template.contentEventType != null) {
+      if (eventType !== template.contentEventType) {
+        // Non-content, non-done, non-error event — check for token usage only
+        const usage = extractTokenUsage(event, template)
+        if (usage != null && (usage.inputTokens > 0 || usage.outputTokens > 0)) {
+          return { type: 'content', content: '', tokenUsage: usage }
+        }
+        return null
       }
-      return null
+      isContentEvent = true
     }
   }
 
-  // Check for done via field path
-  if (template.doneFieldPath != null) {
-    const doneValue = getByPath(event, template.doneFieldPath)
-    if (doneValue != null && doneValue !== false && doneValue !== '') {
-      return {
-        type: 'done',
-        content: '',
-        tokenUsage: extractTokenUsage(event, template),
+  // For non-event-routed providers (OpenAI-style) or events without a type field,
+  // check done via field path and standalone usage
+  if (!isContentEvent) {
+    // Check for done via field path
+    if (template.doneFieldPath != null) {
+      const doneValue = getByPath(event, template.doneFieldPath)
+      if (doneValue != null && doneValue !== false && doneValue !== '') {
+        return {
+          type: 'done',
+          content: '',
+          tokenUsage: extractTokenUsage(event, template),
+        }
+      }
+    }
+
+    // Check for standalone usage event (no content, has usage)
+    const usage = extractTokenUsage(event, template)
+    if (usage != null && (usage.inputTokens > 0 || usage.outputTokens > 0)) {
+      const content = getByPath(event, template.contentPath)
+      if (content == null || content === '') {
+        return { type: 'done', content: '', tokenUsage: usage }
       }
     }
   }
 
-  // Check for standalone usage event (no content, has usage)
-  const usage = extractTokenUsage(event, template)
-  if (usage != null && (usage.inputTokens > 0 || usage.outputTokens > 0)) {
-    const content = getByPath(event, template.contentPath)
-    if (content == null || content === '') {
-      return { type: 'done', content: '', tokenUsage: usage }
-    }
-  }
-
-  // Extract content
+  // Extract content (always checked — both event-routed and non-routed)
   const content = getByPath(event, template.contentPath)
   if (typeof content === 'string' && content !== '') {
     return {
       type: 'content',
       content,
-      tokenUsage: usage ?? undefined,
+      tokenUsage: extractTokenUsage(event, template) ?? undefined,
     }
   }
 
