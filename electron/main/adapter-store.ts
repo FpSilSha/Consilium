@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 
@@ -46,14 +46,7 @@ export function saveAdapterDefinition(def: StoredAdapterDef): void {
   const dirPath = app.getPath('userData')
   mkdirSync(dirPath, { recursive: true })
 
-  // Atomic write: tmp then rename
-  const filePath = getFilePath()
-  const tmpPath = `${filePath}.tmp`
-  writeFileSync(tmpPath, JSON.stringify(updated, null, 2), 'utf-8')
-
-  // Rename is atomic on most filesystems
-  const { renameSync } = require('fs') as typeof import('fs')
-  renameSync(tmpPath, filePath)
+  atomicWrite(getFilePath(), JSON.stringify(updated, null, 2))
 }
 
 /**
@@ -62,14 +55,21 @@ export function saveAdapterDefinition(def: StoredAdapterDef): void {
 export function deleteAdapterDefinition(id: string): void {
   const existing = loadAdapterDefinitions()
   const filtered = existing.filter((d) => d.id !== id)
-  if (filtered.length === existing.length) return // nothing to delete
+  if (filtered.length === existing.length) return
 
-  const dirPath = app.getPath('userData')
-  mkdirSync(dirPath, { recursive: true })
-  writeFileSync(getFilePath(), JSON.stringify(filtered, null, 2), 'utf-8')
+  atomicWrite(getFilePath(), JSON.stringify(filtered, null, 2))
 }
 
-function isValidAdapterDef(entry: unknown): entry is StoredAdapterDef {
+/** Atomic write: write to tmp then rename */
+function atomicWrite(filePath: string, content: string): void {
+  const dirPath = app.getPath('userData')
+  mkdirSync(dirPath, { recursive: true })
+  const tmpPath = `${filePath}.tmp`
+  writeFileSync(tmpPath, content, 'utf-8')
+  renameSync(tmpPath, filePath)
+}
+
+export function isValidAdapterDef(entry: unknown): entry is StoredAdapterDef {
   if (entry == null || typeof entry !== 'object') return false
   const e = entry as Record<string, unknown>
   return (

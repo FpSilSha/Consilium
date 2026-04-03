@@ -20,6 +20,11 @@ const adapters: Readonly<Record<KnownProvider, ProviderAdapter>> = {
 /** Cache compiled custom adapters to avoid recompiling on every call */
 const compiledAdapterCache = new Map<string, ProviderAdapter>()
 
+/** Evict a compiled adapter from cache — call after definition update or delete */
+export function evictAdapterCache(id: string): void {
+  compiledAdapterCache.delete(id)
+}
+
 export function getAdapter(provider: Provider, baseUrl?: string, adapterDefinitionId?: string): ProviderAdapter {
   if (provider === 'custom') {
     // Check for a custom adapter definition first
@@ -28,11 +33,12 @@ export function getAdapter(provider: Provider, baseUrl?: string, adapterDefiniti
       if (cached != null) return cached
 
       const definition = useStore.getState().customAdapters.find((a) => a.id === adapterDefinitionId)
-      if (definition != null) {
-        const compiled = compileCustomAdapter(definition)
-        compiledAdapterCache.set(adapterDefinitionId, compiled)
-        return compiled
+      if (definition == null) {
+        throw new Error(`Custom adapter definition "${adapterDefinitionId}" not found`)
       }
+      const compiled = compileCustomAdapter(definition)
+      compiledAdapterCache.set(adapterDefinitionId, compiled)
+      return compiled
     }
 
     // Fallback: OpenAI-compatible with custom baseUrl
