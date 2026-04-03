@@ -186,6 +186,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
         messages,
         signal: controller.signal,
         ...(key.baseUrl != null ? { baseUrl: key.baseUrl } : {}),
+        ...(key.adapterDefinitionId != null ? { adapterDefinitionId: key.adapterDefinitionId } : {}),
       },
       callbacks,
     )

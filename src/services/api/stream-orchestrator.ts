@@ -5,6 +5,8 @@ import { anthropicAdapter } from './adapters/anthropic'
 import { openaiAdapter } from './adapters/openai'
 import { googleAdapter } from './adapters/google'
 import { xaiAdapter, deepseekAdapter, openrouterAdapter } from './adapters/openai-compatible'
+import { compileCustomAdapter } from './adapters/custom'
+import { useStore } from '@/store'
 
 const adapters: Readonly<Record<KnownProvider, ProviderAdapter>> = {
   anthropic: anthropicAdapter,
@@ -15,10 +17,26 @@ const adapters: Readonly<Record<KnownProvider, ProviderAdapter>> = {
   openrouter: openrouterAdapter,
 }
 
-export function getAdapter(provider: Provider, baseUrl?: string): ProviderAdapter {
+/** Cache compiled custom adapters to avoid recompiling on every call */
+const compiledAdapterCache = new Map<string, ProviderAdapter>()
+
+export function getAdapter(provider: Provider, baseUrl?: string, adapterDefinitionId?: string): ProviderAdapter {
   if (provider === 'custom') {
+    // Check for a custom adapter definition first
+    if (adapterDefinitionId != null && adapterDefinitionId !== '') {
+      const cached = compiledAdapterCache.get(adapterDefinitionId)
+      if (cached != null) return cached
+
+      const definition = useStore.getState().customAdapters.find((a) => a.id === adapterDefinitionId)
+      if (definition != null) {
+        const compiled = compileCustomAdapter(definition)
+        compiledAdapterCache.set(adapterDefinitionId, compiled)
+        return compiled
+      }
+    }
+
+    // Fallback: OpenAI-compatible with custom baseUrl
     if (baseUrl != null && baseUrl !== '') {
-      // Create a dynamic adapter using the custom baseUrl
       return {
         provider: 'custom',
         buildRequest(config) {
@@ -56,7 +74,7 @@ export function streamResponse(
   callbacks: StreamCallbacks,
 ): AbortController {
   const controller = new AbortController()
-  const adapter = getAdapter(config.provider, config.baseUrl)
+  const adapter = getAdapter(config.provider, config.baseUrl, config.adapterDefinitionId)
 
   // Link external signal to internal controller so both can cancel
   if (config.signal !== undefined) {

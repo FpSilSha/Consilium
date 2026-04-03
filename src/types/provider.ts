@@ -7,6 +7,8 @@ export interface ApiKey {
   readonly createdAt: number
   readonly verified: boolean
   readonly baseUrl?: string | undefined
+  /** Links to a CustomAdapterDefinition when provider='custom' and format is non-OpenAI */
+  readonly adapterDefinitionId?: string | undefined
 }
 
 export interface ModelInfo {
