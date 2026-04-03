@@ -1,4 +1,4 @@
-import { type ReactNode, useState, useCallback } from 'react'
+import { type ReactNode, useState, useCallback, useMemo } from 'react'
 import type { CustomAdapterDefinition, CustomRequestTemplate, CustomResponseTemplate } from '@/types'
 import { useStore } from '@/store'
 import { evictAdapterCache } from '@/services/api/stream-orchestrator'
@@ -37,7 +37,9 @@ export function AdapterBuilderDialog({ existing, onSave, onClose }: AdapterBuild
     const trimmedName = name.trim()
     if (trimmedName === '') return
 
-    const id = existing?.id ?? trimmedName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const id = (existing?.id != null && existing.id !== '')
+      ? existing.id
+      : trimmedName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     if (id === '') return
 
     const def: CustomAdapterDefinition = {
@@ -58,15 +60,15 @@ export function AdapterBuilderDialog({ existing, onSave, onClose }: AdapterBuild
     onSave(def)
   }, [name, request, response, existing, onSave])
 
-  // Build a live definition for the test panel
-  const liveDefinition: CustomAdapterDefinition = {
+  // Build a live definition for the test panel — memoized to avoid needless re-renders
+  const liveDefinition = useMemo<CustomAdapterDefinition>(() => ({
     id: existing?.id ?? 'test',
     name: name || 'Test',
     request,
     response,
     createdAt: existing?.createdAt ?? Date.now(),
     updatedAt: Date.now(),
-  }
+  }), [existing?.id, existing?.createdAt, name, request, response])
 
   return (
     <div

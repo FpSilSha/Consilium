@@ -1,7 +1,8 @@
-import { type ReactNode, useState, useCallback, useRef } from 'react'
+import { type ReactNode, useState, useCallback, useRef, useEffect } from 'react'
 import type { CustomAdapterDefinition } from '@/types'
-import { compileCustomAdapter } from '@/services/api/adapters/custom'
+import { useStore } from '@/store'
 import { streamResponse } from '@/services/api/stream-orchestrator'
+import { evictAdapterCache } from '@/services/api/stream-orchestrator'
 import type { StreamCallbacks } from '@/services/api/stream-orchestrator'
 
 interface TestConnectionPanelProps {
@@ -10,7 +11,6 @@ interface TestConnectionPanelProps {
 
 interface TestResult {
   readonly status: 'idle' | 'running' | 'success' | 'error'
-  readonly rawLines: readonly string[]
   readonly parsedChunks: readonly string[]
   readonly error?: string
 }
@@ -18,8 +18,13 @@ interface TestResult {
 export function TestConnectionPanel({ definition }: TestConnectionPanelProps): ReactNode {
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState('')
-  const [result, setResult] = useState<TestResult>({ status: 'idle', rawLines: [], parsedChunks: [] })
+  const [result, setResult] = useState<TestResult>({ status: 'idle', parsedChunks: [] })
   const controllerRef = useRef<AbortController | null>(null)
+
+  // Cleanup on unmount — abort any in-flight test stream
+  useEffect(() => {
+    return () => { controllerRef.current?.abort() }
+  }, [])
 
   const handleTest = useCallback(() => {
     const trimmedKey = apiKey.trim()
@@ -27,31 +32,36 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
     if (trimmedKey === '' || trimmedModel === '') return
 
     controllerRef.current?.abort()
+    setResult({ status: 'running', parsedChunks: [] })
 
-    setResult({ status: 'running', rawLines: [], parsedChunks: [] })
-
-    const chunks: string[] = []
+    // Temporarily register the definition so the orchestrator can find it
+    useStore.getState().addCustomAdapter(definition)
+    evictAdapterCache(definition.id)
 
     const callbacks: StreamCallbacks = {
       onChunk: (content) => {
-        chunks.push(`[content] "${content}"`)
-        setResult((prev) => ({ ...prev, parsedChunks: [...chunks] }))
+        setResult((prev) => ({
+          ...prev,
+          parsedChunks: [...prev.parsedChunks, `[content] "${content}"`],
+        }))
       },
       onDone: (fullContent, tokenUsage) => {
         const usageStr = tokenUsage != null
           ? ` (${tokenUsage.inputTokens} in, ${tokenUsage.outputTokens} out)`
           : ''
-        chunks.push(`[done] "${fullContent.slice(0, 50)}..."${usageStr}`)
-        setResult({ status: 'success', rawLines: [], parsedChunks: [...chunks] })
+        setResult((prev) => ({
+          status: 'success',
+          parsedChunks: [...prev.parsedChunks, `[done] "${fullContent.slice(0, 50)}..."${usageStr}`],
+        }))
       },
       onError: (error) => {
-        chunks.push(`[error] ${error}`)
-        setResult({ status: 'error', rawLines: [], parsedChunks: [...chunks], error })
+        setResult((prev) => ({
+          status: 'error',
+          parsedChunks: [...prev.parsedChunks, `[error] ${error}`],
+          error,
+        }))
       },
     }
-
-    // Compile the adapter from the current definition
-    const adapter = compileCustomAdapter(definition)
 
     const controller = streamResponse(
       {
@@ -61,6 +71,7 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
         systemPrompt: 'Respond with exactly one word.',
         messages: [{ role: 'user', content: 'Say hello.' }],
         maxTokens: 10,
+        adapterDefinitionId: definition.id,
       },
       callbacks,
     )
@@ -70,7 +81,11 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
 
   const handleStop = useCallback(() => {
     controllerRef.current?.abort()
-    setResult((prev) => ({ ...prev, status: prev.status === 'running' ? 'error' : prev.status, error: 'Cancelled' }))
+    setResult((prev) => ({
+      ...prev,
+      status: prev.status === 'running' ? 'error' : prev.status,
+      error: 'Cancelled',
+    }))
   }, [])
 
   return (
@@ -115,7 +130,6 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
         )}
       </div>
 
-      {/* Results */}
       {result.parsedChunks.length > 0 && (
         <div className="rounded-md border border-edge-subtle bg-surface-base p-3">
           <div className="mb-1 flex items-center gap-2">
