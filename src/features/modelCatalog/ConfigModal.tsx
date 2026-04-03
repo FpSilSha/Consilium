@@ -3,6 +3,7 @@ import type { Provider } from '@/types'
 import { useStore } from '@/store'
 import { ProviderTab } from './ProviderTab'
 import { CustomProviderTab } from './CustomProviderTab'
+import { AdapterBuilderDialog } from '@/features/customAdapter/AdapterBuilderDialog'
 
 interface CustomProviderDef {
   readonly id: string
@@ -30,6 +31,7 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
   const [activeTab, setActiveTab] = useState<string>('anthropic')
   const [customProviders, setCustomProviders] = useState<readonly CustomProviderDef[]>([])
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showAdapterBuilder, setShowAdapterBuilder] = useState(false)
 
   // Load custom providers from config on mount
   useEffect(() => {
@@ -104,13 +106,21 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
           <h2 id="config-modal-title" className="text-sm font-semibold text-content-primary">
             Models & Keys
           </h2>
-          <button
-            onClick={onClose}
-            autoFocus
-            className="rounded-md px-2 py-1 text-xs text-content-muted transition-colors hover:bg-surface-hover hover:text-content-primary"
-          >
-            Close
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowAdapterBuilder(true)}
+              className="rounded-md bg-surface-hover px-2 py-1 text-xs text-content-muted transition-colors hover:bg-surface-active hover:text-content-primary"
+            >
+              Adapter Builder
+            </button>
+            <button
+              onClick={onClose}
+              autoFocus
+              className="rounded-md px-2 py-1 text-xs text-content-muted transition-colors hover:bg-surface-hover hover:text-content-primary"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         {/* Tab bar */}
@@ -174,6 +184,14 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
             />
           )}
         </div>
+
+        {/* Adapter Builder Dialog */}
+        {showAdapterBuilder && (
+          <AdapterBuilderDialog
+            onSave={() => setShowAdapterBuilder(false)}
+            onClose={() => setShowAdapterBuilder(false)}
+          />
+        )}
       </div>
     </div>
   )

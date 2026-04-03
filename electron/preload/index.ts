@@ -17,6 +17,9 @@ const api: ConsiliumAPI = {
   keysSave: (providerId, rawKey, metadata) => ipcRenderer.invoke('keys:save', providerId, rawKey, metadata),
   keysDelete: (providerId) => ipcRenderer.invoke('keys:delete', providerId),
 
+  adaptersLoad: () => ipcRenderer.invoke('adapters:load'),
+  adaptersSave: (def) => ipcRenderer.invoke('adapters:save', def),
+  adaptersDelete: (id) => ipcRenderer.invoke('adapters:delete', id),
   windowMinimize: () => ipcRenderer.invoke('window:minimize'),
   windowMaximize: () => ipcRenderer.invoke('window:maximize'),
   windowClose: () => ipcRenderer.invoke('window:close'),

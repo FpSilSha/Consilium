@@ -9,6 +9,7 @@ import { createUISlice } from './slices/uiSlice'
 import { createTurnSlice } from './slices/turnSlice'
 import { createBudgetSlice } from './slices/budgetSlice'
 import { createModelCatalogSlice } from './slices/modelCatalogSlice'
+import { createCustomAdaptersSlice } from './slices/customAdaptersSlice'
 
 export const useStore = create<RootState>()((...args) => ({
   ...createKeysSlice(...args),
@@ -20,6 +21,7 @@ export const useStore = create<RootState>()((...args) => ({
   ...createTurnSlice(...args),
   ...createBudgetSlice(...args),
   ...createModelCatalogSlice(...args),
+  ...createCustomAdaptersSlice(...args),
 }))
 
 export type { RootState } from './types'

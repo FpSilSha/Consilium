@@ -1,0 +1,126 @@
+import type { CustomRequestTemplate, CustomResponseTemplate } from '@/types'
+
+export interface AdapterPreset {
+  readonly id: string
+  readonly name: string
+  readonly description: string
+  readonly request: CustomRequestTemplate
+  readonly response: CustomResponseTemplate
+}
+
+export const PRESETS: readonly AdapterPreset[] = [
+  {
+    id: 'openai-compatible',
+    name: 'OpenAI Compatible',
+    description: 'Standard OpenAI-compatible API (most self-hosted models, vLLM, LM Studio, etc.)',
+    request: {
+      url: 'http://localhost:8080/v1/chat/completions',
+      urlModelInterpolation: false,
+      authHeaderName: 'Authorization',
+      authHeaderValuePrefix: 'Bearer ',
+      extraHeaders: {},
+      body: {
+        modelField: 'model',
+        maxTokensField: 'max_tokens',
+        streamField: 'stream',
+        streamValue: true,
+        systemPromptPlacement: 'first-message',
+        systemPromptPath: 'system',
+        messagesField: 'messages',
+        roleField: 'role',
+        contentField: 'content',
+        roleMapping: { user: 'user', assistant: 'assistant', system: 'system' },
+        extraFields: {},
+      },
+    },
+    response: {
+      streamFormat: 'sse',
+      contentPath: 'choices[0].delta.content',
+      doneSentinel: '[DONE]',
+      doneFieldPath: null,
+      eventTypeField: null,
+      contentEventType: null,
+      doneEventType: null,
+      errorEventType: null,
+      errorMessagePath: null,
+      inputTokensPath: 'usage.prompt_tokens',
+      outputTokensPath: 'usage.completion_tokens',
+    },
+  },
+  {
+    id: 'cohere',
+    name: 'Cohere',
+    description: 'Cohere Command R / Command R+ chat API',
+    request: {
+      url: 'https://api.cohere.ai/v2/chat',
+      urlModelInterpolation: false,
+      authHeaderName: 'Authorization',
+      authHeaderValuePrefix: 'bearer ',
+      extraHeaders: {},
+      body: {
+        modelField: 'model',
+        maxTokensField: 'max_tokens',
+        streamField: 'stream',
+        streamValue: true,
+        systemPromptPlacement: 'first-message',
+        systemPromptPath: 'system',
+        messagesField: 'messages',
+        roleField: 'role',
+        contentField: 'content',
+        roleMapping: { user: 'user', assistant: 'assistant', system: 'system' },
+        extraFields: {},
+      },
+    },
+    response: {
+      streamFormat: 'sse',
+      contentPath: 'delta.message.content.text',
+      doneSentinel: null,
+      doneFieldPath: null,
+      eventTypeField: 'type',
+      contentEventType: 'content-delta',
+      doneEventType: 'message-end',
+      errorEventType: null,
+      errorMessagePath: null,
+      inputTokensPath: 'delta.usage.billed_units.input_tokens',
+      outputTokensPath: 'delta.usage.billed_units.output_tokens',
+    },
+  },
+  {
+    id: 'anthropic-style',
+    name: 'Anthropic Style',
+    description: 'Anthropic-compatible API with event-type routing and separate usage events',
+    request: {
+      url: 'https://api.example.com/v1/messages',
+      urlModelInterpolation: false,
+      authHeaderName: 'x-api-key',
+      authHeaderValuePrefix: '',
+      extraHeaders: { 'anthropic-version': '2023-06-01' },
+      body: {
+        modelField: 'model',
+        maxTokensField: 'max_tokens',
+        streamField: 'stream',
+        streamValue: true,
+        systemPromptPlacement: 'top-level',
+        systemPromptPath: 'system',
+        messagesField: 'messages',
+        roleField: 'role',
+        contentField: 'content',
+        roleMapping: { user: 'user', assistant: 'assistant' },
+        extraFields: {},
+      },
+    },
+    response: {
+      streamFormat: 'sse',
+      contentPath: 'delta.text',
+      doneSentinel: null,
+      doneFieldPath: null,
+      eventTypeField: 'type',
+      contentEventType: 'content_block_delta',
+      doneEventType: 'message_delta',
+      errorEventType: 'error',
+      errorMessagePath: 'error.message',
+      inputTokensPath: 'message.usage.input_tokens',
+      outputTokensPath: 'usage.output_tokens',
+    },
+  },
+]

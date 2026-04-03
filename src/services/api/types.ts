@@ -21,6 +21,8 @@ export interface ApiRequestConfig {
   readonly signal?: AbortSignal | undefined
   /** Base URL for custom providers — overrides the adapter's default endpoint */
   readonly baseUrl?: string | undefined
+  /** Links to a CustomAdapterDefinition for non-OpenAI-compatible custom providers */
+  readonly adapterDefinitionId?: string | undefined
 }
 
 export interface ApiMessage {

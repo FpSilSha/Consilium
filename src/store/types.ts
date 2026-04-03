@@ -7,5 +7,6 @@ import type { UISlice } from './slices/uiSlice'
 import type { TurnSlice } from './slices/turnSlice'
 import type { BudgetSlice } from './slices/budgetSlice'
 import type { ModelCatalogSlice } from './slices/modelCatalogSlice'
+import type { CustomAdaptersSlice } from './slices/customAdaptersSlice'
 
-export type RootState = KeysSlice & PersonasSlice & ThemesSlice & ContextBusSlice & WindowsSlice & UISlice & TurnSlice & BudgetSlice & ModelCatalogSlice
+export type RootState = KeysSlice & PersonasSlice & ThemesSlice & ContextBusSlice & WindowsSlice & UISlice & TurnSlice & BudgetSlice & ModelCatalogSlice & CustomAdaptersSlice

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog, Menu } from 'electron'
 import { join, resolve, normalize, sep, basename, extname } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync } from 'fs'
 import { loadEnvFile, writeEnvFile } from './env-loader'
+import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
 
 // ── App Configuration ─────────────────────────────────────────
 
@@ -384,6 +385,20 @@ function registerIpcHandlers(): void {
     }
     appConfig = validated
     saveAppConfig(validated)
+  })
+
+  // ── Custom adapter definitions ─────────────────────────────
+
+  ipcMain.handle('adapters:load', () => loadAdapterDefinitions())
+
+  ipcMain.handle('adapters:save', (_event, def: unknown) => {
+    if (!isValidAdapterDef(def)) throw new Error('Invalid adapter definition: must include id, name, request, response, createdAt, updatedAt')
+    saveAdapterDefinition(def)
+  })
+
+  ipcMain.handle('adapters:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string') throw new Error('Invalid adapter ID')
+    deleteAdapterDefinition(id)
   })
 
   // ── Session persistence ────────────────────────────────────

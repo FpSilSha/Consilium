@@ -212,6 +212,7 @@ function dispatchAgentTurn(card: QueueCard): void {
       systemPrompt,
       messages: threadMessages,
       ...(key.baseUrl != null ? { baseUrl: key.baseUrl } : {}),
+      ...(key.adapterDefinitionId != null ? { adapterDefinitionId: key.adapterDefinitionId } : {}),
     },
     callbacks,
   )
