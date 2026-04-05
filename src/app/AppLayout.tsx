@@ -12,6 +12,8 @@ import { useStore } from '@/store'
 import { saveCurrentSession } from '@/features/sessions/session-manager'
 import { useStartupCatalogFetch } from './useStartupCatalogFetch'
 import { useSessionAutoSave } from './useSessionAutoSave'
+import { CommandPalette } from '@/features/commandPalette'
+import { WelcomeTourDialog } from '@/features/onboarding/WelcomeTourDialog'
 
 export function AppLayout(): ReactNode {
   useStartupCatalogFetch()
@@ -24,6 +26,8 @@ export function AppLayout(): ReactNode {
 
   const [showEditConfig, setShowEditConfig] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
+  const [showWelcomeTour, setShowWelcomeTour] = useState(false)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
 
   const handleMenuAction = useCallback((action: string) => {
     switch (action) {
@@ -32,6 +36,9 @@ export function AppLayout(): ReactNode {
         break
       case 'menu:edit-config':
         setShowEditConfig(true)
+        break
+      case 'menu:welcome-tour':
+        setShowWelcomeTour(true)
         break
       case 'menu:about':
         setShowAbout(true)
@@ -53,6 +60,18 @@ export function AppLayout(): ReactNode {
     if (api == null) return
     return api.onMenuAction(handleMenuAction)
   }, [handleMenuAction])
+
+  // Command palette keyboard shortcut (Ctrl+K / Cmd+K)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setCommandPaletteOpen((prev) => !prev)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
 
   return (
     <div className="flex h-screen flex-col bg-surface-base">
@@ -95,6 +114,12 @@ export function AppLayout(): ReactNode {
       )}
       {showAbout && (
         <AboutModal onClose={() => setShowAbout(false)} />
+      )}
+      {showWelcomeTour && (
+        <WelcomeTourDialog onClose={() => setShowWelcomeTour(false)} />
+      )}
+      {commandPaletteOpen && (
+        <CommandPalette onClose={() => setCommandPaletteOpen(false)} />
       )}
     </div>
   )
