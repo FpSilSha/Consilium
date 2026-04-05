@@ -4,7 +4,7 @@ import { useStore } from '@/store'
 import { Tooltip } from '@/features/ui/Tooltip'
 import { getModelsForProvider } from '@/features/modelSelector/model-registry'
 import { getRawKey } from '@/features/keys/key-vault'
-import { saveCatalogPreferences } from './catalog-persistence'
+import { saveCatalogPreferences, saveCustomModelId } from './catalog-persistence'
 import { testModelId, testWillCost } from './model-validation'
 import { searchModels } from './model-search'
 
@@ -257,6 +257,8 @@ function CustomModelInput({ provider, onAdded }: {
       setCatalogModels(provider, [...catalogModels, newModel])
       onAdded(trimmed)
       setCustomId('')
+      // Persist so it survives restart
+      saveCustomModelId(provider, trimmed).catch(() => {})
     } else {
       setTestResult(result.error ?? 'Invalid model ID')
     }
