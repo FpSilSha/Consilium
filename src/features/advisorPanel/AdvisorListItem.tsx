@@ -6,7 +6,7 @@ import { getModelById } from '@/features/modelSelector/model-registry'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
 import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
 import { performPersonaSwitch } from '@/features/compaction'
-import { retryAdvisor } from '@/features/turnManager'
+import { retryAdvisor, createAgentCard } from '@/features/turnManager'
 import { getDisplayLabel } from '@/features/windows/display-labels'
 import { PersonaPreview } from './PersonaPreview'
 
@@ -42,6 +42,13 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   const windowOrder = useStore((s) => s.windowOrder)
   const windows = useStore((s) => s.windows)
   const displayLabel = getDisplayLabel(advisor.id, windowOrder, windows)
+  const turnMode = useStore((s) => s.turnMode)
+  const queue = useStore((s) => s.queue)
+  const addToQueue = useStore((s) => s.addToQueue)
+
+  const showQueueAdd = turnMode !== 'sequential' && !queue.some(
+    (c) => c.windowId === advisor.id && (c.status === 'waiting' || c.status === 'active'),
+  )
   const models = useFilteredModels(selectedProvider)
 
   const pendingPersona = pendingPersonaId !== null
@@ -261,6 +268,16 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
         )}
       </div>
 
+      {showQueueAdd && (
+        <Tooltip text="Add to queue" position="left">
+          <button
+            onClick={() => addToQueue(createAgentCard(advisor.id))}
+            className="shrink-0 rounded p-0.5 text-xs text-content-disabled opacity-0 transition-opacity hover:text-accent-blue group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
+          >
+            +
+          </button>
+        </Tooltip>
+      )}
       <Tooltip text="Remove advisor" position="left">
         <button
           onClick={() => removeWindow(advisor.id)}
