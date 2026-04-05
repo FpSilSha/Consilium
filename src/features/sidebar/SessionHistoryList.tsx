@@ -11,7 +11,7 @@ export function SessionHistoryList(): ReactNode {
   const currentSessionId = useStore((s) => s.currentSessionId)
   const messageCount = useStore((s) => s.messages.length)
 
-  // Refresh session list on mount and when messages change (new saves)
+  // Refresh session list on mount, message changes, and session switches/creation
   useEffect(() => {
     let cancelled = false
     const load = () => {
@@ -24,7 +24,7 @@ export function SessionHistoryList(): ReactNode {
     // Refresh after auto-save debounce (3s after message change)
     const timer = setTimeout(load, 3000)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [messageCount])
+  }, [messageCount, currentSessionId])
 
   const handleSelect = useCallback(async (id: string) => {
     if (id === currentSessionId) return
