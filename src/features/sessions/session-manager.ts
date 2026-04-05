@@ -285,8 +285,7 @@ export async function renameSession(id: string, newName: string): Promise<void> 
 
   try {
     const session = JSON.parse(content) as Record<string, unknown>
-    session['name'] = newName
-    await api.sessionSave(id, JSON.stringify(session))
+    await api.sessionSave(id, JSON.stringify({ ...session, name: newName }))
   } catch { /* non-fatal */ }
 }
 

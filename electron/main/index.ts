@@ -355,6 +355,7 @@ function registerIpcHandlers(): void {
       autoSaveDebounceMs: typeof raw['autoSaveDebounceMs'] === 'number' ? raw['autoSaveDebounceMs'] : appConfig.autoSaveDebounceMs,
       defaultTurnMode: typeof raw['defaultTurnMode'] === 'string' ? raw['defaultTurnMode'] : appConfig.defaultTurnMode,
       maxFileAttachmentMB: typeof raw['maxFileAttachmentMB'] === 'number' ? raw['maxFileAttachmentMB'] : appConfig.maxFileAttachmentMB,
+      showOnboarding: typeof raw['showOnboarding'] === 'boolean' ? raw['showOnboarding'] : appConfig.showOnboarding,
       customProviders: parseCustomProviders(raw['customProviders'] ?? appConfig.customProviders),
     }
     appConfig = validated

@@ -1,5 +1,6 @@
 import { useStore } from '@/store'
 import { startRun, stopAll, dispatchNextTurn } from '@/features/turnManager'
+import { saveCurrentSession, initializeNewSession } from '@/features/sessions/session-manager'
 import { buildInitialQueue } from '@/features/turnManager/queue-builder'
 import { createDefaultAdvisorWindow } from '@/features/windows/advisor-factory'
 import type { TurnMode } from '@/types'
@@ -103,10 +104,13 @@ export function getCommands(): readonly Command[] {
       label: 'New Consilium',
       keywords: ['new', 'session', 'consilium', 'clear', 'reset'],
       execute: () => {
+        saveCurrentSession().catch(() => {})
         const s = useStore.getState()
         s.clearMessages()
         s.clearAllWindows()
         s.setCurrentSessionId(null)
+        s.setSessionCustomName(null)
+        initializeNewSession().catch(() => {})
       },
       isAvailable: () => true,
     },

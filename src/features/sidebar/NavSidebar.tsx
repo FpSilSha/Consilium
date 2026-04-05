@@ -4,7 +4,7 @@ import { NavButton } from './NavButton'
 import { SessionHistoryList } from './SessionHistoryList'
 import { ErrorLog } from './ErrorLog'
 import { BudgetBar } from '@/features/budget'
-import { saveCurrentSession } from '@/features/sessions/session-manager'
+import { saveCurrentSession, initializeNewSession } from '@/features/sessions/session-manager'
 
 export function NavSidebar(): ReactNode {
   const windowCount = useStore((s) => s.windowOrder.length)
@@ -30,7 +30,9 @@ export function NavSidebar(): ReactNode {
     clearMessages()
     clearAllWindows()
     useStore.getState().setCurrentSessionId(null)
+    useStore.getState().setSessionCustomName(null)
     setConfirmNewSession(false)
+    await initializeNewSession()
   }, [])
 
   return (

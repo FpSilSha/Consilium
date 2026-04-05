@@ -114,48 +114,53 @@ async function collectVoteFromWindow(
   state.updateWindow(windowId, { isStreaming: true, streamContent: '', error: null })
 
   return new Promise((resolve) => {
-    let ctrl: AbortController
-    ctrl = streamResponse(
-      {
-        provider: window.provider,
-        model: window.model,
-        apiKey,
-        systemPrompt,
-        messages,
-        maxTokens: 150,
-      },
-      {
-        onChunk: (content) => {
-          const current = useStore.getState()
-          const currentWindow = current.windows[windowId]
-          if (currentWindow === undefined) return
-          current.updateWindow(windowId, {
-            streamContent: currentWindow.streamContent + content,
-          })
+    let ctrl: AbortController | null = null
+    try {
+      ctrl = streamResponse(
+        {
+          provider: window.provider,
+          model: window.model,
+          apiKey,
+          systemPrompt,
+          messages,
+          maxTokens: 150,
         },
-        onDone: (fullContent) => {
-          const msg = createAssistantMessage(fullContent, window.personaLabel, windowId)
-          const current = useStore.getState()
-          current.appendMessage(msg)
-          current.updateWindow(windowId, { isStreaming: false, streamContent: '' })
+        {
+          onChunk: (content) => {
+            const current = useStore.getState()
+            const currentWindow = current.windows[windowId]
+            if (currentWindow === undefined) return
+            current.updateWindow(windowId, {
+              streamContent: currentWindow.streamContent + content,
+            })
+          },
+          onDone: (fullContent) => {
+            const msg = createAssistantMessage(fullContent, window.personaLabel, windowId)
+            const current = useStore.getState()
+            current.appendMessage(msg)
+            current.updateWindow(windowId, { isStreaming: false, streamContent: '' })
 
-          const vote = parseVoteResponse(
-            fullContent,
-            windowId,
-            window.personaLabel,
-            window.accentColor,
-          )
-          resolve(vote)
-          activeVoteControllers.delete(ctrl)
+            const vote = parseVoteResponse(
+              fullContent,
+              windowId,
+              window.personaLabel,
+              window.accentColor,
+            )
+            resolve(vote)
+            if (ctrl != null) activeVoteControllers.delete(ctrl)
+          },
+          onError: (error) => {
+            const current = useStore.getState()
+            current.updateWindow(windowId, { isStreaming: false, streamContent: '', error })
+            resolve(null)
+            if (ctrl != null) activeVoteControllers.delete(ctrl)
+          },
         },
-        onError: (error) => {
-          const current = useStore.getState()
-          current.updateWindow(windowId, { isStreaming: false, streamContent: '', error })
-          resolve(null)
-          activeVoteControllers.delete(ctrl)
-        },
-      },
-    )
-    activeVoteControllers.add(ctrl)
+      )
+      activeVoteControllers.add(ctrl)
+    } catch {
+      state.updateWindow(windowId, { isStreaming: false, streamContent: '' })
+      resolve(null)
+    }
   })
 }
