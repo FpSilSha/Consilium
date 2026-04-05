@@ -28,16 +28,24 @@ function getAvailableModels(provider: Provider): readonly ModelInfo[] {
 
 /**
  * Picks the cheapest model from a list.
- * Prefers models with known pricing (price > 0) over unknown pricing.
+ * Models with price 0 are genuinely free (cheapest possible).
+ * Models with both input and output price of -1 are treated as unknown pricing
+ * and deprioritized. All others are sorted by output price ascending.
  */
 function cheapestFromList(models: readonly ModelInfo[]): ModelInfo | undefined {
   if (models.length === 0) return undefined
 
-  const withPrice = models.filter((m) => m.outputPricePerToken > 0)
-  if (withPrice.length > 0) {
-    return [...withPrice].sort((a, b) => a.outputPricePerToken - b.outputPricePerToken)[0]
+  // Free models (price === 0) are the cheapest — pick first one found
+  const free = models.filter((m) => m.inputPricePerToken === 0 && m.outputPricePerToken === 0)
+  if (free.length > 0) return free[0]
+
+  // Among paid models, sort by output price ascending
+  const paid = models.filter((m) => m.outputPricePerToken > 0)
+  if (paid.length > 0) {
+    return [...paid].sort((a, b) => a.outputPricePerToken - b.outputPricePerToken)[0]
   }
 
+  // Fallback — unknown pricing
   return models[0]
 }
 
