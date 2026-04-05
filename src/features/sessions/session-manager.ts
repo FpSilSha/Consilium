@@ -10,6 +10,12 @@ import { setSessionLoadingFlag } from '@/app/useSessionAutoSave'
 export function restoreSession(session: SessionFile): void {
   const state = useStore.getState()
 
+  // Force-clear streaming state on all windows before removing them —
+  // catches streams from @mentions and compile-document that stopAll doesn't track
+  for (const windowId of state.windowOrder) {
+    state.updateWindow(windowId, { isStreaming: false, streamContent: '' })
+  }
+
   // Clear existing state before restoring
   for (const windowId of state.windowOrder) {
     state.removeWindow(windowId)
@@ -216,12 +222,10 @@ export async function loadSession(id: string): Promise<void> {
   const api = getSessionAPI()
   if (api == null) return
 
-  // Stop any active run and cancel vote streams before switching sessions
-  const { isRunning } = useStore.getState()
-  if (isRunning) {
-    const { stopAll } = await import('@/features/turnManager')
-    stopAll()
-  }
+  // Stop all active streams before switching sessions — covers turn dispatcher,
+  // votes, @mentions, and compile document (any path that sets isStreaming: true)
+  const { stopAll } = await import('@/features/turnManager')
+  stopAll()
   const { cancelActiveVotes } = await import('@/features/voting/vote-service')
   cancelActiveVotes()
 
