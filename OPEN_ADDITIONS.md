@@ -40,3 +40,10 @@ A visual theme builder where the user sees all UI components (buttons, panels, i
 - Save as a named theme JSON file
 - Import/export themes to share with others
 - Agent accent color palette — define the pool of colors assigned to advisor dots. Users can add/remove colors to prevent repeats when running many advisors. Support preset palettes (e.g., "Neon", "Pastel", "Earth") or fully custom hex lists
+
+## Archetype-on-the-Fly
+
+Allow a user to add an advisor with a blank persona — either letting the model run with its default system prompt (no persona injection) or writing a custom persona inline at spin-up time. Options for the UX:
+- **Modal approach** (easiest): when adding an advisor, a modal offers "Choose Persona" (existing .md files), "Blank (model default)", or "Write Custom" (inline textarea that becomes the persona content)
+- **Inline approach** (needs design): the advisor list item itself expands into a textarea on creation, collapsing once the user confirms or starts a run
+- The custom persona should be saveable as a new .md file for reuse if the user wants to keep it
