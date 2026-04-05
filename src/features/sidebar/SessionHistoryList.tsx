@@ -86,16 +86,18 @@ export function SessionHistoryList(): ReactNode {
                 autoFocus
               />
             ) : (
-              <div
-                className="truncate text-xs text-content-primary"
-                onDoubleClick={(e) => {
-                  e.stopPropagation()
+              <Tooltip text="Double-click to rename" position="right">
+                <div
+                  className="truncate text-xs text-content-primary"
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
                   setEditingId(session.id)
                   setEditName(session.name)
                 }}
               >
                 {session.name}
-              </div>
+                </div>
+              </Tooltip>
             )}
             <div className="text-[10px] text-content-disabled">
               {formatRelativeTime(session.updatedAt)}
