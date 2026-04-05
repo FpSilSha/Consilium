@@ -17,9 +17,10 @@ interface CustomProviderDef {
 interface CustomProviderTabProps {
   readonly providerDef: CustomProviderDef
   readonly onRemove: () => void
+  readonly onUpdate: (updated: CustomProviderDef) => void
 }
 
-export function CustomProviderTab({ providerDef, onRemove }: CustomProviderTabProps): ReactNode {
+export function CustomProviderTab({ providerDef, onRemove, onUpdate }: CustomProviderTabProps): ReactNode {
   const keys = useStore((s) => s.keys)
   const addKey = useStore((s) => s.addKey)
   const removeKey = useStore((s) => s.removeKey)
@@ -149,6 +150,45 @@ export function CustomProviderTab({ providerDef, onRemove }: CustomProviderTabPr
   }, [providerKeys, fetchModelList])
 
   const [confirmRemove, setConfirmRemove] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editName, setEditName] = useState(providerDef.name)
+  const [editBaseUrl, setEditBaseUrl] = useState(providerDef.baseUrl)
+  const [editModelList, setEditModelList] = useState(providerDef.modelListEndpoint ?? '')
+  const [editHealthCheck, setEditHealthCheck] = useState(providerDef.healthCheckEndpoint ?? '')
+  const [editCost, setEditCost] = useState(providerDef.costEndpoint ?? '')
+  const [editError, setEditError] = useState<string | null>(null)
+
+  const handleSaveEdit = useCallback(() => {
+    const trimmedName = editName.trim()
+    if (trimmedName === '') { setEditError('Provider name is required'); return }
+    const trimmedUrl = editBaseUrl.trim()
+    if (trimmedUrl === '') { setEditError('Base URL is required'); return }
+    try {
+      const parsed = new URL(trimmedUrl)
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') { setEditError('URL must use http or https'); return }
+    } catch { setEditError('Invalid URL format'); return }
+
+    onUpdate({
+      ...providerDef,
+      name: trimmedName,
+      baseUrl: trimmedUrl,
+      modelListEndpoint: editModelList.trim() || null,
+      healthCheckEndpoint: editHealthCheck.trim() || null,
+      costEndpoint: editCost.trim() || null,
+    })
+    setEditing(false)
+    setEditError(null)
+  }, [editName, editBaseUrl, editModelList, editHealthCheck, editCost, providerDef, onUpdate])
+
+  const handleCancelEdit = useCallback(() => {
+    setEditName(providerDef.name)
+    setEditBaseUrl(providerDef.baseUrl)
+    setEditModelList(providerDef.modelListEndpoint ?? '')
+    setEditHealthCheck(providerDef.healthCheckEndpoint ?? '')
+    setEditCost(providerDef.costEndpoint ?? '')
+    setEditing(false)
+    setEditError(null)
+  }, [providerDef])
 
   return (
     <div className="flex flex-col gap-4">
@@ -158,31 +198,94 @@ export function CustomProviderTab({ providerDef, onRemove }: CustomProviderTabPr
           <h3 className="text-sm font-medium text-content-primary">{providerDef.name}</h3>
           <p className="text-[10px] text-content-disabled">{providerDef.baseUrl}</p>
         </div>
-        {confirmRemove ? (
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-error">Remove this provider?</span>
-            <button
-              onClick={onRemove}
-              className="rounded-md bg-accent-red px-2 py-1 text-[10px] text-content-inverse hover:bg-accent-red/90"
-            >
-              Yes
-            </button>
-            <button
-              onClick={() => setConfirmRemove(false)}
-              className="text-[10px] text-content-muted hover:text-content-primary"
-            >
-              No
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmRemove(true)}
-            className="text-xs text-content-disabled transition-colors hover:text-accent-red"
-          >
-            Remove
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {confirmRemove ? (
+            <>
+              <span className="text-[10px] text-error">Remove this provider?</span>
+              <button
+                onClick={onRemove}
+                className="rounded-md bg-accent-red px-2 py-1 text-[10px] text-content-inverse hover:bg-accent-red/90"
+              >
+                Yes
+              </button>
+              <button
+                onClick={() => setConfirmRemove(false)}
+                className="text-[10px] text-content-muted hover:text-content-primary"
+              >
+                No
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setEditing(!editing)}
+                className="text-xs text-content-muted transition-colors hover:text-content-primary"
+              >
+                {editing ? 'Cancel' : 'Edit'}
+              </button>
+              <button
+                onClick={() => setConfirmRemove(true)}
+                className="text-xs text-content-muted transition-colors hover:text-accent-red"
+              >
+                Remove
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {/* Edit form */}
+      {editing && (
+        <div className="flex flex-col gap-3 rounded-md border border-edge-subtle bg-surface-base p-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-content-muted">Provider Name</label>
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => { setEditName(e.target.value); setEditError(null) }}
+              className="w-full rounded-md border border-edge-subtle bg-surface-panel px-3 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-content-muted">Base URL</label>
+            <input
+              type="url"
+              value={editBaseUrl}
+              onChange={(e) => { setEditBaseUrl(e.target.value); setEditError(null) }}
+              className="w-full rounded-md border border-edge-subtle bg-surface-panel px-3 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
+            />
+          </div>
+          <details className="rounded-md border border-edge-subtle bg-surface-panel p-3">
+            <summary className="cursor-pointer text-xs font-medium text-content-muted">
+              Advanced (optional)
+            </summary>
+            <div className="mt-3 flex flex-col gap-3">
+              <div>
+                <label className="mb-1 block text-[10px] text-content-disabled">Model List Endpoint</label>
+                <input type="text" value={editModelList} onChange={(e) => setEditModelList(e.target.value)}
+                  placeholder="/models"
+                  className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1 text-xs text-content-primary placeholder-content-disabled outline-none focus:border-edge-focus" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] text-content-disabled">Health Check Endpoint</label>
+                <input type="text" value={editHealthCheck} onChange={(e) => setEditHealthCheck(e.target.value)}
+                  placeholder="/health"
+                  className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1 text-xs text-content-primary placeholder-content-disabled outline-none focus:border-edge-focus" />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] text-content-disabled">Cost Endpoint</label>
+                <input type="text" value={editCost} onChange={(e) => setEditCost(e.target.value)}
+                  className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1 text-xs text-content-primary placeholder-content-disabled outline-none focus:border-edge-focus" />
+              </div>
+            </div>
+          </details>
+          {editError != null && <p className="text-xs text-error">{editError}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={handleCancelEdit} className="rounded-md bg-surface-hover px-3 py-1.5 text-xs text-content-muted hover:bg-surface-active">Cancel</button>
+            <button onClick={handleSaveEdit} className="rounded-md bg-accent-blue px-4 py-1.5 text-xs font-medium text-content-inverse hover:bg-accent-blue/90">Save</button>
+          </div>
+        </div>
+      )}
 
       {/* API Key */}
       <div>
@@ -242,24 +345,19 @@ export function CustomProviderTab({ providerDef, onRemove }: CustomProviderTabPr
         <ModelCheckboxList provider="custom" />
       </div>
 
-      {/* Advanced info */}
-      {(providerDef.modelListEndpoint != null || providerDef.healthCheckEndpoint != null || providerDef.costEndpoint != null) && (
-        <details className="rounded-md border border-edge-subtle bg-surface-base p-3">
-          <summary className="cursor-pointer text-xs font-medium text-content-muted">
-            Configured Endpoints
-          </summary>
-          <div className="mt-2 flex flex-col gap-1 text-[10px] text-content-disabled">
-            {providerDef.modelListEndpoint != null && (
-              <div>Model List: <span className="text-content-muted">{providerDef.baseUrl}{providerDef.modelListEndpoint}</span></div>
-            )}
-            {providerDef.healthCheckEndpoint != null && (
-              <div>Health Check: <span className="text-content-muted">{providerDef.baseUrl}{providerDef.healthCheckEndpoint}</span></div>
-            )}
-            {providerDef.costEndpoint != null && (
-              <div>Cost: <span className="text-content-muted">{providerDef.baseUrl}{providerDef.costEndpoint}</span></div>
-            )}
-          </div>
-        </details>
+      {/* Configured endpoints — read-only, shown when not editing */}
+      {!editing && (providerDef.modelListEndpoint != null || providerDef.healthCheckEndpoint != null || providerDef.costEndpoint != null) && (
+        <div className="flex flex-col gap-1 text-[10px] text-content-disabled">
+          {providerDef.modelListEndpoint != null && (
+            <div>Model List: <span className="text-content-muted">{providerDef.baseUrl}{providerDef.modelListEndpoint}</span></div>
+          )}
+          {providerDef.healthCheckEndpoint != null && (
+            <div>Health Check: <span className="text-content-muted">{providerDef.baseUrl}{providerDef.healthCheckEndpoint}</span></div>
+          )}
+          {providerDef.costEndpoint != null && (
+            <div>Cost: <span className="text-content-muted">{providerDef.baseUrl}{providerDef.costEndpoint}</span></div>
+          )}
+        </div>
       )}
     </div>
   )

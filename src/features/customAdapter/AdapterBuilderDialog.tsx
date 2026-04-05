@@ -4,6 +4,7 @@ import { useStore } from '@/store'
 import { evictAdapterCache } from '@/services/api/stream-orchestrator'
 import { PRESETS, type AdapterPreset } from './presets'
 import { exportAdapterDefinition, importAdapterDefinition } from './adapter-io'
+import { getAdapterWarnings } from './adapter-warnings'
 import { RequestConfigForm } from './RequestConfigForm'
 import { ResponseConfigForm } from './ResponseConfigForm'
 import { TestConnectionPanel } from './TestConnectionPanel'
@@ -60,6 +61,8 @@ export function AdapterBuilderDialog({ existing, onSave, onClose }: AdapterBuild
 
     onSave(def)
   }, [name, request, response, existing, onSave])
+
+  const warnings = useMemo(() => getAdapterWarnings(name, request, response), [name, request, response])
 
   // Build a live definition for the test panel — memoized to avoid needless re-renders
   const liveDefinition = useMemo<CustomAdapterDefinition>(() => ({
@@ -153,7 +156,19 @@ export function AdapterBuilderDialog({ existing, onSave, onClose }: AdapterBuild
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-edge-subtle px-6 py-3">
+        <div className="flex flex-col gap-2 border-t border-edge-subtle px-6 py-3">
+          {/* Warnings */}
+          {warnings.length > 0 && step !== 'preset' && (
+            <div className="flex flex-col gap-1 rounded-md border border-yellow-700/50 bg-yellow-900/20 px-3 py-2">
+              {warnings.map((w) => (
+                <div key={w.field} className="flex items-start gap-1.5 text-[10px] text-yellow-400">
+                  <span className="shrink-0">⚠</span>
+                  <span><span className="font-medium">{w.field}:</span> {w.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        <div className="flex items-center justify-between">
           <div className="flex gap-2">
             {step !== 'preset' && step !== 'request' && (
               <button
@@ -201,6 +216,7 @@ export function AdapterBuilderDialog({ existing, onSave, onClose }: AdapterBuild
               Save Adapter
             </button>
           </div>
+        </div>
         </div>
       </div>
     </div>
