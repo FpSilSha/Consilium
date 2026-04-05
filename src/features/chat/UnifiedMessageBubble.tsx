@@ -199,18 +199,17 @@ function AssistantBubble({ message, displayContent, accentColor, modelName, isDo
  * e.g. "[Security Engineer]: Okay." → "Okay."
  * Also handles "[You]: ..." for user messages echoed by agents.
  */
-function stripIdentityHeader(content: string, personaLabel: string): string {
-  // Trim leading whitespace first, then check for prefix
-  const trimmed = content.trimStart()
+function stripIdentityHeader(content: string, _personaLabel: string): string {
+  // Strip ALL leading identity header prefixes — models sometimes echo multiple
+  // e.g. "[Security Engineer]: [Security Engineer]: [Security Engineer]: actual content"
+  let result = content.trimStart()
+  const headerPattern = /^\[[\w\s'-]+\]:\s*/
 
-  const prefix = `[${personaLabel}]: `
-  if (trimmed.startsWith(prefix)) {
-    return trimmed.slice(prefix.length)
+  let match = result.match(headerPattern)
+  while (match != null) {
+    result = result.slice(match[0].length).trimStart()
+    match = result.match(headerPattern)
   }
-  // Generic pattern: [AnyLabel]: at the start
-  const match = trimmed.match(/^\[[\w\s'-]+\]:\s*/)
-  if (match != null) {
-    return trimmed.slice(match[0].length)
-  }
-  return content
+
+  return result || content
 }
