@@ -2,6 +2,7 @@ import { type ReactNode, useRef, useEffect, useCallback } from 'react'
 import { useStore } from '@/store'
 import { UnifiedMessageBubble } from './UnifiedMessageBubble'
 import { StreamingIndicator } from './StreamingIndicator'
+import { EmptyStateGuide } from './EmptyStateGuide'
 
 /** Pixel tolerance for considering the user "at the bottom". */
 const SCROLL_PIN_THRESHOLD = 80
@@ -51,13 +52,7 @@ export function UnifiedChatThread(): ReactNode {
   }, [])
 
   if (messages.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-content-muted">
-          Start a conversation to begin.
-        </p>
-      </div>
-    )
+    return <EmptyStateGuide />
   }
 
   return (

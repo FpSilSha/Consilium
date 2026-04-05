@@ -8,6 +8,8 @@ export interface ErrorLogEntry {
   readonly advisorLabel: string
   readonly accentColor: string
   readonly message: string
+  readonly provider?: string
+  readonly model?: string
 }
 
 export interface UISlice {
@@ -17,6 +19,7 @@ export interface UISlice {
   readonly pendingMismatches: readonly ModelMismatch[]
   readonly errorLog: readonly ErrorLogEntry[]
   readonly currentSessionId: string | null
+  readonly autoRetryTransient: boolean
   setUIMode: (mode: UIMode) => void
   setSessionInstructions: (instructions: string) => void
   setConfigModalOpen: (open: boolean) => void
@@ -24,6 +27,7 @@ export interface UISlice {
   addErrorLog: (entry: ErrorLogEntry) => void
   clearErrorLog: () => void
   setCurrentSessionId: (id: string | null) => void
+  setAutoRetryTransient: (enabled: boolean) => void
 }
 
 export const createUISlice: StateCreator<UISlice> = (set) => ({
@@ -33,6 +37,7 @@ export const createUISlice: StateCreator<UISlice> = (set) => ({
   pendingMismatches: [],
   errorLog: [],
   currentSessionId: null,
+  autoRetryTransient: false,
 
   setUIMode: (mode) => set({ uiMode: mode }),
 
@@ -43,9 +48,14 @@ export const createUISlice: StateCreator<UISlice> = (set) => ({
   setPendingMismatches: (mismatches) => set({ pendingMismatches: mismatches }),
 
   addErrorLog: (entry) =>
-    set((state) => ({ errorLog: [...state.errorLog, entry] })),
+    set((state) => {
+      const updated = [...state.errorLog, entry]
+      return { errorLog: updated.length > 100 ? updated.slice(updated.length - 100) : updated }
+    }),
 
   clearErrorLog: () => set({ errorLog: [] }),
 
   setCurrentSessionId: (id) => set({ currentSessionId: id }),
+
+  setAutoRetryTransient: (enabled) => set({ autoRetryTransient: enabled }),
 })
