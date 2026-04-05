@@ -1,14 +1,15 @@
 import { type ReactNode, useCallback } from 'react'
 import type { TurnMode } from '@/types'
+import { Tooltip } from '@/features/ui/Tooltip'
 import { useStore } from '@/store'
 import { buildInitialQueue } from '@/features/turnManager/queue-builder'
 import { startRun, stopAll, dispatchNextTurn } from '@/features/turnManager'
 
-const MODES: readonly { readonly value: TurnMode; readonly label: string }[] = [
-  { value: 'sequential', label: 'Seq' },
-  { value: 'parallel', label: 'Par' },
-  { value: 'manual', label: 'Man' },
-  { value: 'queue', label: 'Queue' },
+const MODES: readonly { readonly value: TurnMode; readonly label: string; readonly tooltip: string }[] = [
+  { value: 'sequential', label: 'Seq', tooltip: 'Round-robin: each advisor responds in order' },
+  { value: 'parallel', label: 'Par', tooltip: 'All advisors respond simultaneously' },
+  { value: 'manual', label: 'Man', tooltip: 'Trigger each advisor individually' },
+  { value: 'queue', label: 'Queue', tooltip: 'Custom drag-and-drop turn order' },
 ]
 
 export function TurnControls(): ReactNode {
@@ -22,6 +23,8 @@ export function TurnControls(): ReactNode {
   const loopCount = useStore((s) => s.loopCount)
   const setLoopCount = useStore((s) => s.setLoopCount)
   const roundsCompleted = useStore((s) => s.roundsCompleted)
+  const autoRetryTransient = useStore((s) => s.autoRetryTransient)
+  const setAutoRetryTransient = useStore((s) => s.setAutoRetryTransient)
 
   const handleModeChange = useCallback((mode: TurnMode) => {
     setTurnMode(mode)
@@ -34,19 +37,20 @@ export function TurnControls(): ReactNode {
       {/* Mode selector */}
       <div role="group" aria-label="Turn mode" className="flex gap-1">
         {MODES.map((mode) => (
-          <button
-            key={mode.value}
-            onClick={() => handleModeChange(mode.value)}
-            disabled={isRunning}
-            aria-pressed={turnMode === mode.value}
-            className={`flex-1 rounded-full px-2 py-1 text-xs font-medium transition-colors ${
-              turnMode === mode.value
-                ? 'bg-accent-blue text-content-inverse'
-                : 'bg-surface-base text-content-muted hover:bg-surface-hover hover:text-content-primary'
-            } disabled:opacity-50`}
-          >
-            {mode.label}
-          </button>
+          <Tooltip key={mode.value} text={mode.tooltip} position="bottom">
+            <button
+              onClick={() => handleModeChange(mode.value)}
+              disabled={isRunning}
+              aria-pressed={turnMode === mode.value}
+              className={`flex-1 rounded-full px-2 py-1 text-xs font-medium transition-colors ${
+                turnMode === mode.value
+                  ? 'bg-accent-blue text-content-inverse'
+                  : 'bg-surface-base text-content-muted hover:bg-surface-hover hover:text-content-primary'
+              } disabled:opacity-50`}
+            >
+              {mode.label}
+            </button>
+          </Tooltip>
         ))}
       </div>
 
@@ -119,6 +123,17 @@ export function TurnControls(): ReactNode {
           </>
         )}
       </div>
+
+      {/* Auto-retry toggle */}
+      <label className="flex items-center gap-1.5 text-[10px] text-content-disabled">
+        <input
+          type="checkbox"
+          checked={autoRetryTransient}
+          onChange={(e) => setAutoRetryTransient(e.target.checked)}
+          className="h-3 w-3 rounded border-edge-subtle accent-accent-blue"
+        />
+        Auto-retry on transient errors
+      </label>
 
       {/* Mode hint */}
       <p className="text-xs text-content-disabled">

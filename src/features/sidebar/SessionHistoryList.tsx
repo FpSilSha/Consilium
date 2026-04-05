@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useState, useCallback } from 'react'
 import { useStore } from '@/store'
+import { Tooltip } from '@/features/ui/Tooltip'
 import { listSessions, loadSession, deleteSession } from '@/features/sessions/session-manager'
 import type { SessionMetadata } from '@/features/sessions/session-types'
 
@@ -67,13 +68,14 @@ export function SessionHistoryList(): ReactNode {
               {formatRelativeTime(session.updatedAt)}
             </div>
           </div>
-          <button
-            onClick={(e) => handleDelete(session.id, e)}
-            className="shrink-0 text-[10px] text-content-disabled opacity-0 transition-opacity hover:text-accent-red group-hover:opacity-100"
-            title="Delete session"
-          >
-            ✕
-          </button>
+          <Tooltip text="Delete session" position="left">
+            <button
+              onClick={(e) => handleDelete(session.id, e)}
+              className="shrink-0 text-[10px] text-content-disabled opacity-0 transition-opacity hover:text-accent-red group-hover:opacity-100"
+            >
+              ✕
+            </button>
+          </Tooltip>
         </div>
       ))}
     </div>
