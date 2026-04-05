@@ -95,12 +95,10 @@ function parseOpenAIEvent(event: unknown): StreamChunk | null {
   if (usage != null && typeof usage === 'object') {
     const inputTokens = typeof usage['prompt_tokens'] === 'number' ? usage['prompt_tokens'] : 0
     const outputTokens = typeof usage['completion_tokens'] === 'number' ? usage['completion_tokens'] : 0
-    if (inputTokens > 0 || outputTokens > 0) {
-      return {
-        type: 'done',
-        content: '',
-        tokenUsage: { inputTokens, outputTokens },
-      }
+    return {
+      type: 'done',
+      content: '',
+      tokenUsage: { inputTokens, outputTokens },
     }
   }
 
