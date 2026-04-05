@@ -12,9 +12,14 @@ export function NavSidebar(): ReactNode {
   const setConfigModalOpen = useStore((s) => s.setConfigModalOpen)
 
   const [confirmNewSession, setConfirmNewSession] = useState(false)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   const handleNewConsilium = useCallback(() => {
-    if (windowCount === 0 && messageCount === 0) return
+    if (windowCount === 0 && messageCount === 0) {
+      setToastMessage('This is already a new session!')
+      setTimeout(() => setToastMessage(null), 2500)
+      return
+    }
     setConfirmNewSession(true)
   }, [windowCount, messageCount])
 
@@ -52,6 +57,11 @@ export function NavSidebar(): ReactNode {
         >
           + New Consilium
         </button>
+        {toastMessage != null && (
+          <div className="mt-1.5 rounded-md bg-surface-hover px-3 py-1.5 text-center text-[10px] text-content-muted animate-pulse">
+            {toastMessage}
+          </div>
+        )}
       </div>
 
       {/* Session history — max ~6 items before scroll */}
