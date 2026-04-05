@@ -97,9 +97,6 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
         )}
       </div>
 
-      {/* Add custom model ID */}
-      <CustomModelInput provider={provider} onAdded={toggleModel} />
-
       {/* Search */}
       <div className="mb-2">
         <input
@@ -110,6 +107,13 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
           className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1.5 text-xs text-content-primary placeholder-content-disabled outline-none focus:border-edge-focus"
         />
       </div>
+
+      {/* Add custom model ID */}
+      <Tooltip text="Add updated models not listed" position="bottom">
+        <div className="mb-2">
+          <CustomModelInput provider={provider} onAdded={toggleModel} />
+        </div>
+      </Tooltip>
 
       {/* Table header */}
       <div className="mb-1 flex items-center gap-2 px-2 text-[10px] font-medium uppercase tracking-wider text-content-disabled">
