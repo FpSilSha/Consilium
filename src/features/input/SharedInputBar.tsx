@@ -45,6 +45,8 @@ export function SharedInputBar(): ReactNode {
       handleUserMessage()
     } else if (turnMode !== 'manual' && windowCount > 0 && queue.length > 0) {
       startRun()
+      // The message was sent before the run started — mark the user turn as done
+      handleUserMessage()
     }
   }, [input, attachments, appendMessage, isRunning, turnMode])
 
