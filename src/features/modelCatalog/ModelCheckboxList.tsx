@@ -6,6 +6,7 @@ import { getModelsForProvider } from '@/features/modelSelector/model-registry'
 import { getRawKey } from '@/features/keys/key-vault'
 import { saveCatalogPreferences } from './catalog-persistence'
 import { testModelId, testWillCost } from './model-validation'
+import { searchModels } from './model-search'
 
 interface ModelCheckboxListProps {
   readonly provider: Provider
@@ -24,13 +25,7 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
     ? catalogModels
     : getModelsForProvider(provider)
 
-  const filteredModels = useMemo(() => {
-    if (search.trim() === '') return allModels
-    const q = search.toLowerCase()
-    return allModels.filter((m) =>
-      m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q),
-    )
-  }, [allModels, search])
+  const filteredModels = useMemo(() => searchModels(allModels, search), [allModels, search])
 
   // Empty allowedIds = no curation, all models available, checkboxes unchecked
   const isCurated = allowedIds.length > 0

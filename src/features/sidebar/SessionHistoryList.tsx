@@ -1,11 +1,13 @@
 import { type ReactNode, useEffect, useState, useCallback } from 'react'
 import { useStore } from '@/store'
 import { Tooltip } from '@/features/ui/Tooltip'
-import { listSessions, loadSession, deleteSession } from '@/features/sessions/session-manager'
+import { listSessions, loadSession, deleteSession, renameSession } from '@/features/sessions/session-manager'
 import type { SessionMetadata } from '@/features/sessions/session-types'
 
 export function SessionHistoryList(): ReactNode {
   const [sessions, setSessions] = useState<readonly SessionMetadata[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
   const currentSessionId = useStore((s) => s.currentSessionId)
   const messageCount = useStore((s) => s.messages.length)
 
@@ -28,6 +30,14 @@ export function SessionHistoryList(): ReactNode {
     if (id === currentSessionId) return
     await loadSession(id)
   }, [currentSessionId])
+
+  const handleRename = useCallback(async (id: string) => {
+    const trimmed = editName.trim()
+    if (trimmed === '') { setEditingId(null); return }
+    await renameSession(id, trimmed)
+    setSessions((prev) => prev.map((s) => s.id === id ? { ...s, name: trimmed } : s))
+    setEditingId(null)
+  }, [editName])
 
   const handleDelete = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
@@ -61,9 +71,32 @@ export function SessionHistoryList(): ReactNode {
           onKeyDown={(e) => { if (e.key === 'Enter') handleSelect(session.id) }}
         >
           <div className="min-w-0 flex-1">
-            <div className="truncate text-xs text-content-primary">
-              {session.name}
-            </div>
+            {editingId === session.id ? (
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onBlur={() => handleRename(session.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleRename(session.id)
+                  if (e.key === 'Escape') setEditingId(null)
+                }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full rounded border border-edge-focus bg-surface-base px-1 py-0.5 text-xs text-content-primary outline-none"
+                autoFocus
+              />
+            ) : (
+              <div
+                className="truncate text-xs text-content-primary"
+                onDoubleClick={(e) => {
+                  e.stopPropagation()
+                  setEditingId(session.id)
+                  setEditName(session.name)
+                }}
+              >
+                {session.name}
+              </div>
+            )}
             <div className="text-[10px] text-content-disabled">
               {formatRelativeTime(session.updatedAt)}
             </div>

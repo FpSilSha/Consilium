@@ -19,6 +19,7 @@ export interface UISlice {
   readonly pendingMismatches: readonly ModelMismatch[]
   readonly errorLog: readonly ErrorLogEntry[]
   readonly currentSessionId: string | null
+  readonly sessionCustomName: string | null
   readonly autoRetryTransient: boolean
   setUIMode: (mode: UIMode) => void
   setSessionInstructions: (instructions: string) => void
@@ -27,6 +28,7 @@ export interface UISlice {
   addErrorLog: (entry: ErrorLogEntry) => void
   clearErrorLog: () => void
   setCurrentSessionId: (id: string | null) => void
+  setSessionCustomName: (name: string | null) => void
   setAutoRetryTransient: (enabled: boolean) => void
 }
 
@@ -37,6 +39,7 @@ export const createUISlice: StateCreator<UISlice> = (set) => ({
   pendingMismatches: [],
   errorLog: [],
   currentSessionId: null,
+  sessionCustomName: null,
   autoRetryTransient: false,
 
   setUIMode: (mode) => set({ uiMode: mode }),
@@ -56,6 +59,8 @@ export const createUISlice: StateCreator<UISlice> = (set) => ({
   clearErrorLog: () => set({ errorLog: [] }),
 
   setCurrentSessionId: (id) => set({ currentSessionId: id }),
+
+  setSessionCustomName: (name) => set({ sessionCustomName: name }),
 
   setAutoRetryTransient: (enabled) => set({ autoRetryTransient: enabled }),
 })

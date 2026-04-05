@@ -36,8 +36,9 @@ export function restoreSession(session: SessionFile): void {
     state.addWindow(window)
   }
 
-  // Set current session ID
+  // Set current session ID and restore custom name
   state.setCurrentSessionId(session.id)
+  state.setSessionCustomName(session.name)
 
   // Check for model mismatches against allowed models
   const freshState = useStore.getState()
@@ -93,11 +94,15 @@ export function buildSessionFile(): SessionFile {
     return sum + (w?.runningCost ?? 0)
   }, 0)
 
-  // Derive a name from the first user message or advisors
-  const firstUserMsg = state.messages.find((m) => m.role === 'user')
-  const name = firstUserMsg != null
-    ? firstUserMsg.content.slice(0, 60).replace(/\n/g, ' ').trim() || 'Untitled'
-    : state.windowOrder.map((id) => state.windows[id]?.personaLabel).filter(Boolean).join(', ') || 'Untitled'
+  // Use custom name if set, otherwise derive from first user message or advisors
+  const name = state.sessionCustomName != null
+    ? state.sessionCustomName
+    : (() => {
+        const firstUserMsg = state.messages.find((m) => m.role === 'user')
+        return firstUserMsg != null
+          ? firstUserMsg.content.slice(0, 60).replace(/\n/g, ' ').trim() || 'Untitled'
+          : state.windowOrder.map((id) => state.windows[id]?.personaLabel).filter(Boolean).join(', ') || 'Untitled'
+      })()
 
   return {
     version: 1,
@@ -238,6 +243,34 @@ function isValidSessionFile(data: unknown): data is SessionFile {
     Array.isArray(s['inputFiles']) &&
     Array.isArray(s['outputFiles'])
   )
+}
+
+/**
+ * Renames a session. If it's the current session, updates the store.
+ * Otherwise loads, renames, and re-saves the session file.
+ */
+export async function renameSession(id: string, newName: string): Promise<void> {
+  const state = useStore.getState()
+
+  // Current session — just update the store, auto-save will persist it
+  if (id === state.currentSessionId) {
+    state.setSessionCustomName(newName)
+    await saveCurrentSession()
+    return
+  }
+
+  // Historical session — load, rename, re-save
+  const api = getSessionAPI()
+  if (api == null) return
+
+  const content = await api.sessionLoad(id)
+  if (content == null) return
+
+  try {
+    const session = JSON.parse(content) as Record<string, unknown>
+    session['name'] = newName
+    await api.sessionSave(id, JSON.stringify(session))
+  } catch { /* non-fatal */ }
 }
 
 /**

@@ -48,10 +48,11 @@ export function AppLayout(): ReactNode {
 
   const handleNewConsilium = useCallback(async () => {
     await saveCurrentSession().catch(() => {})
-    const { clearMessages, clearAllWindows, setCurrentSessionId } = useStore.getState()
+    const { clearMessages, clearAllWindows, setCurrentSessionId, setSessionCustomName } = useStore.getState()
     clearMessages()
     clearAllWindows()
     setCurrentSessionId(null)
+    setSessionCustomName(null)
   }, [])
 
   // Subscribe to keyboard shortcut menu actions from the Electron main process

@@ -27,3 +27,16 @@ Memoize message bubbles and chat components so that only the actively streaming 
 Export dialog with two modes: "Full Chat Log" (current behavior — raw markdown dump) and "Document" where the user provides a prompt to steer LLM-generated output (e.g., "Summarize what was discussed about features", "Extract action items", "Write a technical spec from this discussion"). The LLM processes the conversation through the prompt before export, producing a focused document rather than a raw transcript.
 
 **Warning needed:** When using Document mode, display a warning that the entire chat will be processed through the selected model. Cheaper/smaller models may produce lower quality summaries, miss context, or hallucinate details. Let the user pick which advisor's model to use for the generation, and surface the estimated token cost before confirming.
+
+## Themes & WCAG Accessibility
+
+Multiple built-in themes beyond the current Deep Ocean palette. Include at least one WCAG AA-compliant high-contrast theme for accessibility. Other theme ideas: light mode, warm/earth tones, monochrome. Each theme defines the full token set (surfaces, content, accents, edges, semantic colors).
+
+## Theme Generator
+
+A visual theme builder where the user sees all UI components (buttons, panels, inputs, scrollbars, cards, modals) rendered live with their current color choices. Controls for:
+- Color tokens (surfaces, text, accents, borders, semantic)
+- Shape tokens (scrollbar style — rectangular vs pill, border radius, button rounding)
+- Save as a named theme JSON file
+- Import/export themes to share with others
+- Agent accent color palette — define the pool of colors assigned to advisor dots. Users can add/remove colors to prevent repeats when running many advisors. Support preset palettes (e.g., "Neon", "Pastel", "Earth") or fully custom hex lists
