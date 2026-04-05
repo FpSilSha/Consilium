@@ -54,13 +54,17 @@ describe('buildCostMetadata', () => {
     it('returns 0 estimated cost when both token counts are 0', () => {
       const usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
       const result = buildCostMetadata(usage, 'claude-opus-4-6')
+      expect(result).not.toBeUndefined()
       expect(result?.estimatedCost).toBe(0)
+      expect(result?.inputTokens).toBe(0)
+      expect(result?.outputTokens).toBe(0)
       expect(result?.isEstimate).toBe(false)
     })
 
     it('returns 0 estimated cost for zero tokens with unknown model', () => {
       const usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
       const result = buildCostMetadata(usage, 'unknown-model')
+      expect(result).not.toBeUndefined()
       expect(result?.estimatedCost).toBe(0)
       expect(result?.isEstimate).toBe(true)
     })

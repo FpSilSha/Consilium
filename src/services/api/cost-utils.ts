@@ -15,7 +15,6 @@ export function buildCostMetadata(
   modelId: string,
 ): CostMetadata | undefined {
   if (tokenUsage == null) return undefined
-  if (tokenUsage.inputTokens === 0 && tokenUsage.outputTokens === 0) return undefined
 
   const price = resolvePrice(modelId)
   const inputCost = tokenUsage.inputTokens * price.input
