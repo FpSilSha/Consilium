@@ -23,6 +23,7 @@ export function TurnControls(): ReactNode {
   const loopCount = useStore((s) => s.loopCount)
   const setLoopCount = useStore((s) => s.setLoopCount)
   const roundsCompleted = useStore((s) => s.roundsCompleted)
+  const queueLength = useStore((s) => s.queue.length)
   const autoRetryTransient = useStore((s) => s.autoRetryTransient)
   const setAutoRetryTransient = useStore((s) => s.setAutoRetryTransient)
 
@@ -93,7 +94,7 @@ export function TurnControls(): ReactNode {
         {!isRunning ? (
           <button
             onClick={startRun}
-            disabled={windowOrder.length === 0}
+            disabled={windowOrder.length === 0 || queueLength === 0}
             className="flex-1 rounded-full bg-accent-green py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-green/90 disabled:opacity-40"
           >
             Start
