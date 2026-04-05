@@ -23,7 +23,7 @@ export async function executeAgentExchange(
 ): Promise<void> {
   const state = useStore.getState()
 
-  const targetWindowIds = resolveMentionTargets(userContent, state.windows)
+  const targetWindowIds = resolveMentionTargets(userContent, state.windows, state.windowOrder)
   if (targetWindowIds.length === 0) return
 
   const effectiveRounds = Math.min(Math.max(rounds, 1), MAX_EXCHANGE_ROUNDS)
