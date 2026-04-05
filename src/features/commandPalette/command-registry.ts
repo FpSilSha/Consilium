@@ -85,8 +85,9 @@ export function getCommands(): readonly Command[] {
       keywords: ['add', 'advisor', 'new', 'agent'],
       execute: () => {
         const s = useStore.getState()
-        const newWindow = createDefaultAdvisorWindow(s.windowOrder, s.personas, s.keys)
-        s.addWindow(newWindow)
+        createDefaultAdvisorWindow(s.windowOrder, s.personas, s.keys)
+          .then((newWindow) => useStore.getState().addWindow(newWindow))
+          .catch(() => {})
       },
       isAvailable: () => true,
     },

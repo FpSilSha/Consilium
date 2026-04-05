@@ -14,8 +14,8 @@ export function AdvisorPanel(): ReactNode {
   const personas = useStore((s) => s.personas)
   const keys = useStore((s) => s.keys)
 
-  const handleAddAdvisor = useCallback(() => {
-    const newWindow = createDefaultAdvisorWindow(windowOrder, personas, keys)
+  const handleAddAdvisor = useCallback(async () => {
+    const newWindow = await createDefaultAdvisorWindow(windowOrder, personas, keys)
     addWindow(newWindow)
   }, [windowOrder, personas, keys, addWindow])
 

@@ -147,12 +147,12 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
 
   const windowOrder = useStore((s) => s.windowOrder)
 
-  const handleFinish = useCallback(() => {
+  const handleFinish = useCallback(async () => {
     const persona = selectedPersonaId !== null
       ? personas.find((p) => p.id === selectedPersonaId)
       : personas[0]
 
-    const base = createDefaultAdvisorWindow(windowOrder, personas, keys)
+    const base = await createDefaultAdvisorWindow(windowOrder, personas, keys)
     const newWindow = {
       ...base,
       ...(selectedModel !== '' ? { model: selectedModel } : {}),
