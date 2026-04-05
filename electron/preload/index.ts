@@ -48,6 +48,8 @@ const api: ConsiliumAPI = {
   sessionLoad: (id) => ipcRenderer.invoke('session:load', id),
   sessionList: () => ipcRenderer.invoke('session:list'),
   sessionDelete: (id) => ipcRenderer.invoke('session:delete', id),
+  toggleDevTools: () => ipcRenderer.invoke('window:toggle-devtools'),
+  sessionSaveSync: (id, content) => ipcRenderer.sendSync('session:save-sync', id, content) as boolean,
 }
 
 contextBridge.exposeInMainWorld('consiliumAPI', api)

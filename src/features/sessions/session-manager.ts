@@ -133,6 +133,23 @@ export function buildSessionFile(): SessionFile {
 }
 
 /**
+ * Builds a session payload (id + serialized content) for synchronous saves.
+ * Returns null if there's nothing to save.
+ */
+export function buildSessionPayload(): { readonly id: string; readonly content: string } | null {
+  const state = useStore.getState()
+  if (state.messages.length === 0 && state.windowOrder.length === 0) return null
+
+  const session = buildSessionFile()
+
+  if (state.currentSessionId == null) {
+    state.setCurrentSessionId(session.id)
+  }
+
+  return { id: session.id, content: JSON.stringify(session) }
+}
+
+/**
  * Saves the current session to disk via IPC.
  */
 export async function saveCurrentSession(): Promise<void> {

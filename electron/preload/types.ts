@@ -34,4 +34,6 @@ export interface ConsiliumAPI {
   sessionLoad(id: string): Promise<string | null>
   sessionList(): Promise<readonly { id: string; name: string; updatedAt: number }[]>
   sessionDelete(id: string): Promise<void>
+  toggleDevTools(): Promise<void>
+  sessionSaveSync(id: string, content: string): boolean
 }

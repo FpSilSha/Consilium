@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { useStore } from '@/store'
-import { saveCurrentSession } from '@/features/sessions/session-manager'
+import { saveCurrentSession, buildSessionPayload } from '@/features/sessions/session-manager'
 
 const DEBOUNCE_MS = 2_000
 
@@ -16,6 +16,9 @@ export function setSessionLoadingFlag(loading: boolean): void {
  * Creates a new session on the first message, then saves on subsequent changes.
  * Debounced to avoid excessive writes during streaming.
  * Suppressed during session load to prevent overwriting restored data.
+ *
+ * Also registers a beforeunload handler to flush pending saves
+ * immediately on app close using synchronous IPC + atomic writes.
  */
 export function useSessionAutoSave(): void {
   const messageCount = useStore((s) => s.messages.length)
@@ -47,4 +50,26 @@ export function useSessionAutoSave(): void {
       if (timerRef.current != null) clearTimeout(timerRef.current)
     }
   }, [messageCount, windowCount])
+
+  // Flush on beforeunload — cancels pending debounce and writes synchronously
+  useEffect(() => {
+    const handler = () => {
+      if (timerRef.current != null) {
+        clearTimeout(timerRef.current)
+        timerRef.current = null
+      }
+
+      const state = useStore.getState()
+      if (state.messages.length === 0 && state.windowOrder.length === 0) return
+
+      const payload = buildSessionPayload()
+      if (payload == null) return
+
+      const api = (window as { consiliumAPI?: { sessionSaveSync(id: string, content: string): boolean } }).consiliumAPI
+      api?.sessionSaveSync(payload.id, payload.content)
+    }
+
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [])
 }
