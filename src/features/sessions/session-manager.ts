@@ -116,7 +116,7 @@ export function buildSessionFile(): SessionFile {
     : (() => {
         const firstUserMsg = state.messages.find((m) => m.role === 'user')
         return firstUserMsg != null
-          ? firstUserMsg.content.slice(0, 60).replace(/\n/g, ' ').trim() || 'Untitled'
+          ? firstUserMsg.content.slice(0, 40).replace(/\n/g, ' ').trim() || 'Untitled'
           : state.windowOrder.map((id) => state.windows[id]?.personaLabel).filter(Boolean).join(', ')
             || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       })()

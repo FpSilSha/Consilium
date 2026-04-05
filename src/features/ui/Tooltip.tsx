@@ -92,7 +92,7 @@ export function Tooltip({ children, text, position = 'top' }: TooltipProps): Rea
     <>
       <div
         ref={triggerRef}
-        className="inline-flex"
+        className="inline-flex min-w-0"
         onMouseEnter={show}
         onMouseLeave={hide}
       >
