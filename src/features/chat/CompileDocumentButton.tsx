@@ -121,8 +121,11 @@ export function CompileDocumentButton(): ReactNode {
 
       {showPicker && (
         <div className="absolute bottom-full left-0 z-40 mb-1 w-56 rounded-md border border-edge-subtle bg-surface-panel p-2 shadow-lg">
-          <p className="mb-2 text-[10px] text-content-disabled">
+          <p className="mb-1.5 text-[10px] text-content-disabled">
             Choose which advisor compiles the document:
+          </p>
+          <p className="mb-2 rounded bg-yellow-900/20 px-2 py-1 text-[10px] text-yellow-400">
+            This sends the full chat to the selected model. Cheaper models may produce lower quality results.
           </p>
           {windowOrder.map((id) => {
             const win = windows[id]
