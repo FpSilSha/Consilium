@@ -38,25 +38,31 @@ export function useStartupCatalogFetch(): void {
           setPriceOverride(modelId, override)
         }
 
-        // Merge persisted custom model IDs into the catalog
-        const { setCatalogModels, catalogModels } = useStore.getState()
-        for (const [provider, modelIds] of Object.entries(prefs.customModels)) {
-          if (!Array.isArray(modelIds) || modelIds.length === 0) continue
-          const existing = catalogModels[provider as Provider] ?? []
-          const existingIds = new Set(existing.map((m) => m.id))
-          const newModels = modelIds
-            .filter((id) => !existingIds.has(id))
-            .map((id) => ({
-              id,
-              name: id,
-              provider: provider as Provider,
-              contextWindow: 0,
-              inputPricePerToken: 0,
-              outputPricePerToken: 0,
-            }))
-          if (newModels.length > 0) {
-            setCatalogModels(provider as Provider, [...existing, ...newModels])
-          }
+        // Load persisted custom model IDs from dedicated file
+        const customModelsApi = (window as { consiliumAPI?: { customModelsLoad(): Promise<Readonly<Record<string, readonly string[]>>> } }).consiliumAPI
+        if (customModelsApi != null) {
+          customModelsApi.customModelsLoad().then((customModels) => {
+            if (controller.signal.aborted) return
+            const { setCatalogModels, catalogModels } = useStore.getState()
+            for (const [provider, modelIds] of Object.entries(customModels)) {
+              if (!Array.isArray(modelIds) || modelIds.length === 0) continue
+              const existing = catalogModels[provider as Provider] ?? []
+              const existingIds = new Set(existing.map((m) => m.id))
+              const newModels = modelIds
+                .filter((id) => !existingIds.has(id))
+                .map((id) => ({
+                  id,
+                  name: id,
+                  provider: provider as Provider,
+                  contextWindow: 0,
+                  inputPricePerToken: 0,
+                  outputPricePerToken: 0,
+                }))
+              if (newModels.length > 0) {
+                setCatalogModels(provider as Provider, [...existing, ...newModels])
+              }
+            }
+          }).catch(() => {})
         }
       })
       .catch(() => {})

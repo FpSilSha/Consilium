@@ -6,17 +6,10 @@ import { join, resolve, normalize, sep, basename, extname } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync, renameSync } from 'fs'
 // env-loader removed — keys use safeStorage exclusively
 import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
+import { loadCustomProviders, saveCustomProviders, type CustomProviderDef } from './custom-providers-store'
+import { loadCustomModels, saveCustomModels } from './custom-models-store'
 
 // ── App Configuration ─────────────────────────────────────────
-
-interface CustomProviderDef {
-  readonly id: string
-  readonly name: string
-  readonly baseUrl: string
-  readonly modelListEndpoint: string | null
-  readonly healthCheckEndpoint: string | null
-  readonly costEndpoint: string | null
-}
 
 interface AppConfig {
   readonly maxSessionSizeMB: number
@@ -24,7 +17,6 @@ interface AppConfig {
   readonly defaultTurnMode: string
   readonly maxFileAttachmentMB: number
   readonly showOnboarding: boolean
-  readonly customProviders: readonly CustomProviderDef[]
 }
 
 /** Description for each config key — shown in the Edit Configuration modal */
@@ -42,7 +34,6 @@ const DEFAULT_CONFIG: AppConfig = {
   defaultTurnMode: 'sequential',
   maxFileAttachmentMB: 10,
   showOnboarding: true,
-  customProviders: [],
 }
 
 function loadAppConfig(): AppConfig {
@@ -56,7 +47,6 @@ function loadAppConfig(): AppConfig {
       defaultTurnMode: typeof parsed['defaultTurnMode'] === 'string' ? parsed['defaultTurnMode'] : DEFAULT_CONFIG.defaultTurnMode,
       maxFileAttachmentMB: typeof parsed['maxFileAttachmentMB'] === 'number' ? parsed['maxFileAttachmentMB'] : DEFAULT_CONFIG.maxFileAttachmentMB,
       showOnboarding: typeof parsed['showOnboarding'] === 'boolean' ? parsed['showOnboarding'] : DEFAULT_CONFIG.showOnboarding,
-      customProviders: parseCustomProviders(parsed['customProviders']),
     }
   } catch {
     try {
@@ -67,24 +57,6 @@ function loadAppConfig(): AppConfig {
   }
 }
 
-function parseCustomProviders(raw: unknown): readonly CustomProviderDef[] {
-  if (!Array.isArray(raw)) return []
-  return raw.filter((entry): entry is CustomProviderDef => {
-    if (entry == null || typeof entry !== 'object') return false
-    const e = entry as Record<string, unknown>
-    return typeof e['id'] === 'string' && e['id'] !== ''
-      && typeof e['name'] === 'string' && e['name'] !== ''
-      && typeof e['baseUrl'] === 'string' && e['baseUrl'] !== ''
-  }).map((e) => ({
-    id: e.id,
-    name: e.name,
-    baseUrl: e.baseUrl,
-    modelListEndpoint: typeof e.modelListEndpoint === 'string' ? e.modelListEndpoint : null,
-    healthCheckEndpoint: typeof e.healthCheckEndpoint === 'string' ? e.healthCheckEndpoint : null,
-    costEndpoint: typeof e.costEndpoint === 'string' ? e.costEndpoint : null,
-  }))
-}
-
 function saveAppConfig(config: AppConfig): void {
   const configPath = join(app.getPath('userData'), 'config.json')
   mkdirSync(app.getPath('userData'), { recursive: true })
@@ -92,6 +64,54 @@ function saveAppConfig(config: AppConfig): void {
 }
 
 let appConfig = DEFAULT_CONFIG
+
+/**
+ * One-time migration: moves customProviders from config.json to custom-providers.json
+ * and customModels from catalog-preferences.json to custom-models.json.
+ */
+function migrateCustomData(): void {
+  const userData = app.getPath('userData')
+
+  // Migrate customProviders from config.json
+  try {
+    const configPath = join(userData, 'config.json')
+    if (existsSync(configPath)) {
+      const content = readFileSync(configPath, 'utf-8')
+      const parsed = JSON.parse(content) as Record<string, unknown>
+      if (Array.isArray(parsed['customProviders']) && parsed['customProviders'].length > 0) {
+        const existing = loadCustomProviders()
+        if (existing.length === 0) {
+          saveCustomProviders(parsed['customProviders'] as CustomProviderDef[])
+        }
+        // Remove from config
+        const { customProviders: _, ...rest } = parsed
+        writeFileSync(configPath, JSON.stringify(rest, null, 2), 'utf-8')
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  // Migrate customModels from catalog-preferences.json
+  try {
+    const prefsPath = join(userData, 'catalog-preferences.json')
+    if (existsSync(prefsPath)) {
+      const content = readFileSync(prefsPath, 'utf-8')
+      const parsed = JSON.parse(content) as Record<string, unknown>
+      if (parsed['customModels'] != null && typeof parsed['customModels'] === 'object' && !Array.isArray(parsed['customModels'])) {
+        const customModels = parsed['customModels'] as Record<string, readonly string[]>
+        const hasEntries = Object.values(customModels).some((arr) => Array.isArray(arr) && arr.length > 0)
+        if (hasEntries) {
+          const existing = loadCustomModels()
+          if (Object.keys(existing).length === 0) {
+            saveCustomModels(customModels)
+          }
+          // Remove from catalog preferences
+          const { customModels: _, ...rest } = parsed
+          writeFileSync(prefsPath, JSON.stringify(rest, null, 2), 'utf-8')
+        }
+      }
+    }
+  } catch { /* non-fatal */ }
+}
 
 // ── Menu & Context Menu ──────────────────────────────────────
 
@@ -356,7 +376,6 @@ function registerIpcHandlers(): void {
       defaultTurnMode: typeof raw['defaultTurnMode'] === 'string' ? raw['defaultTurnMode'] : appConfig.defaultTurnMode,
       maxFileAttachmentMB: typeof raw['maxFileAttachmentMB'] === 'number' ? raw['maxFileAttachmentMB'] : appConfig.maxFileAttachmentMB,
       showOnboarding: typeof raw['showOnboarding'] === 'boolean' ? raw['showOnboarding'] : appConfig.showOnboarding,
-      customProviders: parseCustomProviders(raw['customProviders'] ?? appConfig.customProviders),
     }
     appConfig = validated
     saveAppConfig(validated)
@@ -374,6 +393,24 @@ function registerIpcHandlers(): void {
   ipcMain.handle('adapters:delete', (_event, id: unknown) => {
     if (typeof id !== 'string') throw new Error('Invalid adapter ID')
     deleteAdapterDefinition(id)
+  })
+
+  // ── Custom providers ───────────────────────────────────────
+
+  ipcMain.handle('custom-providers:load', () => loadCustomProviders())
+
+  ipcMain.handle('custom-providers:save', (_event, providers: unknown) => {
+    if (!Array.isArray(providers)) throw new Error('Invalid providers format')
+    saveCustomProviders(providers as CustomProviderDef[])
+  })
+
+  // ── Custom models ─────────────────────────────────────────
+
+  ipcMain.handle('custom-models:load', () => loadCustomModels())
+
+  ipcMain.handle('custom-models:save', (_event, models: unknown) => {
+    if (typeof models !== 'object' || models === null || Array.isArray(models)) throw new Error('Invalid models format')
+    saveCustomModels(models as Record<string, readonly string[]>)
   })
 
   // ── Session persistence ────────────────────────────────────
@@ -530,6 +567,7 @@ function registerIpcHandlers(): void {
 
 app.whenReady().then(() => {
   appConfig = loadAppConfig()
+  migrateCustomData()
   createAppMenu()
   registerIpcHandlers()
   createWindow()
