@@ -83,6 +83,19 @@ export function stopAll(): void {
   for (const [cardId, { controller, windowId }] of entries) {
     controller.abort()
     state.removeActiveCard(cardId)
+
+    // Preserve partial content as a message with cut-off marker
+    const win = state.windows[windowId]
+    if (win != null && win.streamContent.trim() !== '') {
+      const partialContent = `${win.streamContent.trim()}\n\n*(response cut off)*`
+      const message = createAssistantMessage(
+        partialContent,
+        win.personaLabel,
+        windowId,
+      )
+      state.appendMessage(message)
+    }
+
     state.updateWindow(windowId, { isStreaming: false, streamContent: '' })
   }
   // Prep queue for next start — reset all cards to waiting
