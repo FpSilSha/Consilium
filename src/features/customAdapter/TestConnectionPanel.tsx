@@ -95,7 +95,9 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
       status: prev.status === 'running' ? 'error' : prev.status,
       error: 'Cancelled',
     }))
-  }, [])
+    useStore.getState().removeCustomAdapter(definition.id)
+    evictAdapterCache(definition.id)
+  }, [definition.id])
 
   return (
     <div className="flex flex-col gap-3">
@@ -148,7 +150,7 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
           </div>
           <div className="max-h-40 overflow-y-auto font-mono text-[10px] text-content-primary">
             {result.parsedChunks.map((line, i) => (
-              <div key={i} className={line.startsWith('[error]') ? 'text-error' : line.startsWith('[done]') ? 'text-success' : ''}>
+              <div key={`${i}-${line.slice(0, 20)}`} className={line.startsWith('[error]') ? 'text-error' : line.startsWith('[done]') ? 'text-success' : ''}>
                 {line}
               </div>
             ))}

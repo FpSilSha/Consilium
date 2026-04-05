@@ -20,7 +20,7 @@ export function buildCustomRequest(
   try {
     parsedUrl = new URL(url)
   } catch {
-    throw new Error(`Invalid custom adapter URL: ${url}`)
+    throw new Error('Invalid custom adapter URL — check the URL field in your adapter definition')
   }
   if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
     throw new Error(`Custom adapter URL must use http or https, got: ${parsedUrl.protocol}`)

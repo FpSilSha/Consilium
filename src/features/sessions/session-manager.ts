@@ -233,6 +233,8 @@ function isValidSessionFile(data: unknown): data is SessionFile {
     Array.isArray(s['windows']) &&
     Array.isArray(s['queue']) &&
     Array.isArray(s['archivedMessages']) &&
+    typeof s['createdAt'] === 'number' &&
+    typeof s['updatedAt'] === 'number' &&
     Array.isArray(s['inputFiles']) &&
     Array.isArray(s['outputFiles'])
   )
