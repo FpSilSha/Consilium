@@ -292,7 +292,7 @@ function dispatchAgentTurn(card: QueueCard): void {
   )
 
   activeControllers.set(card.id, { controller, windowId: card.windowId })
-  state.updateWindow(card.windowId, { isStreaming: true, streamContent: '', error: null })
+  useStore.getState().updateWindow(card.windowId, { isStreaming: true, streamContent: '', error: null })
 }
 
 function onTurnComplete(): void {
@@ -332,15 +332,17 @@ function onTurnComplete(): void {
   dispatchNextTurn()
 }
 
-/** Resets all queue cards to 'waiting' for the next round without stopping. */
+/** Resets queue cards to 'waiting' for the next round, preserving skipped cards. */
 function resetQueueForNextRound(): void {
   const state = useStore.getState()
   state.setQueue(
-    state.queue.map((c) => ({
-      ...c,
-      status: 'waiting' as const,
-      errorLabel: null,
-    })),
+    state.queue
+      .filter((c) => c.status !== 'skipped')
+      .map((c) => ({
+        ...c,
+        status: 'waiting' as const,
+        errorLabel: null,
+      })),
   )
 }
 

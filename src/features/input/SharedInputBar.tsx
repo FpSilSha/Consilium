@@ -48,7 +48,7 @@ export function SharedInputBar(): ReactNode {
       // The message was sent before the run started — mark the user turn as done
       handleUserMessage()
     }
-  }, [input, attachments, appendMessage, isRunning, turnMode])
+  }, [input, attachments, appendMessage, isRunning, turnMode, queue, windowCount])
 
   const handleRepeat = useCallback(() => {
     repeatLastExchange().catch(() => {})
