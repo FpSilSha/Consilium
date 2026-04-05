@@ -21,6 +21,9 @@ export class VoteInProgressError extends Error {
 /** Prevents concurrent vote calls from corrupting the shared thread. */
 let isVoteInFlight = false
 
+/** Monotonic generation counter — incremented on each vote, checked before writing results. */
+let voteGeneration = 0
+
 /** Active vote stream controllers — aborted when vote is cancelled or session switches. */
 const activeVoteControllers = new Set<AbortController>()
 
@@ -31,6 +34,7 @@ export function cancelActiveVotes(): void {
   }
   activeVoteControllers.clear()
   isVoteInFlight = false
+  voteGeneration++
 }
 
 /**
@@ -54,6 +58,7 @@ export async function callForVote(question: string): Promise<VoteTally> {
 }
 
 async function executeVote(question: string): Promise<VoteTally> {
+  const currentGen = ++voteGeneration
   const state = useStore.getState()
 
   // Append the vote question + instruction as a temporary user message
@@ -79,12 +84,15 @@ async function executeVote(question: string): Promise<VoteTally> {
     }
   }
 
-  // Replace the temporary vote prompt with the clean question only
-  const finalState = useStore.getState()
-  const cleanedMessages = finalState.messages.map((m) =>
-    m.id === userMsg.id ? { ...m, content: `[Vote] ${question}` } : m,
-  )
-  finalState.setMessages(cleanedMessages)
+  // Replace the temporary vote prompt with the clean question only —
+  // skip if the vote was cancelled and a new session loaded
+  if (currentGen === voteGeneration) {
+    const finalState = useStore.getState()
+    const cleanedMessages = finalState.messages.map((m) =>
+      m.id === userMsg.id ? { ...m, content: `[Vote] ${question}` } : m,
+    )
+    finalState.setMessages(cleanedMessages)
+  }
 
   return tallyVotes(votes)
 }

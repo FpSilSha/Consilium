@@ -34,7 +34,7 @@ export function restoreSession(session: SessionFile): void {
   // Restore turn state
   state.setTurnMode(session.turnMode)
   state.setQueue(session.queue)
-  state.setSessionInstructions(session.sessionInstructions)
+  state.setSessionInstructions(session.sessionInstructions ?? '')
 
   // Restore windows with graceful degradation
   for (const sw of session.windows) {
@@ -263,7 +263,7 @@ function isValidSessionFile(data: unknown): data is SessionFile {
     typeof s['id'] === 'string' &&
     typeof s['name'] === 'string' &&
     typeof s['turnMode'] === 'string' &&
-    typeof s['sessionInstructions'] === 'string' &&
+    (s['sessionInstructions'] == null || typeof s['sessionInstructions'] === 'string') &&
     typeof s['totalCost'] === 'number' &&
     Array.isArray(s['messages']) &&
     Array.isArray(s['windows']) &&
