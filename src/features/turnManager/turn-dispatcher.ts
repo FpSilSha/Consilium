@@ -8,6 +8,7 @@ import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { buildCostMetadata } from '@/services/api/cost-utils'
 import { getRawKey } from '@/features/keys/key-vault'
 import { isBudgetExceeded } from '@/features/budget/budget-engine'
+import { computeDisplayLabels } from '@/features/windows/display-labels'
 import {
   getNextCard,
   getAllParallelCards,
@@ -175,7 +176,16 @@ function dispatchAgentTurn(card: QueueCard): void {
   }
 
   const persona = state.personas.find((p) => p.id === window.personaId)
-  const personaContent = persona?.content ?? ''
+  let personaContent = persona?.content ?? ''
+
+  // When duplicate personas exist, hint the model to provide unique perspectives
+  const displayLabels = computeDisplayLabels(state.windowOrder, state.windows)
+  const displayLabel = displayLabels.get(card.windowId) ?? window.personaLabel
+  const hasDuplicates = displayLabel !== window.personaLabel
+  if (hasDuplicates) {
+    personaContent += `\n\nNote: There may be other ${window.personaLabel} advisors in this chat. Provide unique perspectives still based in truth where possible, but don't be contrarian for the sake of it.`
+  }
+
   const systemPrompt = buildSystemPrompt(personaContent, state.sessionInstructions || undefined)
   const threadMessages = messagesToApiFormat(state.messages)
 

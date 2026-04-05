@@ -47,3 +47,7 @@ Allow a user to add an advisor with a blank persona — either letting the model
 - **Modal approach** (easiest): when adding an advisor, a modal offers "Choose Persona" (existing .md files), "Blank (model default)", or "Write Custom" (inline textarea that becomes the persona content)
 - **Inline approach** (needs design): the advisor list item itself expands into a textarea on creation, collapsing once the user confirms or starts a run
 - The custom persona should be saveable as a new .md file for reuse if the user wants to keep it
+
+## Temperature Variation for Duplicate Advisors
+
+When multiple advisors share the same model, inject slight temperature variation per instance so responses naturally diverge. Could be a per-advisor slider in the editor (0.0–2.0) or automatic small offsets (e.g., ±0.1) when duplicates are detected. This complements the duplicate-awareness system prompt hint that already exists — temperature adds randomness at the generation level while the prompt hint encourages topical divergence.
