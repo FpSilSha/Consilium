@@ -125,7 +125,7 @@ export function CompileDocumentButton(): ReactNode {
             Choose which advisor compiles the document:
           </p>
           <p className="mb-2 rounded bg-yellow-900/20 px-2 py-1 text-[10px] text-yellow-400">
-            This sends the full chat to the selected model. Cheaper models may produce lower quality results.
+            This sends the full chat to the selected model and will incur API costs. If you are near your budget limit, this may exceed it. Cheaper models may produce lower quality results.
           </p>
           {windowOrder.map((id) => {
             const win = windows[id]
