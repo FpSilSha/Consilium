@@ -1,10 +1,14 @@
 import { type ReactNode, useState, useCallback } from 'react'
 import type { AdvisorWindow, Provider } from '@/types'
 import { useStore } from '@/store'
+import { Tooltip } from '@/features/ui/Tooltip'
 import { getModelById } from '@/features/modelSelector/model-registry'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
 import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
 import { performPersonaSwitch } from '@/features/compaction'
+import { retryAdvisor } from '@/features/turnManager'
+import { getDisplayLabel } from '@/features/windows/display-labels'
+import { PersonaPreview } from './PersonaPreview'
 
 const PROVIDERS: readonly { readonly value: Provider; readonly label: string }[] = [
   { value: 'anthropic', label: 'Anthropic' },
@@ -32,8 +36,12 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   const [selectedProvider, setSelectedProvider] = useState<Provider>(advisor.provider)
   const [pendingPersonaId, setPendingPersonaId] = useState<string | null>(null)
   const [isSwitching, setIsSwitching] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
 
   const modelName = getModelById(advisor.model, orModels)?.name ?? advisor.model
+  const windowOrder = useStore((s) => s.windowOrder)
+  const windows = useStore((s) => s.windows)
+  const displayLabel = getDisplayLabel(advisor.id, windowOrder, windows)
   const models = useFilteredModels(selectedProvider)
 
   const pendingPersona = pendingPersonaId !== null
@@ -139,12 +147,20 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
         )}
 
         {/* Persona select */}
-        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-disabled">
-          Persona
-        </label>
+        <div className="mb-1 flex items-center justify-between">
+          <label className="text-[10px] font-medium uppercase tracking-wider text-content-disabled">
+            Persona
+          </label>
+          <button
+            onClick={() => setShowPreview(!showPreview)}
+            className="text-[10px] text-content-muted transition-colors hover:text-content-primary"
+          >
+            {showPreview ? 'Hide' : 'Preview'}
+          </button>
+        </div>
         <select
           value={pendingPersonaId ?? advisor.personaId}
-          onChange={(e) => handlePersonaSelect(e.target.value)}
+          onChange={(e) => { handlePersonaSelect(e.target.value); setShowPreview(false) }}
           disabled={isSwitching}
           className="mb-2 w-full rounded-md border border-edge-subtle bg-surface-panel px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus disabled:opacity-50"
         >
@@ -152,6 +168,12 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>
+        {showPreview && (() => {
+          const previewPersona = personas.find((p) => p.id === (pendingPersonaId ?? advisor.personaId))
+          return previewPersona != null
+            ? <PersonaPreview persona={previewPersona} onClose={() => setShowPreview(false)} />
+            : null
+        })()}
 
         {/* Provider select */}
         <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-disabled">
@@ -203,14 +225,14 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
         style={{ backgroundColor: advisor.accentColor }}
       />
 
-      <button
-        onClick={() => { setEditing(true); setSelectedProvider(advisor.provider) }}
-        disabled={advisor.isStreaming}
-        className="min-w-0 flex-1 text-left disabled:cursor-not-allowed"
-        title="Click to edit persona, provider, and model"
-      >
+      <Tooltip text="Edit persona, provider, and model" position="left">
+        <button
+          onClick={() => { setEditing(true); setSelectedProvider(advisor.provider) }}
+          disabled={advisor.isStreaming}
+          className="min-w-0 flex-1 text-left disabled:cursor-not-allowed"
+        >
         <div className="truncate text-sm font-medium text-content-primary">
-          {advisor.personaLabel}
+          {displayLabel}
         </div>
         <div className="truncate text-xs text-content-muted">
           {modelName}
@@ -220,38 +242,74 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
             ~${advisor.runningCost.toFixed(4)}
           </div>
         )}
-      </button>
+        </button>
+      </Tooltip>
 
       <div className="flex shrink-0 items-center gap-1">
         {advisor.isStreaming && (
           <span className="text-xs text-accent-green">typing</span>
         )}
-        {advisor.error != null && (
-          <button
-            onClick={() => {
-              useStore.getState().addErrorLog({
-                id: crypto.randomUUID(),
-                timestamp: Date.now(),
-                advisorLabel: advisor.personaLabel,
-                accentColor: advisor.accentColor,
-                message: advisor.error!,
-              })
-            }}
-            className="text-xs text-error transition-colors hover:text-accent-red"
-            title="Click to view error details"
-          >
-            err
-          </button>
+        {advisor.error != null && !advisor.isStreaming && (
+          <ErrorActions
+            advisorId={advisor.id}
+            advisorLabel={advisor.personaLabel}
+            accentColor={advisor.accentColor}
+            errorMessage={advisor.error}
+            provider={advisor.provider}
+            model={advisor.model}
+          />
         )}
       </div>
 
-      <button
-        onClick={() => removeWindow(advisor.id)}
-        className="shrink-0 rounded p-0.5 text-xs text-content-disabled opacity-0 transition-opacity hover:text-accent-red group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
-        title="Remove advisor"
-      >
-        ✕
-      </button>
+      <Tooltip text="Remove advisor" position="left">
+        <button
+          onClick={() => removeWindow(advisor.id)}
+          className="shrink-0 rounded p-0.5 text-xs text-content-disabled opacity-0 transition-opacity hover:text-accent-red group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
+        >
+          ✕
+        </button>
+      </Tooltip>
     </div>
+  )
+}
+
+/** Extracted to avoid non-null assertion on advisor.error in click handler closure */
+function ErrorActions({ advisorId, advisorLabel, accentColor, errorMessage, provider, model }: {
+  readonly advisorId: string
+  readonly advisorLabel: string
+  readonly accentColor: string
+  readonly errorMessage: string
+  readonly provider: string
+  readonly model: string
+}): ReactNode {
+  return (
+    <>
+      <Tooltip text="Retry this advisor" position="left">
+        <button
+          onClick={() => retryAdvisor(advisorId)}
+          className="text-xs text-accent-blue transition-colors hover:text-accent-blue/80"
+        >
+          retry
+        </button>
+      </Tooltip>
+      <Tooltip text="View error details" position="left">
+        <button
+          onClick={() => {
+            useStore.getState().addErrorLog({
+              id: crypto.randomUUID(),
+              timestamp: Date.now(),
+              advisorLabel,
+              accentColor,
+              message: errorMessage,
+              provider,
+              model,
+            })
+          }}
+          className="text-xs text-error transition-colors hover:text-accent-red"
+        >
+          err
+        </button>
+      </Tooltip>
+    </>
   )
 }
