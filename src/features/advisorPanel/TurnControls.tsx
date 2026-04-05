@@ -93,7 +93,8 @@ export function TurnControls(): ReactNode {
         {!isRunning ? (
           <button
             onClick={startRun}
-            className="flex-1 rounded-full bg-accent-green py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-green/90"
+            disabled={windowOrder.length === 0}
+            className="flex-1 rounded-full bg-accent-green py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-green/90 disabled:opacity-40"
           >
             Start
           </button>
