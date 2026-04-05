@@ -22,3 +22,8 @@ The command palette (Ctrl+K) could support export as a multi-step action: select
 
 Memoize message bubbles and chat components so that only the actively streaming message re-renders, not the entire thread. Profile long sessions and batch streaming updates to prevent jank. Lower priority but important for long conversations.
 
+## Smart Export with LLM Steering
+
+Export dialog with two modes: "Full Chat Log" (current behavior — raw markdown dump) and "Document" where the user provides a prompt to steer LLM-generated output (e.g., "Summarize what was discussed about features", "Extract action items", "Write a technical spec from this discussion"). The LLM processes the conversation through the prompt before export, producing a focused document rather than a raw transcript.
+
+**Warning needed:** When using Document mode, display a warning that the entire chat will be processed through the selected model. Cheaper/smaller models may produce lower quality summaries, miss context, or hallucinate details. Let the user pick which advisor's model to use for the generation, and surface the estimated token cost before confirming.

@@ -4,7 +4,7 @@ import { app, BrowserWindow, ipcMain, shell, dialog, Menu } from 'electron'
 // app.commandLine.appendSwitch('remote-debugging-port', '9333')
 import { join, resolve, normalize, sep, basename, extname } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync, renameSync } from 'fs'
-import { loadEnvFile, writeEnvFile } from './env-loader'
+// env-loader removed — keys use safeStorage exclusively
 import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
 
 // ── App Configuration ─────────────────────────────────────────
@@ -232,30 +232,6 @@ function isPathWithinAllowed(targetPath: string, allowedRoots: readonly string[]
   })
 }
 
-function validateEnvEntries(entries: unknown): Record<string, string> | null {
-  if (typeof entries !== 'object' || entries === null || Array.isArray(entries)) {
-    return null
-  }
-
-  const result: Record<string, string> = {}
-  for (const [key, value] of Object.entries(entries as Record<string, unknown>)) {
-    // Skip prototype pollution keys
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
-      continue
-    }
-    if (typeof key !== 'string' || typeof value !== 'string') {
-      return null
-    }
-    // Validate key format: alphanumeric and underscores only
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      return null
-    }
-    result[key] = value
-  }
-
-  return result
-}
-
 function registerIpcHandlers(): void {
   ipcMain.handle('get-user-data-path', () => app.getPath('userData'))
 
@@ -278,16 +254,6 @@ function registerIpcHandlers(): void {
     // Only allow http/https URLs to prevent file:// or other protocol abuse
     if (!url.startsWith('https://') && !url.startsWith('http://')) throw new Error('Only http(s) URLs allowed')
     return shell.openExternal(url)
-  })
-
-  ipcMain.handle('read-env-file', () => loadEnvFile())
-
-  ipcMain.handle('write-env-file', async (_event, entries: unknown) => {
-    const validated = validateEnvEntries(entries)
-    if (validated === null) {
-      throw new Error('Invalid entries format: expected Record<string, string> with valid env key names')
-    }
-    writeEnvFile(validated)
   })
 
   ipcMain.handle('keys:available', () => isEncryptionAvailable())

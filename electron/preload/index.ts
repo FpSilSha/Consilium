@@ -6,10 +6,6 @@ const api: ConsiliumAPI = {
 
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
 
-  readEnvFile: () => ipcRenderer.invoke('read-env-file'),
-
-  writeEnvFile: (entries) => ipcRenderer.invoke('write-env-file', entries),
-
   openFolder: (path) => ipcRenderer.invoke('open-folder', path),
 
   keysAvailable: () => ipcRenderer.invoke('keys:available'),

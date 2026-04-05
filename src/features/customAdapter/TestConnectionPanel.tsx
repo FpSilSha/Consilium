@@ -21,10 +21,14 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
   const [result, setResult] = useState<TestResult>({ status: 'idle', parsedChunks: [] })
   const controllerRef = useRef<AbortController | null>(null)
 
-  // Cleanup on unmount — abort any in-flight test stream
+  // Cleanup on unmount — abort any in-flight test stream and remove test adapter
   useEffect(() => {
-    return () => { controllerRef.current?.abort() }
-  }, [])
+    return () => {
+      controllerRef.current?.abort()
+      useStore.getState().removeCustomAdapter(definition.id)
+      evictAdapterCache(definition.id)
+    }
+  }, [definition.id])
 
   const handleTest = useCallback(() => {
     const trimmedKey = apiKey.trim()
@@ -53,6 +57,9 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
           status: 'success',
           parsedChunks: [...prev.parsedChunks, `[done] "${fullContent.slice(0, 50)}..."${usageStr}`],
         }))
+        // Clean up temporary test adapter from store
+        useStore.getState().removeCustomAdapter(definition.id)
+        evictAdapterCache(definition.id)
       },
       onError: (error) => {
         setResult((prev) => ({
@@ -60,6 +67,8 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
           parsedChunks: [...prev.parsedChunks, `[error] ${error}`],
           error,
         }))
+        useStore.getState().removeCustomAdapter(definition.id)
+        evictAdapterCache(definition.id)
       },
     }
 
