@@ -83,6 +83,22 @@ function sessionWindowToAdvisor(
 }
 
 /**
+ * Initializes a new session with an ID and saves an initial entry.
+ * Called on app load (post-onboarding) and on "New Consilium".
+ * The session appears immediately in the sidebar.
+ */
+export async function initializeNewSession(): Promise<void> {
+  const state = useStore.getState()
+  if (state.currentSessionId != null) return
+
+  const sessionId = crypto.randomUUID()
+  state.setCurrentSessionId(sessionId)
+  state.setSessionCustomName(null)
+
+  await saveCurrentSession()
+}
+
+/**
  * Builds a SessionFile from the current app state.
  */
 export function buildSessionFile(): SessionFile {
@@ -101,7 +117,8 @@ export function buildSessionFile(): SessionFile {
         const firstUserMsg = state.messages.find((m) => m.role === 'user')
         return firstUserMsg != null
           ? firstUserMsg.content.slice(0, 60).replace(/\n/g, ' ').trim() || 'Untitled'
-          : state.windowOrder.map((id) => state.windows[id]?.personaLabel).filter(Boolean).join(', ') || 'Untitled'
+          : state.windowOrder.map((id) => state.windows[id]?.personaLabel).filter(Boolean).join(', ')
+            || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       })()
 
   return {

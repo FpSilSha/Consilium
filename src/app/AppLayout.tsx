@@ -9,7 +9,7 @@ import { EditConfigModal } from '@/features/settings/EditConfigModal'
 import { AboutModal } from '@/features/settings/AboutModal'
 import { TitleBar } from './TitleBar'
 import { useStore } from '@/store'
-import { saveCurrentSession } from '@/features/sessions/session-manager'
+import { saveCurrentSession, initializeNewSession } from '@/features/sessions/session-manager'
 import { useStartupCatalogFetch } from './useStartupCatalogFetch'
 import { useSessionAutoSave } from './useSessionAutoSave'
 import { CommandPalette } from '@/features/commandPalette'
@@ -53,6 +53,12 @@ export function AppLayout(): ReactNode {
     clearAllWindows()
     setCurrentSessionId(null)
     setSessionCustomName(null)
+    await initializeNewSession()
+  }, [])
+
+  // Initialize a new session on first load if none exists
+  useEffect(() => {
+    initializeNewSession().catch(() => {})
   }, [])
 
   // Subscribe to keyboard shortcut menu actions from the Electron main process
