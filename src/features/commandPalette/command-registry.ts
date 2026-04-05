@@ -21,64 +21,62 @@ function switchMode(mode: TurnMode): void {
 }
 
 export function getCommands(): readonly Command[] {
-  const state = useStore.getState()
-
   return [
     {
       id: 'start-run',
       label: 'Start Run',
       keywords: ['start', 'run', 'go', 'begin'],
       execute: startRun,
-      isAvailable: () => !state.isRunning,
+      isAvailable: () => !useStore.getState().isRunning,
     },
     {
       id: 'pause-run',
       label: 'Pause Run',
       keywords: ['pause', 'hold', 'wait'],
       execute: () => useStore.getState().setPaused(true),
-      isAvailable: () => state.isRunning && !state.isPaused,
+      isAvailable: () => { const s = useStore.getState(); return s.isRunning && !s.isPaused },
     },
     {
       id: 'resume-run',
       label: 'Resume Run',
       keywords: ['resume', 'continue', 'unpause'],
       execute: () => { useStore.getState().setPaused(false); dispatchNextTurn() },
-      isAvailable: () => state.isRunning && state.isPaused,
+      isAvailable: () => { const s = useStore.getState(); return s.isRunning && s.isPaused },
     },
     {
       id: 'stop-run',
       label: 'Stop Run',
       keywords: ['stop', 'cancel', 'halt', 'abort'],
       execute: stopAll,
-      isAvailable: () => state.isRunning,
+      isAvailable: () => useStore.getState().isRunning,
     },
     {
       id: 'mode-sequential',
       label: 'Sequential Mode',
       keywords: ['sequential', 'seq', 'round-robin'],
       execute: () => switchMode('sequential'),
-      isAvailable: () => !state.isRunning,
+      isAvailable: () => !useStore.getState().isRunning,
     },
     {
       id: 'mode-parallel',
       label: 'Parallel Mode',
       keywords: ['parallel', 'par', 'simultaneous', 'all'],
       execute: () => switchMode('parallel'),
-      isAvailable: () => !state.isRunning,
+      isAvailable: () => !useStore.getState().isRunning,
     },
     {
       id: 'mode-manual',
       label: 'Manual Mode',
       keywords: ['manual', 'man', 'trigger'],
       execute: () => switchMode('manual'),
-      isAvailable: () => !state.isRunning,
+      isAvailable: () => !useStore.getState().isRunning,
     },
     {
       id: 'mode-queue',
       label: 'Queue Mode',
       keywords: ['queue', 'custom', 'drag', 'order'],
       execute: () => switchMode('queue'),
-      isAvailable: () => !state.isRunning,
+      isAvailable: () => !useStore.getState().isRunning,
     },
     {
       id: 'add-advisor',
@@ -124,7 +122,7 @@ export function getCommands(): readonly Command[] {
         const btn = document.querySelector<HTMLButtonElement>('[data-action="call-vote"]')
         btn?.click()
       },
-      isAvailable: () => state.windowOrder.length > 0,
+      isAvailable: () => useStore.getState().windowOrder.length > 0,
     },
   ]
 }

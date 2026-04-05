@@ -143,6 +143,10 @@ async function collectVoteFromWindow(
             })
           },
           onDone: (fullContent) => {
+            if (ctrl != null) activeVoteControllers.delete(ctrl)
+            // Discard late-arriving responses after vote cancellation / session switch
+            if (ctrl?.signal.aborted) { resolve(null); return }
+
             const msg = createAssistantMessage(fullContent, window.personaLabel, windowId)
             const current = useStore.getState()
             current.appendMessage(msg)
@@ -155,13 +159,14 @@ async function collectVoteFromWindow(
               window.accentColor,
             )
             resolve(vote)
-            if (ctrl != null) activeVoteControllers.delete(ctrl)
           },
           onError: (error) => {
+            if (ctrl != null) activeVoteControllers.delete(ctrl)
+            if (ctrl?.signal.aborted) { resolve(null); return }
+
             const current = useStore.getState()
             current.updateWindow(windowId, { isStreaming: false, streamContent: '', error })
             resolve(null)
-            if (ctrl != null) activeVoteControllers.delete(ctrl)
           },
         },
       )
