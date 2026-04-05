@@ -76,7 +76,7 @@ function pickBestProviderAndModel(keys: readonly ApiKey[]): { readonly provider:
 
   let bestProvider: Provider = 'anthropic'
   let bestKeyId = ''
-  let bestModel = 'claude-sonnet-4-6'
+  let bestModel = 'claude-haiku-4-5-20251001'
   let bestPrice = Infinity
 
   for (const [provider, key] of providerKeys) {
@@ -99,7 +99,7 @@ function pickBestProviderAndModel(keys: readonly ApiKey[]): { readonly provider:
     const models = getAvailableModels(firstProvider)
     bestProvider = firstProvider
     bestKeyId = firstKey.id
-    bestModel = models[0]?.id ?? 'claude-sonnet-4-6'
+    bestModel = models[0]?.id ?? 'claude-haiku-4-5-20251001'
   }
 
   return { provider: bestProvider, keyId: bestKeyId, model: bestModel }
