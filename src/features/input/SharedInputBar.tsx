@@ -43,7 +43,7 @@ export function SharedInputBar(): ReactNode {
 
     if (isRunning) {
       handleUserMessage()
-    } else if (turnMode !== 'manual' && windowCount > 0) {
+    } else if (turnMode !== 'manual' && windowCount > 0 && queue.length > 0) {
       startRun()
     }
   }, [input, attachments, appendMessage, isRunning, turnMode])
