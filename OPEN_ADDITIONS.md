@@ -51,3 +51,34 @@ Allow a user to add an advisor with a blank persona — either letting the model
 ## Temperature Variation for Duplicate Advisors
 
 When multiple advisors share the same model, inject slight temperature variation per instance so responses naturally diverge. Could be a per-advisor slider in the editor (0.0–2.0) or automatic small offsets (e.g., ±0.1) when duplicates are detected. This complements the duplicate-awareness system prompt hint that already exists — temperature adds randomness at the generation level while the prompt hint encourages topical divergence.
+
+## Enhanced Voting System
+
+### Custom Vote Options
+
+Allow users to define vote options instead of hardcoded YAY/NAY/ABSTAIN. Presets and custom:
+- **Binary**: Approve / Reject
+- **Agreement scale**: Strongly Agree / Agree / Neutral / Disagree / Strongly Disagree
+- **Ranked choice**: Option A / Option B / Option C (user defines options)
+- **Priority**: High / Medium / Low
+- **Custom**: user types their own options, comma-separated
+
+The vote instruction prompt and response parser adapt to whatever options are provided. The tally panel groups results by the custom options with appropriate visualization (bar chart for scales, counts for binary/ranked).
+
+### Vote-on-Next-Turn (Queued Voting)
+
+Allow calling a vote while a run is active without interrupting the current round:
+
+1. User clicks "Call for Vote" during an active run
+2. Current round completes normally (parallel: all finish, sequential: current advisor finishes)
+3. Run pauses automatically — similar to the existing pause mechanism
+4. Vote round fires — all advisors receive the vote prompt simultaneously
+5. Votes collected, tallied, and displayed
+6. Run resumes automatically from where it left off
+
+**Implementation approach:**
+- Add a `pendingVote` field to the turn slice (question + options, or null)
+- In `onTurnComplete`, check for `pendingVote` before dispatching the next turn
+- If pending, pause the run, execute the vote, clear `pendingVote`, resume
+- The vote prompt is injected into the shared context as `[Vote] question` (existing behavior) so advisors see it in subsequent turns
+- UI: Vote button changes to "Vote queued..." while waiting, with an option to cancel the pending vote
