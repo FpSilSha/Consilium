@@ -30,9 +30,8 @@ export function NavSidebar(): ReactNode {
 
   return (
     <aside className="flex h-full w-full flex-col border-r border-edge-subtle bg-surface-panel">
-      {/* Header: logo + cost */}
-      <div className="flex items-center gap-2 border-b border-edge-subtle px-4 py-3">
-        <span className="text-sm font-semibold text-content-primary">Consilium</span>
+      {/* Header: cost + budget */}
+      <div className="flex flex-col border-b border-edge-subtle px-4 py-3">
         <BudgetBar />
       </div>
 
