@@ -92,7 +92,7 @@ function pickBestProviderAndModel(keys: readonly ApiKey[]): { readonly provider:
     const cheapest = cheapestFromList(models)
     if (cheapest == null) continue
 
-    const price = cheapest.outputPricePerToken > 0 ? cheapest.outputPricePerToken : Infinity
+    const price = cheapest.outputPricePerToken
     if (price < bestPrice) {
       bestPrice = price
       bestProvider = provider
