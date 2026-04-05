@@ -58,6 +58,8 @@ async function reverifyUnverifiedKeys(): Promise<void> {
 
     const detected = detectProvider(rawKey)
     if (detected == null) continue
+    // Skip if detected provider doesn't match stored provider
+    if (detected.provider !== key.provider) continue
 
     try {
       const result = await validateKey(rawKey, detected.provider)

@@ -104,6 +104,7 @@ export function getCommands(): readonly Command[] {
       label: 'New Consilium',
       keywords: ['new', 'session', 'consilium', 'clear', 'reset'],
       execute: () => {
+        stopAll()
         saveCurrentSession().catch(() => {})
         const s = useStore.getState()
         s.clearMessages()

@@ -85,8 +85,8 @@ export function stopAll(): void {
     controller.abort()
     state.removeActiveCard(cardId)
 
-    // Preserve partial content as a message with cut-off marker
-    const win = state.windows[windowId]
+    // Preserve partial content as a message with cut-off marker (fresh read per window)
+    const win = useStore.getState().windows[windowId]
     if (win != null && win.streamContent.trim() !== '') {
       const partialContent = `${win.streamContent.trim()}\n\n*(response cut off)*`
       const message = createAssistantMessage(

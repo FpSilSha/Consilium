@@ -211,5 +211,5 @@ function stripIdentityHeader(content: string, _personaLabel: string): string {
     match = result.match(headerPattern)
   }
 
-  return result || content
+  return result.length > 0 ? result : content.trimStart()
 }

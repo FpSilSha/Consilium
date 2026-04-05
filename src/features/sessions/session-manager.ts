@@ -42,7 +42,9 @@ export function restoreSession(session: SessionFile): void {
     state.addWindow(window)
   }
 
-  // Set current session ID and restore custom name
+  // Set current session ID and restore the session name.
+  // This pins the name — if the user renamed it, the rename persists.
+  // If it was auto-derived, it stays as the derived name from last save.
   state.setCurrentSessionId(session.id)
   state.setSessionCustomName(session.name)
 
@@ -88,20 +90,28 @@ function sessionWindowToAdvisor(
   }
 }
 
+/** Prevents concurrent initializeNewSession calls from double-creating. */
+let initInProgress = false
+
 /**
  * Initializes a new session with an ID and saves an initial entry.
  * Called on app load (post-onboarding) and on "New Consilium".
  * The session appears immediately in the sidebar.
  */
 export async function initializeNewSession(): Promise<void> {
+  if (initInProgress) return
   const state = useStore.getState()
   if (state.currentSessionId != null) return
+  initInProgress = true
+  try {
+    const sessionId = crypto.randomUUID()
+    state.setCurrentSessionId(sessionId)
+    state.setSessionCustomName(null)
 
-  const sessionId = crypto.randomUUID()
-  state.setCurrentSessionId(sessionId)
-  state.setSessionCustomName(null)
-
-  await saveCurrentSession()
+    await saveCurrentSession()
+  } finally {
+    initInProgress = false
+  }
 }
 
 /**

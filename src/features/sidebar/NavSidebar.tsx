@@ -5,6 +5,7 @@ import { SessionHistoryList } from './SessionHistoryList'
 import { ErrorLog } from './ErrorLog'
 import { BudgetBar } from '@/features/budget'
 import { saveCurrentSession, initializeNewSession } from '@/features/sessions/session-manager'
+import { stopAll } from '@/features/turnManager'
 
 export function NavSidebar(): ReactNode {
   const windowCount = useStore((s) => s.windowOrder.length)
@@ -24,6 +25,7 @@ export function NavSidebar(): ReactNode {
   }, [windowCount, messageCount])
 
   const executeNewConsilium = useCallback(async () => {
+    stopAll()
     // Save current session before clearing
     await saveCurrentSession().catch(() => {})
     const { clearMessages, clearAllWindows } = useStore.getState()

@@ -33,10 +33,10 @@ export function SessionHistoryList(): ReactNode {
 
   const handleRename = useCallback(async (id: string) => {
     const trimmed = editName.trim()
-    if (trimmed === '') { setEditingId(null); return }
+    setEditingId(null) // Clear first to prevent onBlur re-entry
+    if (trimmed === '') return
     await renameSession(id, trimmed)
     setSessions((prev) => prev.map((s) => s.id === id ? { ...s, name: trimmed } : s))
-    setEditingId(null)
   }, [editName])
 
   const handleDelete = useCallback(async (id: string, e: React.MouseEvent) => {
