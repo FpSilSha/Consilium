@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback, useState } from 'react'
 import { useStore } from '@/store'
+import { Tooltip } from '@/features/ui/Tooltip'
 import { compactWindow } from './compaction-service'
 import { getContextUsagePercent } from './compaction-engine'
 
@@ -32,8 +33,9 @@ export function CompactButton({ windowId }: CompactButtonProps): ReactNode {
   return (
     <div className="flex items-center gap-1.5">
       {/* Context usage indicator */}
-      <div className="flex items-center gap-1">
-        <div className="h-1.5 w-8 rounded-full bg-gray-700">
+      <Tooltip text="Context window usage — compact when high" position="bottom">
+        <div className="flex items-center gap-1">
+          <div className="h-1.5 w-8 rounded-full bg-surface-hover">
           <div
             className={`h-full rounded-full transition-all ${
               usagePercent >= 80
@@ -45,14 +47,15 @@ export function CompactButton({ windowId }: CompactButtonProps): ReactNode {
             style={{ width: `${Math.min(usagePercent, 100)}%` }}
           />
         </div>
-        <span className="text-xs text-gray-500">{Math.round(usagePercent)}%</span>
-      </div>
+        <span className="text-xs text-content-disabled">{Math.round(usagePercent)}%</span>
+        </div>
+      </Tooltip>
 
       {/* Compaction indicator */}
       {window.isCompacted && (
-        <span className="text-xs text-purple-400" title="Working from summarized history">
-          C
-        </span>
+        <Tooltip text="Working from summarized history" position="bottom">
+          <span className="text-xs text-purple-400">C</span>
+        </Tooltip>
       )}
 
       {/* Compact Now button — only show when there are messages to compact */}
@@ -60,8 +63,7 @@ export function CompactButton({ windowId }: CompactButtonProps): ReactNode {
         <button
           onClick={handleCompact}
           disabled={isCompacting || window.isStreaming}
-          className="rounded px-1.5 py-0.5 text-xs text-gray-500 hover:bg-gray-700 hover:text-gray-300 disabled:opacity-40"
-          title="Compact conversation history"
+          className="rounded px-1.5 py-0.5 text-xs text-content-disabled hover:bg-surface-hover hover:text-content-primary disabled:opacity-40"
         >
           {isCompacting ? '...' : 'Compact'}
         </button>

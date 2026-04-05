@@ -1,6 +1,9 @@
 import { app, BrowserWindow, ipcMain, shell, dialog, Menu } from 'electron'
+
+// CDP debugging: uncomment and restart to enable external debugging
+// app.commandLine.appendSwitch('remote-debugging-port', '9333')
 import { join, resolve, normalize, sep, basename, extname } from 'path'
-import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync } from 'fs'
+import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync, renameSync } from 'fs'
 import { loadEnvFile, writeEnvFile } from './env-loader'
 import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
 
@@ -20,6 +23,7 @@ interface AppConfig {
   readonly autoSaveDebounceMs: number
   readonly defaultTurnMode: string
   readonly maxFileAttachmentMB: number
+  readonly showOnboarding: boolean
   readonly customProviders: readonly CustomProviderDef[]
 }
 
@@ -29,6 +33,7 @@ export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
   autoSaveDebounceMs: 'Delay in milliseconds before auto-saving after a change. Lower = more frequent saves.',
   defaultTurnMode: 'Default turn mode for new sessions: sequential, parallel, manual, or queue.',
   maxFileAttachmentMB: 'Maximum file size in megabytes for attachments.',
+  showOnboarding: 'Show the onboarding wizard on next startup. Automatically set to false after completing the wizard.',
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -36,6 +41,7 @@ const DEFAULT_CONFIG: AppConfig = {
   autoSaveDebounceMs: 2000,
   defaultTurnMode: 'sequential',
   maxFileAttachmentMB: 10,
+  showOnboarding: true,
   customProviders: [],
 }
 
@@ -49,6 +55,7 @@ function loadAppConfig(): AppConfig {
       autoSaveDebounceMs: typeof parsed['autoSaveDebounceMs'] === 'number' ? parsed['autoSaveDebounceMs'] : DEFAULT_CONFIG.autoSaveDebounceMs,
       defaultTurnMode: typeof parsed['defaultTurnMode'] === 'string' ? parsed['defaultTurnMode'] : DEFAULT_CONFIG.defaultTurnMode,
       maxFileAttachmentMB: typeof parsed['maxFileAttachmentMB'] === 'number' ? parsed['maxFileAttachmentMB'] : DEFAULT_CONFIG.maxFileAttachmentMB,
+      showOnboarding: typeof parsed['showOnboarding'] === 'boolean' ? parsed['showOnboarding'] : DEFAULT_CONFIG.showOnboarding,
       customProviders: parseCustomProviders(parsed['customProviders']),
     }
   } catch {
@@ -264,6 +271,7 @@ function registerIpcHandlers(): void {
   })
   ipcMain.handle('window:close', () => { mainWindow?.close() })
   ipcMain.handle('window:is-maximized', () => mainWindow?.isMaximized() ?? false)
+  ipcMain.handle('window:toggle-devtools', () => { mainWindow?.webContents.toggleDevTools() })
 
   ipcMain.handle('shell:open-external', (_event, url: unknown) => {
     if (typeof url !== 'string') throw new Error('Invalid URL')
@@ -405,13 +413,41 @@ function registerIpcHandlers(): void {
 
   const sessionsDir = join(app.getPath('userData'), 'sessions')
 
+  /** Atomic write: write to temp file, then rename over the target. */
+  function atomicSessionWrite(id: string, content: string): void {
+    mkdirSync(sessionsDir, { recursive: true })
+    const filePath = join(sessionsDir, `${id}.council`)
+    const tmpPath = `${filePath}.tmp`
+    try {
+      writeFileSync(tmpPath, content, 'utf-8')
+      renameSync(tmpPath, filePath)
+    } catch {
+      // Rename failed (e.g., cross-device) — clean up tmp and fall back to direct write
+      try { unlinkSync(tmpPath) } catch { /* ignore */ }
+      writeFileSync(filePath, content, 'utf-8')
+    }
+  }
+
   ipcMain.handle('session:save', (_event, id: unknown, content: unknown) => {
     if (typeof id !== 'string' || typeof content !== 'string') throw new Error('Invalid args')
     if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error('Invalid session ID')
     const maxBytes = appConfig.maxSessionSizeMB * 1024 * 1024
     if (content.length > maxBytes) throw new Error(`Session payload exceeds ${appConfig.maxSessionSizeMB}MB limit (configurable in config.json)`)
-    mkdirSync(sessionsDir, { recursive: true })
-    writeFileSync(join(sessionsDir, `${id}.council`), content, 'utf-8')
+    atomicSessionWrite(id, content)
+  })
+
+  // Synchronous save for beforeunload — blocks renderer until write completes
+  ipcMain.on('session:save-sync', (event, id: unknown, content: unknown) => {
+    try {
+      if (typeof id !== 'string' || typeof content !== 'string') { event.returnValue = false; return }
+      if (!/^[a-zA-Z0-9_-]+$/.test(id)) { event.returnValue = false; return }
+      const maxBytes = appConfig.maxSessionSizeMB * 1024 * 1024
+      if (content.length > maxBytes) { event.returnValue = false; return }
+      atomicSessionWrite(id, content)
+      event.returnValue = true
+    } catch {
+      event.returnValue = false
+    }
   })
 
   ipcMain.handle('session:load', (_event, id: unknown) => {

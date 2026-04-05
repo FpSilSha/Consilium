@@ -1,6 +1,6 @@
 import type { QueueCard } from '@/types'
 import { useStore } from '@/store'
-import { streamResponse } from '@/services/api/stream-orchestrator'
+import { streamResponse, isTransientError } from '@/services/api/stream-orchestrator'
 import type { StreamCallbacks } from '@/services/api/stream-orchestrator'
 import { createAssistantMessage } from '@/services/context-bus/message-factory'
 import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
@@ -16,6 +16,9 @@ import {
 } from './turn-engine'
 
 const activeControllers = new Map<string, { controller: AbortController; windowId: string }>()
+
+/** Tracks cards that have been auto-retried this run cycle (max 1 retry per card). */
+const retriedCards = new Set<string>()
 
 /**
  * Dispatches the next turn(s) based on the current queue state and turn mode.
@@ -65,6 +68,7 @@ export function handleUserMessage(): void {
 export function startRun(): void {
   const state = useStore.getState()
   useStore.setState({ roundsCompleted: 0 })
+  retriedCards.clear()
   state.setIsRunning(true)
   dispatchNextTurn()
 }
@@ -90,6 +94,31 @@ export function stopAll(): void {
   state.setIsRunning(false)
   state.setPaused(false)
   useStore.setState({ roundsCompleted: 0 })
+  retriedCards.clear()
+}
+
+/**
+ * Retries a specific advisor that previously errored.
+ * Clears the error, creates a fresh queue card, and dispatches it.
+ */
+export function retryAdvisor(windowId: string): void {
+  const state = useStore.getState()
+  const window = state.windows[windowId]
+  if (window === undefined) return
+
+  state.updateWindow(windowId, { error: null })
+
+  const card: QueueCard = {
+    id: crypto.randomUUID(),
+    windowId,
+    isUser: false,
+    status: 'waiting',
+    errorLabel: null,
+  }
+
+  state.addToQueue(card)
+  state.setIsRunning(true)
+  dispatchAgentTurn(card)
 }
 
 /**
@@ -179,7 +208,7 @@ function dispatchAgentTurn(card: QueueCard): void {
       // Use queueMicrotask to avoid unbounded recursive call stack
       queueMicrotask(onTurnComplete)
     },
-    onError: (error, tokenUsage) => {
+    onError: (error, tokenUsage, statusCode) => {
       activeControllers.delete(card.id)
 
       // Discard late-arriving errors after user explicitly stopped
@@ -188,6 +217,28 @@ function dispatchAgentTurn(card: QueueCard): void {
       const current = useStore.getState()
       const freshWindow = current.windows[card.windowId]
       const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
+
+      // Auto-retry once on transient errors if enabled
+      if (
+        current.autoRetryTransient &&
+        isTransientError(statusCode) &&
+        !retriedCards.has(card.id)
+      ) {
+        retriedCards.add(card.id)
+        current.updateWindow(card.windowId, {
+          isStreaming: false,
+          streamContent: '',
+          error: null,
+          runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
+        })
+        current.setCardStatus(card.id, 'waiting')
+        current.removeActiveCard(card.id)
+        setTimeout(() => {
+          if (!useStore.getState().isRunning) return
+          dispatchAgentTurn(card)
+        }, 1_000)
+        return
+      }
 
       current.updateWindow(card.windowId, {
         isStreaming: false,

@@ -1,6 +1,7 @@
 import { type ReactNode, useState, useCallback, useMemo, useRef } from 'react'
 import type { Provider, ModelInfo } from '@/types'
 import { useStore } from '@/store'
+import { Tooltip } from '@/features/ui/Tooltip'
 import { getModelsForProvider } from '@/features/modelSelector/model-registry'
 import { getRawKey } from '@/features/keys/key-vault'
 import { saveCatalogPreferences } from './catalog-persistence'
@@ -122,14 +123,15 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
         <span className="w-16 text-right">Context</span>
         <span className="w-24 text-right">
           Pricing
-          <span
-            role="img"
-            aria-label="Pricing sourced from OpenRouter. Actual provider pricing may vary."
-            title="Pricing sourced from OpenRouter. Actual provider pricing may vary."
-            className="ml-1 inline-block cursor-help text-[8px]"
-          >
-            &#9432;
-          </span>
+          <Tooltip text="Pricing sourced from OpenRouter. Actual provider pricing may vary." position="bottom">
+            <span
+              role="img"
+              aria-label="Pricing info"
+              className="ml-1 inline-block cursor-help text-[8px]"
+            >
+              &#9432;
+            </span>
+          </Tooltip>
         </span>
       </div>
 
@@ -183,7 +185,9 @@ function ModelRow({ model, checked, onToggle, priceOverride }: {
           ? `$${formatTokenPrice(inputPrice)} / $${formatTokenPrice(outputPrice)}`
           : '—'}
         {priceOverride != null && (
-          <span className="ml-0.5 text-accent-blue" title="Price override active">*</span>
+          <Tooltip text="Price override active" position="left">
+            <span className="ml-0.5 text-accent-blue">*</span>
+          </Tooltip>
         )}
       </span>
     </label>

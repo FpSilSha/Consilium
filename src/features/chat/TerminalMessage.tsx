@@ -18,9 +18,9 @@ export function TerminalMessage({ message, accentColor }: TerminalMessageProps):
       >
         {label} &gt;{' '}
       </span>
-      <span className="whitespace-pre-wrap text-gray-200">{message.content}</span>
+      <span className="whitespace-pre-wrap text-content-primary">{message.content}</span>
       {message.costMetadata !== undefined && (
-        <span className="ml-2 text-xs text-gray-600">
+        <span className="ml-2 text-xs text-content-disabled">
           [~${message.costMetadata.estimatedCost.toFixed(4)}]
         </span>
       )}

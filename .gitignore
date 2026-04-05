@@ -46,3 +46,6 @@ private/
 # Claude Code local files
 .claude/sessions/
 .claude/metrics/
+
+# MCP config (local dev tooling)
+.mcp.json

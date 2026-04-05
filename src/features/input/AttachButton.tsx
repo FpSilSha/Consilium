@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback } from 'react'
 import type { Attachment } from '@/types'
+import { Tooltip } from '@/features/ui/Tooltip'
 
 const IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/svg+xml'])
 
@@ -55,16 +56,17 @@ export function AttachButton({ onAttach }: AttachButtonProps): ReactNode {
   }, [onAttach])
 
   return (
-    <button
-      onClick={handleClick}
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-content-muted transition-colors hover:bg-surface-hover hover:text-content-primary"
-      aria-label="Attach file"
-      title="Attach file"
-    >
-      <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-5 w-5">
-        <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
-      </svg>
-    </button>
+    <Tooltip text="Attach file" position="top">
+      <button
+        onClick={handleClick}
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-content-muted transition-colors hover:bg-surface-hover hover:text-content-primary"
+        aria-label="Attach file"
+      >
+        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" className="h-5 w-5">
+          <path d="M10.75 4.75a.75.75 0 0 0-1.5 0v4.5h-4.5a.75.75 0 0 0 0 1.5h4.5v4.5a.75.75 0 0 0 1.5 0v-4.5h4.5a.75.75 0 0 0 0-1.5h-4.5v-4.5Z" />
+        </svg>
+      </button>
+    </Tooltip>
   )
 }
 

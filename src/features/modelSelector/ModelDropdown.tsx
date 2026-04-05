@@ -37,7 +37,7 @@ export function ModelDropdown({ provider, keyId, selectedModel, onSelect }: Mode
     return (
       <select
         disabled
-        className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-500 outline-none"
+        className="rounded border border-edge-subtle bg-surface-panel px-2 py-1 text-xs text-content-disabled outline-none"
       >
         <option>Loading models...</option>
       </select>
@@ -52,7 +52,7 @@ export function ModelDropdown({ provider, keyId, selectedModel, onSelect }: Mode
           value={selectedModel}
           onChange={(e) => onSelect(e.target.value)}
           placeholder="e.g. anthropic/claude-sonnet-4"
-          className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 outline-none focus:border-gray-500"
+          className="rounded border border-edge-subtle bg-surface-panel px-2 py-1 text-xs text-content-primary outline-none focus:border-edge-focus"
         />
       </div>
     )
@@ -62,7 +62,7 @@ export function ModelDropdown({ provider, keyId, selectedModel, onSelect }: Mode
     <select
       value={selectedModel}
       onChange={(e) => onSelect(e.target.value)}
-      className="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300 outline-none focus:border-gray-500"
+      className="rounded border border-edge-subtle bg-surface-panel px-2 py-1 text-xs text-content-primary outline-none focus:border-edge-focus"
     >
       {models.map((model) => (
         <option key={model.id} value={model.id}>

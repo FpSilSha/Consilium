@@ -14,8 +14,8 @@ export function MessageBubble({ message, accentColor }: MessageBubbleProps): Rea
       <div
         className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
           isUser
-            ? 'bg-blue-900/50 text-gray-100'
-            : 'bg-gray-800/50 text-gray-200'
+            ? 'bg-blue-900/50 text-content-primary'
+            : 'bg-surface-panel/50 text-content-primary'
         }`}
         style={
           !isUser && accentColor !== undefined
@@ -33,7 +33,7 @@ export function MessageBubble({ message, accentColor }: MessageBubbleProps): Rea
         )}
         <div className="whitespace-pre-wrap break-words">{message.content}</div>
         {message.costMetadata !== undefined && (
-          <div className="mt-1 text-right text-xs text-gray-500">
+          <div className="mt-1 text-right text-xs text-content-disabled">
             ~${message.costMetadata.estimatedCost.toFixed(4)}
             {message.costMetadata.isEstimate ? ' (est)' : ''}
           </div>

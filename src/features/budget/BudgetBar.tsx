@@ -1,5 +1,6 @@
 import { type ReactNode, useState, useCallback } from 'react'
 import { useStore } from '@/store'
+import { Tooltip } from '@/features/ui/Tooltip'
 import { getSessionTotalCost, isBudgetWarning, isBudgetExceeded, getBudgetUsagePercent } from './budget-engine'
 import { CostBreakdownModal } from './CostBreakdownModal'
 
@@ -39,23 +40,35 @@ export function BudgetBar(): ReactNode {
     setBudgetValue('')
   }, [budgetValue, setSessionBudget])
 
-  return (
-    <div className="flex items-center gap-2">
-      {/* Total cost display — clickable for breakdown */}
-      <button
-        onClick={() => setShowBreakdown(true)}
-        className="text-xs text-content-disabled transition-colors hover:text-content-muted"
-        title="Click for cost breakdown"
-      >
-        ~${totalCost.toFixed(4)}
-        {untrackedCount > 0 && (
-          <span className="ml-1">+ {untrackedCount} unknown</span>
-        )}
-      </button>
+  const budgetLabel = sessionBudget > 0 ? `$${sessionBudget.toFixed(2)}` : '∞'
 
-      {/* Budget indicator */}
-      {sessionBudget > 0 && (
-        <div className="flex items-center gap-1">
+  return (
+    <div className="flex flex-col gap-0.5 pt-1">
+      {/* Cost — clickable for breakdown */}
+      <Tooltip text="View cost breakdown" position="bottom">
+        <button
+          onClick={() => setShowBreakdown(true)}
+          className="text-left text-xs text-content-muted transition-colors hover:text-content-primary"
+        >
+          Cost: ~${totalCost.toFixed(4)}
+          {untrackedCount > 0 && (
+            <span className="ml-1">+ {untrackedCount} unknown</span>
+          )}
+        </button>
+      </Tooltip>
+
+      {/* Budget — clickable to set */}
+      <div className="flex items-center gap-1.5">
+        <Tooltip text="Click to set session budget" position="bottom">
+          <button
+            onClick={() => setShowBudgetInput(true)}
+            className="text-left text-xs text-content-muted transition-colors hover:text-content-primary"
+            data-action="set-budget"
+          >
+            Budget: {budgetLabel}
+          </button>
+        </Tooltip>
+        {sessionBudget > 0 && (
           <div className="h-1.5 w-12 rounded-full bg-surface-active">
             <div
               className={`h-full rounded-full transition-all ${
@@ -64,18 +77,8 @@ export function BudgetBar(): ReactNode {
               style={{ width: `${Math.min(usagePercent, 100)}%` }}
             />
           </div>
-          <span className="text-xs text-content-disabled">/${sessionBudget.toFixed(2)}</span>
-        </div>
-      )}
-
-      {/* Set/change budget button */}
-      <button
-        onClick={() => setShowBudgetInput(true)}
-        className="rounded px-1.5 py-0.5 text-xs text-content-disabled hover:text-content-muted"
-        title="Set session budget"
-      >
-        $
-      </button>
+        )}
+      </div>
 
       {/* Cost breakdown modal */}
       {showBreakdown && (

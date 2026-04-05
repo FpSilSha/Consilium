@@ -1,5 +1,6 @@
 import { type ReactNode, useCallback } from 'react'
 import { useStore } from '@/store'
+import { Tooltip } from '@/features/ui/Tooltip'
 import { exportToMarkdown } from './markdown-exporter'
 
 export function ExportButton(): ReactNode {
@@ -49,12 +50,13 @@ export function ExportButton(): ReactNode {
   if (messages.length === 0 && archivedMessages.length === 0) return null
 
   return (
-    <button
-      onClick={handleExport}
-      className="rounded border border-gray-700 px-2 py-0.5 text-xs text-gray-400 hover:border-gray-500 hover:text-gray-200"
-      title="Export session as markdown"
-    >
-      Export
-    </button>
+    <Tooltip text="Export session as markdown" position="bottom">
+      <button
+        onClick={handleExport}
+        className="rounded border border-edge-subtle px-2 py-0.5 text-xs text-content-muted hover:border-edge-focus hover:text-content-primary"
+      >
+        Export
+      </button>
+    </Tooltip>
   )
 }

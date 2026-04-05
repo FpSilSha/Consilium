@@ -9,12 +9,12 @@ interface VoteTallyPanelProps {
 export function VoteTallyPanel({ tally, onClose }: VoteTallyPanelProps): ReactNode {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="mx-4 max-w-lg rounded-lg border border-gray-700 bg-gray-900 p-5">
+      <div className="mx-4 max-w-lg rounded-lg border border-edge-subtle bg-surface-base p-5">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-gray-200">Vote Results</h3>
+          <h3 className="text-sm font-medium text-content-primary">Vote Results</h3>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-300"
+            className="text-content-disabled hover:text-content-primary"
           >
             x
           </button>
@@ -24,15 +24,15 @@ export function VoteTallyPanel({ tally, onClose }: VoteTallyPanelProps): ReactNo
         <div className="mb-4 flex gap-4">
           <div className="flex items-center gap-1.5">
             <span className="h-3 w-3 rounded-full bg-green-500" />
-            <span className="text-sm text-gray-300">YAY: {tally.yay}</span>
+            <span className="text-sm text-content-primary">YAY: {tally.yay}</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="h-3 w-3 rounded-full bg-red-500" />
-            <span className="text-sm text-gray-300">NAY: {tally.nay}</span>
+            <span className="text-sm text-content-primary">NAY: {tally.nay}</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded-full bg-gray-500" />
-            <span className="text-sm text-gray-300">ABSTAIN: {tally.abstain}</span>
+            <span className="h-3 w-3 rounded-full bg-content-disabled" />
+            <span className="text-sm text-content-primary">ABSTAIN: {tally.abstain}</span>
           </div>
         </div>
 
@@ -41,10 +41,10 @@ export function VoteTallyPanel({ tally, onClose }: VoteTallyPanelProps): ReactNo
           {tally.votes.map((vote) => (
             <div
               key={vote.windowId}
-              className="flex items-start gap-2 rounded border-l-3 border-gray-800 bg-gray-800/50 px-3 py-2"
+              className="flex items-start gap-2 rounded border-l-3 border-surface-panel bg-surface-panel/50 px-3 py-2"
               style={{ borderLeftColor: vote.accentColor }}
             >
-              <span className="shrink-0 text-xs font-medium text-gray-300">
+              <span className="shrink-0 text-xs font-medium text-content-primary">
                 {vote.personaLabel}
               </span>
               <span
@@ -53,18 +53,18 @@ export function VoteTallyPanel({ tally, onClose }: VoteTallyPanelProps): ReactNo
                     ? 'bg-green-900 text-green-300'
                     : vote.vote === 'NAY'
                       ? 'bg-red-900 text-red-300'
-                      : 'bg-gray-700 text-gray-400'
+                      : 'bg-surface-hover text-content-muted'
                 }`}
               >
                 {vote.vote}
               </span>
-              <span className="text-xs text-gray-400">{vote.justification}</span>
+              <span className="text-xs text-content-muted">{vote.justification}</span>
             </div>
           ))}
         </div>
 
         {tally.votes.length === 0 && (
-          <p className="text-xs text-gray-500">No valid votes received.</p>
+          <p className="text-xs text-content-disabled">No valid votes received.</p>
         )}
       </div>
     </div>

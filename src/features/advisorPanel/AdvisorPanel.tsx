@@ -47,7 +47,9 @@ export function AdvisorPanel(): ReactNode {
         <div className="max-h-56 overflow-y-auto px-1 pb-2">
           {windowOrder.length === 0 ? (
             <p className="px-3 py-3 text-xs text-content-disabled">
-              No advisors yet. Add one above.
+              {keys.length === 0
+                ? 'Configure API keys first via Models & Keys.'
+                : 'No advisors yet. Click "+ Add Advisor" above.'}
             </p>
           ) : (
             windowOrder.map((id) => {

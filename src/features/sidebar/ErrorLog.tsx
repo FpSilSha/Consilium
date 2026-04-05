@@ -35,6 +35,11 @@ export function ErrorLog(): ReactNode {
                 {new Date(entry.timestamp).toLocaleTimeString()}
               </span>
             </div>
+            {(entry.provider != null || entry.model != null) && (
+              <div className="mt-0.5 text-[10px] text-content-disabled">
+                {[entry.provider, entry.model].filter(Boolean).join(' / ')}
+              </div>
+            )}
             <p className="mt-0.5 text-[10px] text-error">{entry.message}</p>
           </div>
         ))}

@@ -30,7 +30,6 @@ interface ConfigModalProps {
 export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
   const [activeTab, setActiveTab] = useState<string>('anthropic')
   const [customProviders, setCustomProviders] = useState<readonly CustomProviderDef[]>([])
-  const [showAddForm, setShowAddForm] = useState(false)
   const [showAdapterBuilder, setShowAdapterBuilder] = useState(false)
 
   // Load custom providers from config on mount
@@ -48,7 +47,6 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
   const handleAddProvider = useCallback(async (provider: CustomProviderDef) => {
     const updated = [...customProviders, provider]
     setCustomProviders(updated)
-    setShowAddForm(false)
     setActiveTab(`custom:${provider.id}`)
 
     // Save to config
@@ -83,6 +81,18 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
     try {
       const config = await api.configLoad()
       await api.configSave({ ...config.values, customProviders: updated })
+    } catch { /* non-fatal */ }
+  }, [customProviders])
+
+  const handleUpdateProvider = useCallback(async (updated: CustomProviderDef) => {
+    const newList = customProviders.map((p) => p.id === updated.id ? updated : p)
+    setCustomProviders(newList)
+
+    const api = getAPI()
+    if (api == null) return
+    try {
+      const config = await api.configLoad()
+      await api.configSave({ ...config.values, customProviders: newList })
     } catch { /* non-fatal */ }
   }, [customProviders])
 
@@ -158,8 +168,15 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
             </button>
           ))}
           <button
-            onClick={() => setShowAddForm(true)}
-            className="rounded-t-md px-2 py-1.5 text-xs text-content-disabled transition-colors hover:bg-surface-hover hover:text-content-muted"
+            role="tab"
+            aria-selected={activeTab === 'add-provider'}
+            tabIndex={activeTab === 'add-provider' ? 0 : -1}
+            onClick={() => setActiveTab('add-provider')}
+            className={`rounded-t-md px-2 py-1.5 text-xs font-medium transition-colors ${
+              activeTab === 'add-provider'
+                ? 'border-b-2 border-accent-blue bg-surface-base text-accent-blue'
+                : 'text-content-disabled hover:bg-surface-hover hover:text-content-muted'
+            }`}
           >
             + Add Provider
           </button>
@@ -174,12 +191,13 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
             <CustomProviderTab
               providerDef={activeCustom}
               onRemove={() => handleRemoveProvider(activeCustom.id)}
+              onUpdate={handleUpdateProvider}
             />
           )}
-          {showAddForm && (
+          {activeTab === 'add-provider' && (
             <AddProviderForm
               onAdd={handleAddProvider}
-              onCancel={() => setShowAddForm(false)}
+              onCancel={() => setActiveTab('anthropic')}
               existingIds={customProviders.map((p) => p.id)}
             />
           )}

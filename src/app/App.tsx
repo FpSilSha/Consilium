@@ -1,26 +1,50 @@
-import { type ReactNode, useState, useRef } from 'react'
+import { type ReactNode, useState, useEffect } from 'react'
 import { OnboardingWizard } from '@/features/onboarding'
-import { useStore } from '@/store'
 import { AppLayout } from './AppLayout'
 
 export function App(): ReactNode {
-  const keysLoaded = useStore((s) => s.keysLoaded)
-  const keyCount = useStore((s) => s.keys.length)
-  const [onboardingComplete, setOnboardingComplete] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null)
 
-  // Track if the user has ever had keys — once they've entered the dashboard,
-  // removing all keys should NOT kick them back to onboarding
-  const hasEverHadKeys = useRef(false)
-  if (keyCount > 0) hasEverHadKeys.current = true
+  // Load showOnboarding from config on mount
+  useEffect(() => {
+    const api = (window as { consiliumAPI?: {
+      configLoad(): Promise<{ values: Record<string, unknown> }>
+      configSave(config: Record<string, unknown>): Promise<void>
+    } }).consiliumAPI
 
-  const FORCE_ONBOARDING = false
+    if (api == null) {
+      setShowOnboarding(false)
+      return
+    }
 
-  const showOnboarding = FORCE_ONBOARDING || (
-    keysLoaded && keyCount === 0 && !onboardingComplete && !hasEverHadKeys.current
-  )
+    api.configLoad()
+      .then((config) => {
+        const value = config.values['showOnboarding']
+        setShowOnboarding(typeof value === 'boolean' ? value : true)
+      })
+      .catch(() => setShowOnboarding(false))
+  }, [])
+
+  const handleComplete = () => {
+    setShowOnboarding(false)
+
+    // Persist showOnboarding = false for next startup
+    const api = (window as { consiliumAPI?: {
+      configLoad(): Promise<{ values: Record<string, unknown> }>
+      configSave(config: Record<string, unknown>): Promise<void>
+    } }).consiliumAPI
+
+    if (api == null) return
+    api.configLoad()
+      .then((config) => api.configSave({ ...config.values, showOnboarding: false }))
+      .catch(() => {})
+  }
+
+  // Loading config — show nothing briefly
+  if (showOnboarding === null) return null
 
   if (showOnboarding) {
-    return <OnboardingWizard onComplete={() => setOnboardingComplete(true)} />
+    return <OnboardingWizard onComplete={handleComplete} />
   }
 
   return <AppLayout />

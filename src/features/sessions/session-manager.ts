@@ -133,6 +133,23 @@ export function buildSessionFile(): SessionFile {
 }
 
 /**
+ * Builds a session payload (id + serialized content) for synchronous saves.
+ * Returns null if there's nothing to save.
+ */
+export function buildSessionPayload(): { readonly id: string; readonly content: string } | null {
+  const state = useStore.getState()
+  if (state.messages.length === 0 && state.windowOrder.length === 0) return null
+
+  const session = buildSessionFile()
+
+  if (state.currentSessionId == null) {
+    state.setCurrentSessionId(session.id)
+  }
+
+  return { id: session.id, content: JSON.stringify(session) }
+}
+
+/**
  * Saves the current session to disk via IPC.
  */
 export async function saveCurrentSession(): Promise<void> {
@@ -171,10 +188,18 @@ export async function listSessions(): Promise<readonly SessionMetadata[]> {
 
 /**
  * Loads a session from disk and restores it.
+ * Stops any active run before switching.
  */
 export async function loadSession(id: string): Promise<void> {
   const api = getSessionAPI()
   if (api == null) return
+
+  // Stop any active run before switching sessions
+  const { isRunning } = useStore.getState()
+  if (isRunning) {
+    const { stopAll } = await import('@/features/turnManager')
+    stopAll()
+  }
 
   const content = await api.sessionLoad(id)
   if (content == null) return

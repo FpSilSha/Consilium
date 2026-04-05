@@ -26,7 +26,6 @@ const MENUS: readonly { label: string; items: readonly MenuEntry[] }[] = [
       { label: 'New Consilium', action: 'new-consilium' },
       { separator: true },
       { label: 'Save Session', action: 'save-session' },
-      { label: 'Set Budget', action: 'set-budget' },
       { separator: true },
       { label: 'Quit', action: 'quit' },
     ],
@@ -41,11 +40,14 @@ const MENUS: readonly { label: string; items: readonly MenuEntry[] }[] = [
     label: 'View',
     items: [
       { label: 'Fullscreen', action: 'fullscreen' },
+      { separator: true },
+      { label: 'Developer Tools', action: 'devtools' },
     ],
   },
   {
     label: 'Help',
     items: [
+      { label: 'Welcome Tour', action: 'welcome-tour' },
       { label: 'About Consilium', action: 'about' },
       { separator: true },
       { label: 'Documentation', action: 'docs' },
@@ -90,6 +92,7 @@ export function TitleBar({ onMenuAction }: TitleBarProps): ReactNode {
       windowMaximize(): Promise<void>
       windowClose(): Promise<void>
       openExternal(url: string): Promise<void>
+      toggleDevTools(): Promise<void>
     } }).consiliumAPI
 
     switch (action) {
@@ -99,14 +102,17 @@ export function TitleBar({ onMenuAction }: TitleBarProps): ReactNode {
       case 'save-session':
         saveCurrentSession().catch(() => {})
         break
-      case 'set-budget':
-        document.querySelector<HTMLButtonElement>('[title="Set session budget"]')?.click()
-        break
       case 'edit-config':
         onMenuAction('menu:edit-config')
         break
       case 'fullscreen':
         document.documentElement.requestFullscreen?.().catch(() => {})
+        break
+      case 'devtools':
+        api?.toggleDevTools?.()
+        break
+      case 'welcome-tour':
+        onMenuAction('menu:welcome-tour')
         break
       case 'about':
         onMenuAction('menu:about')
@@ -129,7 +135,7 @@ export function TitleBar({ onMenuAction }: TitleBarProps): ReactNode {
   return (
     <div
       ref={barRef}
-      className="flex h-8 shrink-0 items-center justify-between border-b border-edge-subtle bg-surface-panel"
+      className="relative flex h-8 shrink-0 items-center justify-between border-b border-edge-subtle bg-surface-panel"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       onDoubleClick={() => {
         const api = (window as { consiliumAPI?: { windowMaximize(): Promise<void> } }).consiliumAPI
@@ -174,8 +180,13 @@ export function TitleBar({ onMenuAction }: TitleBarProps): ReactNode {
         ))}
       </div>
 
-      {/* Center: app title */}
-      <span className="text-[10px] text-content-disabled">Consilium</span>
+      {/* Center: app title — fixed center regardless of left/right content */}
+      <span
+        className="pointer-events-none absolute text-sm font-semibold text-content-primary"
+        style={{ left: '50%', transform: 'translateX(-50%)' }}
+      >
+        Consilium
+      </span>
 
       {/* Right: window controls (Windows/Linux only) */}
       {!isMac && (

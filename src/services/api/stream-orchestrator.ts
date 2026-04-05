@@ -64,7 +64,13 @@ export function getAdapter(provider: Provider, baseUrl?: string, adapterDefiniti
 export interface StreamCallbacks {
   onChunk: (content: string) => void
   onDone: (fullContent: string, tokenUsage?: StreamChunk['tokenUsage']) => void
-  onError: (error: string, tokenUsage?: StreamChunk['tokenUsage']) => void
+  onError: (error: string, tokenUsage?: StreamChunk['tokenUsage'], statusCode?: number) => void
+}
+
+/** Returns true for HTTP status codes that indicate a transient/retriable error. */
+export function isTransientError(statusCode: number | undefined): boolean {
+  if (statusCode == null) return false
+  return statusCode === 408 || statusCode === 429 || statusCode === 502 || statusCode === 503 || statusCode === 504
 }
 
 /**
@@ -157,7 +163,7 @@ async function runStream(
             : statusCode >= 500
               ? `Provider server error (${statusCode})`
               : `API error (${statusCode})${detail}`
-    callbacks.onError(sanitizedMessage)
+    callbacks.onError(sanitizedMessage, undefined, statusCode)
     return
   }
 

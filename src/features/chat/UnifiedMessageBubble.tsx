@@ -1,6 +1,7 @@
 import { type ReactNode, useState, useCallback } from 'react'
 import type { Message } from '@/types'
 import { useStore } from '@/store'
+import { Tooltip } from '@/features/ui/Tooltip'
 import { getModelById } from '@/features/modelSelector/model-registry'
 import { MarkdownContent } from './MarkdownContent'
 
@@ -178,12 +179,14 @@ function AssistantBubble({ message, displayContent, accentColor, modelName, isDo
             Export .md
           </button>
           {isDocumentLike && (
-            <button
-              onClick={() => setDocumentView(true)}
-              className="transition-colors hover:text-accent-blue"
-            >
-              View as Document
-            </button>
+            <Tooltip text="Expand to full-width document layout" position="top">
+              <button
+                onClick={() => setDocumentView(true)}
+                className="transition-colors hover:text-accent-blue"
+              >
+                View as Document
+              </button>
+            </Tooltip>
           )}
         </div>
       </div>

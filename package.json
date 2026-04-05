@@ -5,6 +5,7 @@
   "main": "./dist/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:debug": "electron-vite dev -- --remote-debugging-port=9333",
     "build": "electron-vite build",
     "package": "electron-builder",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
