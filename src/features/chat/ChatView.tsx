@@ -91,7 +91,7 @@ export function ChatView({
           >
             {(streamingLabel ?? 'advisor').toLowerCase().replace(/\s+/g, '-')} &gt;{' '}
           </span>
-          <span className="whitespace-pre-wrap text-gray-200">
+          <span className="whitespace-pre-wrap text-content-primary">
             {streamingContent}
             <span className="animate-pulse">|</span>
           </span>
@@ -99,7 +99,7 @@ export function ChatView({
       ) : (
         <div className="flex justify-start">
           <div
-            className="max-w-[85%] rounded-lg bg-gray-800/50 px-3 py-2 text-sm text-gray-200"
+            className="max-w-[85%] rounded-lg bg-surface-panel/50 px-3 py-2 text-sm text-content-primary"
             style={
               accentColor !== undefined
                 ? { borderLeftColor: accentColor, borderLeftWidth: 2 }

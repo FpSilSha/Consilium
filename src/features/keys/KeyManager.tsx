@@ -148,12 +148,12 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="mx-4 w-full max-w-lg rounded-lg border border-gray-800 bg-gray-900 p-6">
+      <div className="mx-4 w-full max-w-lg rounded-lg border border-edge-subtle bg-surface-base p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-medium text-gray-200">API Keys</h2>
+          <h2 className="text-sm font-medium text-content-primary">API Keys</h2>
           <button
             onClick={onClose}
-            className="text-xs text-gray-500 hover:text-gray-300"
+            className="text-xs text-content-disabled hover:text-content-primary"
           >
             Close
           </button>
@@ -165,17 +165,17 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
             {keys.map((key) => (
               <div
                 key={key.id}
-                className="flex items-center justify-between rounded border border-gray-800 bg-gray-950 px-3 py-2"
+                className="flex items-center justify-between rounded border border-edge-subtle bg-surface-disabled px-3 py-2"
               >
                 <div className="flex items-center gap-3 overflow-hidden">
-                  <span className="shrink-0 rounded bg-gray-800 px-1.5 py-0.5 text-xs font-medium text-gray-400">
+                  <span className="shrink-0 rounded bg-surface-panel px-1.5 py-0.5 text-xs font-medium text-content-muted">
                     {key.provider}
                   </span>
-                  <span className="shrink-0 font-mono text-xs text-gray-500">
+                  <span className="shrink-0 font-mono text-xs text-content-disabled">
                     {key.maskedKey}
                   </span>
                   {key.baseUrl != null && (
-                    <span className="truncate text-[10px] text-gray-600" title={key.baseUrl}>
+                    <span className="truncate text-[10px] text-content-disabled" title={key.baseUrl}>
                       {key.baseUrl}
                     </span>
                   )}
@@ -195,7 +195,7 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
                     </button>
                     <button
                       onClick={() => setConfirmRemoveId(null)}
-                      className="rounded bg-gray-700 px-2 py-0.5 text-xs text-gray-300 hover:bg-gray-600"
+                      className="rounded bg-surface-hover px-2 py-0.5 text-xs text-content-primary hover:bg-surface-active"
                     >
                       Cancel
                     </button>
@@ -203,7 +203,7 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
                 ) : (
                   <button
                     onClick={() => setConfirmRemoveId(key.id)}
-                    className="text-xs text-gray-600 hover:text-red-400"
+                    className="text-xs text-content-disabled hover:text-error"
                   >
                     Remove
                   </button>
@@ -212,21 +212,21 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
             ))}
           </div>
         ) : (
-          <div className="mb-4 rounded border border-gray-800 bg-gray-950 px-3 py-4 text-center text-xs text-gray-500">
+          <div className="mb-4 rounded border border-edge-subtle bg-surface-disabled px-3 py-4 text-center text-xs text-content-disabled">
             No API keys configured.
           </div>
         )}
 
         {/* Add new key */}
         <div className="mb-3">
-          <label className="mb-1 block text-xs text-gray-500">Add a new key</label>
+          <label className="mb-1 block text-xs text-content-disabled">Add a new key</label>
           <div className="flex gap-2">
             <input
               type="password"
               value={keyInput}
               onChange={(e) => { setKeyInput(e.target.value); setError(''); setShowCustomUrl(false); setCustomUrl('') }}
               placeholder="sk-ant-..., sk-proj-..., AIza..., xai-..."
-              className="flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-200 outline-none focus:border-gray-500"
+              className="flex-1 rounded border border-edge-subtle bg-surface-panel px-3 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
               onKeyDown={(e) => { if (e.key === 'Enter' && !showCustomUrl) { handleAddKey() } }}
               disabled={validating}
             />
@@ -245,11 +245,11 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
                 value={customUrl}
                 onChange={(e) => { setCustomUrl(e.target.value); setError('') }}
                 placeholder="https://api.example.com/v1"
-                className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-200 outline-none focus:border-gray-500"
+                className="w-full rounded border border-edge-subtle bg-surface-panel px-3 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
                 disabled={validating}
                 onKeyDown={(e) => { if (e.key === 'Enter') { handleAddKey() } }}
               />
-              <p className="mt-0.5 text-[10px] text-gray-500">Provider API base URL</p>
+              <p className="mt-0.5 text-[10px] text-content-disabled">Provider API base URL</p>
             </div>
           )}
           {error !== '' && (
@@ -258,7 +258,7 @@ export function KeyManager({ onClose }: KeyManagerProps): ReactNode {
         </div>
 
         {/* Security notice */}
-        <div className="rounded border border-gray-800 bg-gray-950 p-2.5 text-xs text-gray-600">
+        <div className="rounded border border-edge-subtle bg-surface-disabled p-2.5 text-xs text-content-disabled">
           {encryptionAvailable === true
             ? 'Keys are encrypted at rest using your OS keychain (DPAPI/Keychain/libsecret) and persist across sessions.'
             : encryptionAvailable === false
