@@ -15,6 +15,17 @@ export function buildCustomRequest(
     ? template.url.replace('${model}', encodeURIComponent(config.model))
     : template.url
 
+  // Protocol validation — only allow http/https to prevent key leakage via other protocols
+  let parsedUrl: URL
+  try {
+    parsedUrl = new URL(url)
+  } catch {
+    throw new Error(`Invalid custom adapter URL: ${url}`)
+  }
+  if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+    throw new Error(`Custom adapter URL must use http or https, got: ${parsedUrl.protocol}`)
+  }
+
   // Headers
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

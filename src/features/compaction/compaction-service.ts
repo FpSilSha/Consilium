@@ -207,6 +207,8 @@ function findSummaryModel(
   return null
 }
 
+const SUMMARIZATION_TIMEOUT_MS = 60_000
+
 function runSummarization(
   provider: string,
   model: string,
@@ -214,21 +216,33 @@ function runSummarization(
   prompt: string,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    streamResponse(
-      {
-        provider: provider as 'anthropic' | 'openai' | 'google' | 'xai' | 'deepseek',
-        model,
-        apiKey,
-        systemPrompt: 'You are a conversation summarizer. Be concise and accurate.',
-        messages: [{ role: 'user', content: prompt }],
-        maxTokens: 1024,
-      },
-      {
-        onChunk: () => {},
-        onDone: (fullContent) => { resolve(fullContent) },
-        onError: (error) => { reject(new Error(error)) },
-      },
-    )
+    let controller: AbortController | null = null
+
+    const timeoutId = setTimeout(() => {
+      controller?.abort()
+      reject(new Error('Summarization timed out after 60 seconds'))
+    }, SUMMARIZATION_TIMEOUT_MS)
+
+    try {
+      controller = streamResponse(
+        {
+          provider: provider as 'anthropic' | 'openai' | 'google' | 'xai' | 'deepseek',
+          model,
+          apiKey,
+          systemPrompt: 'You are a conversation summarizer. Be concise and accurate.',
+          messages: [{ role: 'user', content: prompt }],
+          maxTokens: 1024,
+        },
+        {
+          onChunk: () => {},
+          onDone: (fullContent) => { clearTimeout(timeoutId); resolve(fullContent) },
+          onError: (error) => { clearTimeout(timeoutId); reject(new Error(error)) },
+        },
+      )
+    } catch (e) {
+      clearTimeout(timeoutId)
+      reject(e instanceof Error ? e : new Error(String(e)))
+    }
   })
 }
 

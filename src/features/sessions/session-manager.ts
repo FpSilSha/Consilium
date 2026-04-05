@@ -194,26 +194,48 @@ export async function loadSession(id: string): Promise<void> {
   const api = getSessionAPI()
   if (api == null) return
 
-  // Stop any active run before switching sessions
+  // Stop any active run and cancel vote streams before switching sessions
   const { isRunning } = useStore.getState()
   if (isRunning) {
     const { stopAll } = await import('@/features/turnManager')
     stopAll()
   }
+  const { cancelActiveVotes } = await import('@/features/voting/vote-service')
+  cancelActiveVotes()
 
   const content = await api.sessionLoad(id)
   if (content == null) return
 
   try {
-    const session = JSON.parse(content) as SessionFile
-    if (session.version !== 1) return
+    const parsed: unknown = JSON.parse(content)
+    if (!isValidSessionFile(parsed)) return
     setSessionLoadingFlag(true)
-    restoreSession(session)
+    restoreSession(parsed)
     // Suppress auto-save for one render cycle after restore
     setTimeout(() => setSessionLoadingFlag(false), 100)
   } catch {
     setSessionLoadingFlag(false)
   }
+}
+
+/** Runtime shape check for session files — prevents crashes from corrupted data. */
+function isValidSessionFile(data: unknown): data is SessionFile {
+  if (data == null || typeof data !== 'object') return false
+  const s = data as Record<string, unknown>
+  return (
+    s['version'] === 1 &&
+    typeof s['id'] === 'string' &&
+    typeof s['name'] === 'string' &&
+    typeof s['turnMode'] === 'string' &&
+    typeof s['sessionInstructions'] === 'string' &&
+    typeof s['totalCost'] === 'number' &&
+    Array.isArray(s['messages']) &&
+    Array.isArray(s['windows']) &&
+    Array.isArray(s['queue']) &&
+    Array.isArray(s['archivedMessages']) &&
+    Array.isArray(s['inputFiles']) &&
+    Array.isArray(s['outputFiles'])
+  )
 }
 
 /**

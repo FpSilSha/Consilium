@@ -21,6 +21,9 @@ export class VoteInProgressError extends Error {
 /** Prevents concurrent vote calls from corrupting the shared thread. */
 let isVoteInFlight = false
 
+/** Active vote stream controllers — aborted when vote is cancelled or session switches. */
+const activeVoteControllers = new Set<AbortController>()
+
 /**
  * Broadcasts a "Call for Vote" question to all active advisors.
  * Returns a tally of all votes once all advisors have responded.
@@ -28,6 +31,15 @@ let isVoteInFlight = false
  * The vote instruction is appended temporarily to the thread so agents see it,
  * then replaced with just the clean question after all votes are collected.
  */
+/** Aborts all in-flight vote streams. Called during session switching. */
+export function cancelActiveVotes(): void {
+  for (const controller of activeVoteControllers) {
+    controller.abort()
+  }
+  activeVoteControllers.clear()
+  isVoteInFlight = false
+}
+
 export async function callForVote(question: string): Promise<VoteTally> {
   if (isVoteInFlight) {
     throw new VoteInProgressError()
@@ -102,7 +114,7 @@ async function collectVoteFromWindow(
   state.updateWindow(windowId, { isStreaming: true, streamContent: '', error: null })
 
   return new Promise((resolve) => {
-    streamResponse(
+    const controller = streamResponse(
       {
         provider: window.provider,
         model: window.model,
@@ -133,13 +145,16 @@ async function collectVoteFromWindow(
             window.accentColor,
           )
           resolve(vote)
+          activeVoteControllers.delete(controller)
         },
         onError: (error) => {
           const current = useStore.getState()
           current.updateWindow(windowId, { isStreaming: false, streamContent: '', error })
           resolve(null)
+          activeVoteControllers.delete(controller)
         },
       },
     )
+    activeVoteControllers.add(controller)
   })
 }

@@ -504,7 +504,7 @@ function registerIpcHandlers(): void {
 
     if (result.canceled || result.filePaths.length === 0) return []
 
-    const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
+    const MAX_FILE_SIZE = appConfig.maxFileAttachmentMB * 1024 * 1024
     const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'])
     const MIME_MAP: Record<string, string> = {
       '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
