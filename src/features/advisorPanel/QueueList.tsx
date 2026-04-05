@@ -76,6 +76,7 @@ export function QueueList(): ReactNode {
           <div className="border-b border-edge-subtle px-3 py-2">
             <button
               onClick={() => {
+                addToQueue(createUserCard())
                 for (const windowId of windowOrder) {
                   addToQueue(createAgentCard(windowId))
                 }
