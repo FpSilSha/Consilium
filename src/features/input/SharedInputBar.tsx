@@ -15,6 +15,7 @@ export function SharedInputBar(): ReactNode {
   const isRunning = useStore((s) => s.isRunning)
   const turnMode = useStore((s) => s.turnMode)
   const queue = useStore((s) => s.queue)
+  const windowCount = useStore((s) => s.windowOrder.length)
   const [showRepeat, setShowRepeat] = useState(false)
 
   const showUserTurnHint = isRunning && isUserTurn(queue)
@@ -42,7 +43,7 @@ export function SharedInputBar(): ReactNode {
 
     if (isRunning) {
       handleUserMessage()
-    } else if (turnMode !== 'manual') {
+    } else if (turnMode !== 'manual' && windowCount > 0) {
       startRun()
     }
   }, [input, attachments, appendMessage, isRunning, turnMode])
