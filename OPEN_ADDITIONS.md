@@ -82,3 +82,17 @@ Allow calling a vote while a run is active without interrupting the current roun
 - If pending, pause the run, execute the vote, clear `pendingVote`, resume
 - The vote prompt is injected into the shared context as `[Vote] question` (existing behavior) so advisors see it in subsequent turns
 - UI: Vote button changes to "Vote queued..." while waiting, with an option to cancel the pending vote
+
+## Electron IPC Integration Tests
+
+Current Vitest tests cover pure functions (search, display labels, fuzzy match, etc.) but cannot test Electron IPC round-trips — file persistence, key encryption, adapter storage, custom model/provider saves, session save/load, config read/write.
+
+Add an integration test layer using Playwright or Spectron that:
+- Launches the actual Electron app
+- Exercises each IPC channel end-to-end (renderer → preload → main → filesystem → back)
+- Verifies data written to disk matches expectations
+- Tests migration logic (old format files → new format)
+- Tests atomic writes (kill mid-write, verify no corruption)
+- Tests encryption round-trip (save key → restart → load key → matches original)
+
+This is infrastructure work — requires a test harness that spins up Electron, a fixture directory for test data files, and CI integration for headless Electron runs.
