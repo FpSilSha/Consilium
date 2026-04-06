@@ -68,6 +68,17 @@ export function AppLayout(): ReactNode {
     return api.onMenuAction(handleMenuAction)
   }, [handleMenuAction])
 
+  // Prevent file drag-and-drop from navigating the window
+  useEffect(() => {
+    const preventDrag = (e: DragEvent) => { e.preventDefault() }
+    document.addEventListener('dragover', preventDrag)
+    document.addEventListener('drop', preventDrag)
+    return () => {
+      document.removeEventListener('dragover', preventDrag)
+      document.removeEventListener('drop', preventDrag)
+    }
+  }, [])
+
   // Command palette keyboard shortcut (Ctrl+K / Cmd+K)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
