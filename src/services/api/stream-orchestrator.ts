@@ -176,6 +176,23 @@ async function runStream(
   let fullContent = ''
   let accumulatedInputTokens = 0
   let accumulatedOutputTokens = 0
+  // Track whether the parser ever yielded a tokenUsage object — distinct from
+  // "the values were zero". A free model that legitimately reports {0, 0}
+  // must still pass the usage through so the cost layer can compute a
+  // confirmed $0.00 instead of falling back to "unknown / unable to track".
+  let sawTokenUsage = false
+
+  const recordUsage = (usage: { inputTokens: number; outputTokens: number } | undefined): void => {
+    if (usage === undefined) return
+    sawTokenUsage = true
+    accumulatedInputTokens = Math.max(accumulatedInputTokens, usage.inputTokens)
+    accumulatedOutputTokens = Math.max(accumulatedOutputTokens, usage.outputTokens)
+  }
+
+  const finalUsage = (): { inputTokens: number; outputTokens: number } | undefined =>
+    sawTokenUsage
+      ? { inputTokens: accumulatedInputTokens, outputTokens: accumulatedOutputTokens }
+      : undefined
 
   for await (const chunk of adapter.parseStream(reader)) {
     switch (chunk.type) {
@@ -184,40 +201,22 @@ async function runStream(
         if (chunk.content !== '') {
           callbacks.onChunk(chunk.content)
         }
-        if (chunk.tokenUsage !== undefined) {
-          accumulatedInputTokens = Math.max(accumulatedInputTokens, chunk.tokenUsage.inputTokens)
-          accumulatedOutputTokens = Math.max(accumulatedOutputTokens, chunk.tokenUsage.outputTokens)
-        }
+        recordUsage(chunk.tokenUsage)
         break
 
       case 'done':
         fullContent += chunk.content
-        if (chunk.tokenUsage !== undefined) {
-          accumulatedInputTokens = Math.max(accumulatedInputTokens, chunk.tokenUsage.inputTokens)
-          accumulatedOutputTokens = Math.max(accumulatedOutputTokens, chunk.tokenUsage.outputTokens)
-        }
-        callbacks.onDone(fullContent, accumulatedInputTokens > 0 || accumulatedOutputTokens > 0
-          ? { inputTokens: accumulatedInputTokens, outputTokens: accumulatedOutputTokens }
-          : undefined)
+        recordUsage(chunk.tokenUsage)
+        callbacks.onDone(fullContent, finalUsage())
         return
 
       case 'error':
-        if (chunk.tokenUsage !== undefined) {
-          accumulatedInputTokens = Math.max(accumulatedInputTokens, chunk.tokenUsage.inputTokens)
-          accumulatedOutputTokens = Math.max(accumulatedOutputTokens, chunk.tokenUsage.outputTokens)
-        }
-        callbacks.onError(
-          chunk.content,
-          accumulatedInputTokens > 0 || accumulatedOutputTokens > 0
-            ? { inputTokens: accumulatedInputTokens, outputTokens: accumulatedOutputTokens }
-            : undefined,
-        )
+        recordUsage(chunk.tokenUsage)
+        callbacks.onError(chunk.content, finalUsage())
         return
     }
   }
 
   // Stream ended without explicit 'done' event
-  callbacks.onDone(fullContent, accumulatedInputTokens > 0 || accumulatedOutputTokens > 0
-    ? { inputTokens: accumulatedInputTokens, outputTokens: accumulatedOutputTokens }
-    : undefined)
+  callbacks.onDone(fullContent, finalUsage())
 }

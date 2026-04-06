@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import { buildCostMetadata } from './cost-utils'
 import type { TokenUsage } from './types'
+import { useStore } from '@/store'
 
 // Actual pricing from model-registry.ts (used to verify math without re-importing internals)
 const CLAUDE_OPUS_INPUT_PRICE = 0.000015
@@ -104,6 +105,100 @@ describe('buildCostMetadata', () => {
       const expected = 1_000_000 * 0.00000010 + 1_000_000 * 0.00000040
       expect(result?.estimatedCost).toBeCloseTo(expected, 6)
       expect(result?.isEstimate).toBe(false)
+    })
+  })
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Free models — must be distinguishable from "unknown" models
+  // ─────────────────────────────────────────────────────────────────────
+
+  describe('with a free model in the OpenRouter catalog', () => {
+    const FREE_MODEL_ID = 'arcee-ai/trinity-large-preview:free'
+
+    afterEach(() => {
+      // Reset catalog so other tests aren't affected
+      useStore.getState().setCatalogModels('openrouter', [])
+    })
+
+    function seedFreeModel(): void {
+      useStore.getState().setCatalogModels('openrouter', [
+        {
+          id: FREE_MODEL_ID,
+          name: 'Arcee AI: Trinity Large Preview (free)',
+          provider: 'openrouter',
+          contextWindow: 131072,
+          inputPricePerToken: 0,
+          outputPricePerToken: 0,
+        },
+      ])
+    }
+
+    it('reports cost as $0 with isEstimate=false (we KNOW it is free)', () => {
+      seedFreeModel()
+      const usage: TokenUsage = { inputTokens: 1500, outputTokens: 800 }
+      const result = buildCostMetadata(usage, FREE_MODEL_ID)
+
+      expect(result).not.toBeUndefined()
+      expect(result?.estimatedCost).toBe(0)
+      expect(result?.isEstimate).toBe(false) // ← key assertion: NOT an estimate
+      expect(result?.inputTokens).toBe(1500)
+      expect(result?.outputTokens).toBe(800)
+    })
+
+    it('regression: free model with zero token usage still returns confirmed metadata', () => {
+      // This is the original bug — Arcee Trinity reported {0, 0} usage, the
+      // orchestrator dropped it as "no usage", and the message ended up with
+      // costMetadata: undefined → "unable to track cost" in the UI.
+      // Even with zero tokens, the metadata should be a known $0, not undefined.
+      seedFreeModel()
+      const usage: TokenUsage = { inputTokens: 0, outputTokens: 0 }
+      const result = buildCostMetadata(usage, FREE_MODEL_ID)
+
+      expect(result).not.toBeUndefined()
+      expect(result?.estimatedCost).toBe(0)
+      expect(result?.isEstimate).toBe(false)
+    })
+
+    it('distinguishes free-with-catalog-hit from unknown-no-hit', () => {
+      seedFreeModel()
+      const usage: TokenUsage = { inputTokens: 100, outputTokens: 50 }
+
+      const free = buildCostMetadata(usage, FREE_MODEL_ID)
+      const unknown = buildCostMetadata(usage, 'completely-made-up-model-id')
+
+      // Both have estimatedCost === 0, but the free one is confirmed
+      expect(free?.estimatedCost).toBe(0)
+      expect(unknown?.estimatedCost).toBe(0)
+      expect(free?.isEstimate).toBe(false)
+      expect(unknown?.isEstimate).toBe(true)
+    })
+  })
+
+  describe('OpenRouter catalog match by suffix (provider/model format)', () => {
+    afterEach(() => {
+      useStore.getState().setCatalogModels('openrouter', [])
+    })
+
+    it('finds a free model by suffix when looked up by short id', () => {
+      // Stored as full prefix in OpenRouter catalog
+      useStore.getState().setCatalogModels('openrouter', [
+        {
+          id: 'meta-llama/llama-3.1-8b-instruct:free',
+          name: 'Llama 3.1 8B (free)',
+          provider: 'openrouter',
+          contextWindow: 131072,
+          inputPricePerToken: 0,
+          outputPricePerToken: 0,
+        },
+      ])
+
+      // Caller passes the suffix only
+      const usage: TokenUsage = { inputTokens: 500, outputTokens: 200 }
+      const result = buildCostMetadata(usage, 'llama-3.1-8b-instruct:free')
+
+      expect(result).not.toBeUndefined()
+      expect(result?.isEstimate).toBe(false)
+      expect(result?.estimatedCost).toBe(0)
     })
   })
 })
