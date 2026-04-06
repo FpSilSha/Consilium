@@ -5,6 +5,16 @@ interface ConfigData {
   readonly descriptions: Record<string, string>
 }
 
+/**
+ * Config keys that have dedicated UI elsewhere and shouldn't be raw-edited
+ * via the generic configuration editor. They're persisted in config.json but
+ * not surfaced here.
+ */
+const HIDDEN_KEYS: ReadonlySet<string> = new Set([
+  'autoCompactionEnabled',
+  'autoCompactionConfig',
+])
+
 interface EditConfigModalProps {
   readonly onClose: () => void
 }
@@ -23,6 +33,7 @@ export function EditConfigModal({ onClose }: EditConfigModalProps): ReactNode {
       setConfig(data)
       const initial: Record<string, string> = {}
       for (const [key, value] of Object.entries(data.values)) {
+        if (HIDDEN_KEYS.has(key)) continue
         initial[key] = String(value)
       }
       setDraft(initial)

@@ -33,7 +33,6 @@ export function AutoCompactButton(): ReactNode {
   const config = useStore((s) => s.autoCompactionConfig)
   const warning = useStore((s) => s.autoCompactionWarning)
   const setAutoCompaction = useStore((s) => s.setAutoCompaction)
-  const setGlobalAutoCompaction = useStore((s) => s.setGlobalAutoCompaction)
   const setAutoCompactionWarning = useStore((s) => s.setAutoCompactionWarning)
   const windowOrder = useStore((s) => s.windowOrder)
   const windows = useStore((s) => s.windows)
@@ -58,31 +57,6 @@ export function AutoCompactButton(): ReactNode {
     setAutoCompaction(false, null)
     setBrowseMode(false)
   }, [setAutoCompaction])
-
-  const handleSetAsDefault = useCallback(async () => {
-    // Save the CURRENT per-session selection to config.json as the new global default.
-    // Also mirrors it into the global store fields so initializeNewSession and
-    // restoreSession (for sessions without explicit values) inherit correctly.
-    setGlobalAutoCompaction(enabled, config)
-    setAutoCompactionWarning(null)
-
-    const api = (window as { consiliumAPI?: {
-      configLoad(): Promise<{ values: Record<string, unknown> }>
-      configSave(config: Record<string, unknown>): Promise<void>
-    } }).consiliumAPI
-    if (api == null) return
-
-    try {
-      const current = await api.configLoad()
-      await api.configSave({
-        ...current.values,
-        autoCompactionEnabled: enabled,
-        autoCompactionConfig: config,
-      })
-    } catch {
-      // Non-fatal — session still has the setting
-    }
-  }, [enabled, config, setGlobalAutoCompaction, setAutoCompactionWarning])
 
   return (
     <div className="relative">
@@ -179,16 +153,10 @@ export function AutoCompactButton(): ReactNode {
                 </button>
               )}
 
-              {/* Set as default for new sessions */}
-              <div className="mt-2 border-t border-edge-subtle pt-2">
-                <button
-                  onClick={handleSetAsDefault}
-                  disabled={!enabled || config == null}
-                  className="w-full rounded-md bg-surface-hover px-2 py-1 text-[10px] text-content-muted transition-colors hover:bg-surface-active hover:text-content-primary disabled:opacity-50"
-                >
-                  Set current selection as default for new sessions
-                </button>
-              </div>
+              {/* Hint pointing to the global settings location */}
+              <p className="mt-2 border-t border-edge-subtle pt-2 text-[10px] text-content-disabled">
+                Set the default for new sessions in <span className="text-content-muted">Edit → Auto-compaction Settings</span>.
+              </p>
             </>
           ) : (
             <BrowseModels onSelect={handleSelect} onBack={() => setBrowseMode(false)} />

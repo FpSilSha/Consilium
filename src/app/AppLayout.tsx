@@ -6,6 +6,7 @@ import { AdvisorPanel } from '@/features/advisorPanel'
 import { ConfigModal } from '@/features/modelCatalog/ConfigModal'
 import { ModelMismatchModal } from '@/features/sessions/ModelMismatchModal'
 import { EditConfigModal } from '@/features/settings/EditConfigModal'
+import { AutoCompactionSettingsModal } from '@/features/settings/AutoCompactionSettingsModal'
 import { AboutModal } from '@/features/settings/AboutModal'
 import { TitleBar } from './TitleBar'
 import { useStore } from '@/store'
@@ -27,6 +28,7 @@ export function AppLayout(): ReactNode {
   const setPendingMismatches = useStore((s) => s.setPendingMismatches)
 
   const [showEditConfig, setShowEditConfig] = useState(false)
+  const [showAutoCompactSettings, setShowAutoCompactSettings] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
   const [showWelcomeTour, setShowWelcomeTour] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
@@ -38,6 +40,9 @@ export function AppLayout(): ReactNode {
         break
       case 'menu:edit-config':
         setShowEditConfig(true)
+        break
+      case 'menu:auto-compaction-settings':
+        setShowAutoCompactSettings(true)
         break
       case 'menu:welcome-tour':
         setShowWelcomeTour(true)
@@ -131,6 +136,9 @@ export function AppLayout(): ReactNode {
       )}
       {showEditConfig && (
         <EditConfigModal onClose={() => setShowEditConfig(false)} />
+      )}
+      {showAutoCompactSettings && (
+        <AutoCompactionSettingsModal onClose={() => setShowAutoCompactSettings(false)} />
       )}
       {showAbout && (
         <AboutModal onClose={() => setShowAbout(false)} />
