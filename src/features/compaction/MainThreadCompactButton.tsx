@@ -7,6 +7,7 @@ import { getRawKey } from '@/features/keys/key-vault'
 export function MainThreadCompactButton(): ReactNode {
   const [showPicker, setShowPicker] = useState(false)
   const [isCompacting, setIsCompacting] = useState(false)
+  const [resultMessage, setResultMessage] = useState<string | null>(null)
   const messageCount = useStore((s) => s.messages.length)
   const windowOrder = useStore((s) => s.windowOrder)
   const windows = useStore((s) => s.windows)
@@ -18,10 +19,19 @@ export function MainThreadCompactButton(): ReactNode {
 
     setShowPicker(false)
     setIsCompacting(true)
+    setResultMessage(null)
     try {
-      await compactMainThread(provider, model, apiKey)
+      const result = await compactMainThread(provider, model, apiKey)
+      if (result == null) {
+        setResultMessage('Nothing to compact')
+      } else {
+        setResultMessage(`Compacted ${result.archivedCount} message${result.archivedCount === 1 ? '' : 's'}`)
+      }
+    } catch {
+      setResultMessage('Compaction failed')
     } finally {
       setIsCompacting(false)
+      setTimeout(() => setResultMessage(null), 4000)
     }
   }, [])
 
@@ -33,11 +43,23 @@ export function MainThreadCompactButton(): ReactNode {
         <button
           onClick={() => setShowPicker((v) => !v)}
           disabled={isCompacting}
-          className="rounded-md bg-surface-hover px-2.5 py-1 text-xs text-content-muted transition-colors hover:bg-surface-active hover:text-content-primary disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-md bg-surface-hover px-2.5 py-1 text-xs text-content-muted transition-colors hover:bg-surface-active hover:text-content-primary disabled:opacity-70"
         >
-          {isCompacting ? 'Compacting...' : 'Compact Thread'}
+          {isCompacting && (
+            <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25" />
+              <path fill="currentColor" className="opacity-75" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+          )}
+          {isCompacting ? 'Compacting…' : 'Compact Thread'}
         </button>
       </Tooltip>
+
+      {resultMessage != null && !isCompacting && (
+        <div className="absolute bottom-full left-0 z-30 mb-1 whitespace-nowrap rounded-md border border-edge-subtle bg-surface-panel px-2 py-1 text-[10px] text-content-muted shadow-sm">
+          {resultMessage}
+        </div>
+      )}
 
       {showPicker && (
         <div className="absolute bottom-full left-0 z-40 mb-1 w-64 rounded-md border border-edge-subtle bg-surface-panel p-2 shadow-lg">

@@ -95,12 +95,21 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   }, [advisor.id, updateWindow])
 
   const handlePersonaSelect = useCallback((personaId: string) => {
-    if (personaId === advisor.personaId) return
+    // Sentinel "__none__" represents "No Persona" — stored as empty personaId.
+    const normalized = personaId === '__none__' ? '' : personaId
+    if (normalized === advisor.personaId) return
+
+    // Removing the lens (switching to "No Persona") doesn't need a compaction
+    // reframe — there's no new persona that needs context. Update directly.
+    if (normalized === '') {
+      updateWindow(advisor.id, { personaId: '', personaLabel: 'No Persona' })
+      return
+    }
 
     if (messageCount > 0) {
-      setPendingPersonaId(personaId)
+      setPendingPersonaId(normalized)
     } else {
-      const persona = personas.find((p) => p.id === personaId)
+      const persona = personas.find((p) => p.id === normalized)
       if (persona != null) {
         updateWindow(advisor.id, { personaId: persona.id, personaLabel: persona.name })
       }
@@ -170,19 +179,22 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
           <label className="text-[10px] font-medium uppercase tracking-wider text-content-disabled">
             Persona
           </label>
-          <button
-            onClick={() => setShowPreview(!showPreview)}
-            className="text-[10px] text-content-muted transition-colors hover:text-content-primary"
-          >
-            {showPreview ? 'Hide' : 'Preview'}
-          </button>
+          {(pendingPersonaId ?? advisor.personaId) !== '' && (
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className="text-[10px] text-content-muted transition-colors hover:text-content-primary"
+            >
+              {showPreview ? 'Hide' : 'Preview'}
+            </button>
+          )}
         </div>
         <select
-          value={pendingPersonaId ?? advisor.personaId}
+          value={pendingPersonaId ?? (advisor.personaId === '' ? '__none__' : advisor.personaId)}
           onChange={(e) => { handlePersonaSelect(e.target.value); setShowPreview(false) }}
           disabled={isSwitching}
           className="mb-2 w-full rounded-md border border-edge-subtle bg-surface-panel px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus disabled:opacity-50"
         >
+          <option value="__none__">No Persona</option>
           {personas.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}

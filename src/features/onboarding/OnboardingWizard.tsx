@@ -148,9 +148,10 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
   const windowOrder = useStore((s) => s.windowOrder)
 
   const handleFinish = useCallback(async () => {
+    // Only override the default "No Persona" if the user explicitly picked one.
     const persona = selectedPersonaId !== null
       ? personas.find((p) => p.id === selectedPersonaId)
-      : personas[0]
+      : undefined
 
     const base = await createDefaultAdvisorWindow(windowOrder, personas, keys)
     const newWindow = {

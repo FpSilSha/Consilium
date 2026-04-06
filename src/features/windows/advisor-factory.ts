@@ -120,7 +120,7 @@ function pickBestProviderAndModel(keys: readonly ApiKey[]): { readonly provider:
  */
 export async function createDefaultAdvisorWindow(
   windowOrder: readonly string[],
-  personas: readonly Persona[],
+  _personas: readonly Persona[],
   keys: readonly ApiKey[],
 ): Promise<AdvisorWindow> {
   // Ensure catalogs are loaded before picking a model
@@ -138,7 +138,6 @@ export async function createDefaultAdvisorWindow(
     defaultTheme.colors.accentPalette,
   )
 
-  const firstPersona = personas[0]
   const { provider, keyId, model } = pickBestProviderAndModel(keys)
 
   return {
@@ -146,8 +145,9 @@ export async function createDefaultAdvisorWindow(
     provider,
     keyId,
     model,
-    personaId: firstPersona?.id ?? '',
-    personaLabel: firstPersona?.name ?? 'Advisor',
+    // Default new advisors to "No Persona" — users opt in to a lens via the dropdown.
+    personaId: '',
+    personaLabel: 'No Persona',
     accentColor,
     runningCost: 0,
     isStreaming: false,
