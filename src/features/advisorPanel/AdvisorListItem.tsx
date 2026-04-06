@@ -46,6 +46,11 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   const queue = useStore((s) => s.queue)
   const addToQueue = useStore((s) => s.addToQueue)
 
+  const showQueueAdd = turnMode !== 'sequential' && !queue.some(
+    (c) => c.windowId === advisor.id && (c.status === 'waiting' || c.status === 'active'),
+  )
+  const models = useFilteredModels(selectedProvider)
+
   // Auto-switch model if current model is no longer in the filtered list
   useEffect(() => {
     if (!editing || models.length === 0) return
@@ -53,11 +58,6 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
       updateWindow(advisor.id, { model: models[0]!.id })
     }
   }, [editing, models, advisor.id, advisor.model, updateWindow])
-
-  const showQueueAdd = turnMode !== 'sequential' && !queue.some(
-    (c) => c.windowId === advisor.id && (c.status === 'waiting' || c.status === 'active'),
-  )
-  const models = useFilteredModels(selectedProvider)
 
   const pendingPersona = pendingPersonaId !== null
     ? personas.find((p) => p.id === pendingPersonaId)
