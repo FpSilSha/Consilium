@@ -50,8 +50,13 @@ async function executeWindowCompaction(
   const window = state.windows[windowId]
   if (window === undefined) return null
 
-  // Find a suitable summary model with an available key
-  const summaryConfig = findSummaryModel(state.keys)
+  // Prefer the user's auto-compaction selection. Fall back to the hardcoded
+  // candidate list (Haiku → 4o-mini → Flash) only if the user hasn't picked
+  // one — this preserves the previous behavior for any code path that calls
+  // compactWindow directly without going through the auto sweep.
+  const summaryConfig = state.autoCompactionConfig !== null
+    ? resolveAutoCompactionConfig(state.autoCompactionConfig)
+    : findSummaryModel(state.keys)
   if (summaryConfig === null) {
     // No API key available — createFallbackSummary reads live state internally
     return createFallbackSummary(windowId)
@@ -115,9 +120,15 @@ export const MANUAL_COMPACTION_BUFFER = 6
 /**
  * Checks all windows and triggers compaction for any that need it.
  * Guards against duplicate in-flight compaction jobs per window.
+ *
+ * Off by default — only runs when the user has explicitly enabled
+ * auto-compaction and selected a summarization model.
  */
 export function checkAutoCompaction(): void {
   const state = useStore.getState()
+
+  if (!state.autoCompactionEnabled) return
+  if (state.autoCompactionConfig === null) return
 
   for (const windowId of state.windowOrder) {
     const window = state.windows[windowId]
@@ -211,6 +222,19 @@ function findSummaryModel(
     }
   }
   return null
+}
+
+/**
+ * Resolves a user-selected auto-compaction config to the {provider, model,
+ * apiKey} shape executeWindowCompaction expects. Returns null if the key has
+ * been deleted or is unavailable since the user picked it.
+ */
+function resolveAutoCompactionConfig(
+  config: { readonly provider: string; readonly model: string; readonly keyId: string },
+): { provider: string; model: string; apiKey: string } | null {
+  const apiKey = getRawKey(config.keyId)
+  if (apiKey === null) return null
+  return { provider: config.provider, model: config.model, apiKey }
 }
 
 const SUMMARIZATION_TIMEOUT_MS = 60_000

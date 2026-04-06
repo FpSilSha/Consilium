@@ -12,6 +12,12 @@ export interface ErrorLogEntry {
   readonly model?: string
 }
 
+export interface AutoCompactionConfig {
+  readonly provider: string
+  readonly model: string
+  readonly keyId: string
+}
+
 export interface UISlice {
   readonly uiMode: UIMode
   readonly sessionInstructions: string
@@ -21,6 +27,10 @@ export interface UISlice {
   readonly currentSessionId: string | null
   readonly sessionCustomName: string | null
   readonly autoRetryTransient: boolean
+  /** When true, auto-compaction sweeps run after each turn. Off by default. */
+  readonly autoCompactionEnabled: boolean
+  /** The user-selected model to use for auto-compaction summarization. */
+  readonly autoCompactionConfig: AutoCompactionConfig | null
   setUIMode: (mode: UIMode) => void
   setSessionInstructions: (instructions: string) => void
   setConfigModalOpen: (open: boolean) => void
@@ -30,6 +40,7 @@ export interface UISlice {
   setCurrentSessionId: (id: string | null) => void
   setSessionCustomName: (name: string | null) => void
   setAutoRetryTransient: (enabled: boolean) => void
+  setAutoCompaction: (enabled: boolean, config: AutoCompactionConfig | null) => void
 }
 
 export const createUISlice: StateCreator<UISlice> = (set) => ({
@@ -41,6 +52,8 @@ export const createUISlice: StateCreator<UISlice> = (set) => ({
   currentSessionId: null,
   sessionCustomName: null,
   autoRetryTransient: false,
+  autoCompactionEnabled: false,
+  autoCompactionConfig: null,
 
   setUIMode: (mode) => set({ uiMode: mode }),
 
@@ -63,4 +76,7 @@ export const createUISlice: StateCreator<UISlice> = (set) => ({
   setSessionCustomName: (name) => set({ sessionCustomName: name }),
 
   setAutoRetryTransient: (enabled) => set({ autoRetryTransient: enabled }),
+
+  setAutoCompaction: (enabled, config) =>
+    set({ autoCompactionEnabled: enabled, autoCompactionConfig: config }),
 })
