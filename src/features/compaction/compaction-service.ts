@@ -1,6 +1,7 @@
 import type { Message, AdvisorWindow } from '@/types'
 import { useStore } from '@/store'
 import { streamResponse } from '@/services/api/stream-orchestrator'
+import { createAssistantMessage } from '@/services/context-bus/message-factory'
 import { getRawKey } from '@/features/keys/key-vault'
 import {
   splitForCompaction,
@@ -121,8 +122,13 @@ export function checkAutoCompaction(): void {
 
 /**
  * Compacts the main shared thread. This is user-triggered and affects all windows.
+ * Requires a model to perform the LLM summarization.
  */
-export async function compactMainThread(): Promise<CompactionResult | null> {
+export async function compactMainThread(
+  provider: string,
+  model: string,
+  apiKey: string,
+): Promise<CompactionResult | null> {
   if (isCompactingMainThread) return null
   isCompactingMainThread = true
 
@@ -145,24 +151,8 @@ async function executeMainThreadCompaction(): Promise<CompactionResult | null> {
   const { archive } = splitForCompaction(state.messages, minBuffer)
   if (archive.length === 0) return null
 
-  const summaryConfig = findSummaryModel(state.keys)
-
-  let summary: string
-  if (summaryConfig !== null) {
-    try {
-      const prompt = buildSummaryPrompt(archive)
-      summary = await runSummarization(
-        summaryConfig.provider,
-        summaryConfig.model,
-        summaryConfig.apiKey,
-        prompt,
-      )
-    } catch {
-      summary = buildFallbackSummaryText(archive)
-    }
-  } else {
-    summary = buildFallbackSummaryText(archive)
-  }
+  const prompt = buildSummaryPrompt(archive)
+  const summary = await runSummarization(provider, model, apiKey, prompt)
 
   // Re-split from live state to avoid dropping messages appended during summarization
   const liveState = useStore.getState()
@@ -177,8 +167,15 @@ async function executeMainThreadCompaction(): Promise<CompactionResult | null> {
 
   if (liveArchive.length === 0) return null
 
-  // Atomically archive old messages and replace thread with buffer
-  liveState.compactMessages(liveArchive, liveBuffer)
+  // Create a summary message that will be sent to models as context
+  const summaryMessage = createAssistantMessage(
+    `**[Conversation Summary]**\n\n${summary}`,
+    'System',
+    'system-compaction',
+  )
+
+  // Atomically archive old messages and replace thread with summary + buffer
+  liveState.compactMessages(liveArchive, [summaryMessage, ...liveBuffer])
 
   // Mark all windows as compacted
   for (const windowId of liveState.windowOrder) {

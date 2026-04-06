@@ -7,6 +7,7 @@ import { isUserTurn } from '@/features/turnManager'
 import { hasMentions, executeAgentExchange, repeatLastExchange, hasLastExchange } from '@/features/agentInteraction'
 import { AttachButton, readBrowserFile } from './AttachButton'
 import { CompileDocumentButton } from '@/features/chat/CompileDocumentButton'
+import { MainThreadCompactButton } from '@/features/compaction'
 
 export function SharedInputBar(): ReactNode {
   const [input, setInput] = useState('')
@@ -100,6 +101,7 @@ export function SharedInputBar(): ReactNode {
           </button>
         )}
         <CompileDocumentButton />
+        <MainThreadCompactButton />
       </div>
 
       {/* Attachment previews */}
