@@ -74,11 +74,29 @@ export function SharedInputBar(): ReactNode {
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(false)
-    const files = e.dataTransfer.files
-    if (files.length === 0) return
+    const MAX_DROP_SIZE = 10 * 1024 * 1024 // 10 MB per file
+    const MAX_DROP_COUNT = 10
+
+    const allFiles = Array.from(e.dataTransfer.files)
+    const validFiles = allFiles
+      .filter((f) => f.size <= MAX_DROP_SIZE)
+      .slice(0, MAX_DROP_COUNT)
+
+    const rejected = allFiles.length - validFiles.length
+    if (rejected > 0) {
+      useStore.getState().addErrorLog({
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        advisorLabel: 'System',
+        accentColor: '#4A90D9',
+        message: `${rejected} file(s) skipped — exceeds ${MAX_DROP_SIZE / 1024 / 1024}MB limit or max ${MAX_DROP_COUNT} files`,
+      })
+    }
+
+    if (validFiles.length === 0) return
 
     const newAttachments = await Promise.all(
-      Array.from(files).map((file) => readBrowserFile(file)),
+      validFiles.map((file) => readBrowserFile(file)),
     )
     setAttachments((prev) => [...prev, ...newAttachments])
   }, [])

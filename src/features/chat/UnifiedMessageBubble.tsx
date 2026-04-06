@@ -206,9 +206,11 @@ function stripIdentityHeader(content: string, _personaLabel: string): string {
   const headerPattern = /^\[[\w\s'-]+\]:\s*/
 
   let match = result.match(headerPattern)
-  while (match != null) {
+  let iterations = 0
+  while (match != null && iterations < 20) {
     result = result.slice(match[0].length).trimStart()
     match = result.match(headerPattern)
+    iterations++
   }
 
   return result.length > 0 ? result : content.trimStart()

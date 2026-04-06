@@ -133,13 +133,17 @@ export async function compactMainThread(
   isCompactingMainThread = true
 
   try {
-    return await executeMainThreadCompaction()
+    return await executeMainThreadCompaction(provider, model, apiKey)
   } finally {
     isCompactingMainThread = false
   }
 }
 
-async function executeMainThreadCompaction(): Promise<CompactionResult | null> {
+async function executeMainThreadCompaction(
+  provider: string,
+  model: string,
+  apiKey: string,
+): Promise<CompactionResult | null> {
   const state = useStore.getState()
 
   // Use the smallest buffer size among all windows
@@ -167,9 +171,10 @@ async function executeMainThreadCompaction(): Promise<CompactionResult | null> {
 
   if (liveArchive.length === 0) return null
 
-  // Create a summary message that will be sent to models as context
+  // Create a summary message as assistant role with 'System' persona.
+  // Models will see it as [System]: [Conversation Summary]... in the thread.
   const summaryMessage = createAssistantMessage(
-    `**[Conversation Summary]**\n\n${summary}`,
+    `[Conversation Summary]\n\n${summary}`,
     'System',
     'system-compaction',
   )
