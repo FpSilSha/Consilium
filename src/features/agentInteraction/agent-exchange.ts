@@ -108,7 +108,10 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
       state.sessionInstructions || undefined,
     )
 
-    const messages = messagesToApiFormat(state.messages)
+    const messages = messagesToApiFormat(state.messages, {
+      windowId,
+      personaLabel: window.personaLabel,
+    })
 
     // Register controller before setting isStreaming to avoid cancellation gap
     const controller = new AbortController()

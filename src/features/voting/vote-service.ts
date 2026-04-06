@@ -117,7 +117,10 @@ async function collectVoteFromWindow(
     state.sessionInstructions || undefined,
   )
 
-  const messages = messagesToApiFormat(currentMessages)
+  const messages = messagesToApiFormat(currentMessages, {
+    windowId,
+    personaLabel: window.personaLabel,
+  })
 
   state.updateWindow(windowId, { isStreaming: true, streamContent: '', error: null })
 

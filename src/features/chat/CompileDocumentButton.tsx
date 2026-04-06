@@ -46,7 +46,10 @@ export function CompileDocumentButton(): ReactNode {
 
     const persona = personas.find((p) => p.id === win.personaId)
     const systemPrompt = buildSystemPrompt(persona?.content ?? '', undefined)
-    const threadMessages = messagesToApiFormat(messages)
+    const threadMessages = messagesToApiFormat(messages, {
+      windowId,
+      personaLabel: win.personaLabel,
+    })
 
     setCompiling(true)
     setShowPicker(false)

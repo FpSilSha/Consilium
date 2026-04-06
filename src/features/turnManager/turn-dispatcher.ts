@@ -182,16 +182,20 @@ function dispatchAgentTurn(card: QueueCard): void {
   const persona = state.personas.find((p) => p.id === window.personaId)
   let personaContent = persona?.content ?? ''
 
-  // When duplicate personas exist, hint the model to provide unique perspectives
+  // When duplicate personas exist, hint the model to provide unique perspectives.
+  // Skip for "No Persona" advisors — there's no persona to be unique about.
   const displayLabels = computeDisplayLabels(state.windowOrder, state.windows)
   const displayLabel = displayLabels.get(card.windowId) ?? window.personaLabel
   const hasDuplicates = displayLabel !== window.personaLabel
-  if (hasDuplicates) {
+  if (hasDuplicates && window.personaId !== '') {
     personaContent += `\n\nNote: There may be other ${window.personaLabel} advisors in this chat. Provide unique perspectives still based in truth where possible, but don't be contrarian for the sake of it.`
   }
 
   const systemPrompt = buildSystemPrompt(personaContent, state.sessionInstructions || undefined)
-  const threadMessages = messagesToApiFormat(state.messages)
+  const threadMessages = messagesToApiFormat(state.messages, {
+    windowId: card.windowId,
+    personaLabel: window.personaLabel,
+  })
 
   // Mark card as active and prepare callbacks before setting isStreaming
   state.setCardStatus(card.id, 'active')
