@@ -36,10 +36,14 @@ export function restoreSession(session: SessionFile): void {
   state.setQueue(session.queue)
   state.setSessionInstructions(session.sessionInstructions ?? '')
 
-  // Restore auto-compaction settings — defaults to off when absent (older sessions
-  // or sessions saved before this feature existed).
+  // Restore auto-compaction settings. Precedence:
+  //   1. Session file's explicit value (if present)
+  //   2. Global default from store (if set)
+  //   3. Off
   if (session.autoCompaction != null) {
     state.setAutoCompaction(session.autoCompaction.enabled, session.autoCompaction.config)
+  } else if (state.globalAutoCompactionEnabled && state.globalAutoCompactionConfig !== null) {
+    state.setAutoCompaction(true, state.globalAutoCompactionConfig)
   } else {
     state.setAutoCompaction(false, null)
   }
@@ -116,6 +120,13 @@ export async function initializeNewSession(): Promise<void> {
     const sessionId = crypto.randomUUID()
     state.setCurrentSessionId(sessionId)
     state.setSessionCustomName(null)
+
+    // New sessions inherit the global auto-compaction default.
+    // If global hasn't loaded from config.json yet (keys still loading),
+    // useStartupAutoCompaction will patch the current session once it runs.
+    if (state.globalAutoCompactionEnabled && state.globalAutoCompactionConfig !== null) {
+      state.setAutoCompaction(true, state.globalAutoCompactionConfig)
+    }
 
     await saveCurrentSession()
   } finally {

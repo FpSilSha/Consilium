@@ -11,12 +11,20 @@ import { loadCustomModels, saveCustomModels, addCustomModelId } from './custom-m
 
 // ── App Configuration ─────────────────────────────────────────
 
+interface AutoCompactionConfigPersisted {
+  readonly provider: string
+  readonly model: string
+  readonly keyId: string
+}
+
 interface AppConfig {
   readonly maxSessionSizeMB: number
   readonly autoSaveDebounceMs: number
   readonly defaultTurnMode: string
   readonly maxFileAttachmentMB: number
   readonly showOnboarding: boolean
+  readonly autoCompactionEnabled: boolean
+  readonly autoCompactionConfig: AutoCompactionConfigPersisted | null
 }
 
 /** Description for each config key — shown in the Edit Configuration modal */
@@ -26,6 +34,8 @@ export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
   defaultTurnMode: 'Default turn mode for new sessions: sequential, parallel, manual, or queue.',
   maxFileAttachmentMB: 'Maximum file size in megabytes for attachments.',
   showOnboarding: 'Show the onboarding wizard on next startup. Automatically set to false after completing the wizard.',
+  autoCompactionEnabled: 'When true, new sessions inherit auto-compaction turned on using the configured model.',
+  autoCompactionConfig: 'Default summarization model for auto-compaction on new sessions. Managed via the Auto-compact button.',
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -34,6 +44,16 @@ const DEFAULT_CONFIG: AppConfig = {
   defaultTurnMode: 'sequential',
   maxFileAttachmentMB: 10,
   showOnboarding: true,
+  autoCompactionEnabled: false,
+  autoCompactionConfig: null,
+}
+
+function isValidAutoCompactionConfig(v: unknown): v is AutoCompactionConfigPersisted {
+  if (typeof v !== 'object' || v === null) return false
+  const o = v as Record<string, unknown>
+  return typeof o['provider'] === 'string'
+    && typeof o['model'] === 'string'
+    && typeof o['keyId'] === 'string'
 }
 
 function loadAppConfig(): AppConfig {
@@ -47,6 +67,8 @@ function loadAppConfig(): AppConfig {
       defaultTurnMode: typeof parsed['defaultTurnMode'] === 'string' ? parsed['defaultTurnMode'] : DEFAULT_CONFIG.defaultTurnMode,
       maxFileAttachmentMB: typeof parsed['maxFileAttachmentMB'] === 'number' ? parsed['maxFileAttachmentMB'] : DEFAULT_CONFIG.maxFileAttachmentMB,
       showOnboarding: typeof parsed['showOnboarding'] === 'boolean' ? parsed['showOnboarding'] : DEFAULT_CONFIG.showOnboarding,
+      autoCompactionEnabled: typeof parsed['autoCompactionEnabled'] === 'boolean' ? parsed['autoCompactionEnabled'] : DEFAULT_CONFIG.autoCompactionEnabled,
+      autoCompactionConfig: isValidAutoCompactionConfig(parsed['autoCompactionConfig']) ? parsed['autoCompactionConfig'] : DEFAULT_CONFIG.autoCompactionConfig,
     }
   } catch {
     try {
@@ -379,6 +401,12 @@ function registerIpcHandlers(): void {
       defaultTurnMode: typeof raw['defaultTurnMode'] === 'string' ? raw['defaultTurnMode'] : appConfig.defaultTurnMode,
       maxFileAttachmentMB: typeof raw['maxFileAttachmentMB'] === 'number' ? raw['maxFileAttachmentMB'] : appConfig.maxFileAttachmentMB,
       showOnboarding: typeof raw['showOnboarding'] === 'boolean' ? raw['showOnboarding'] : appConfig.showOnboarding,
+      autoCompactionEnabled: typeof raw['autoCompactionEnabled'] === 'boolean' ? raw['autoCompactionEnabled'] : appConfig.autoCompactionEnabled,
+      autoCompactionConfig: raw['autoCompactionConfig'] === null
+        ? null
+        : isValidAutoCompactionConfig(raw['autoCompactionConfig'])
+          ? raw['autoCompactionConfig']
+          : appConfig.autoCompactionConfig,
     }
     appConfig = validated
     saveAppConfig(validated)
