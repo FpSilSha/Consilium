@@ -6,8 +6,8 @@ import { join, resolve, normalize, sep, basename, extname } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync, renameSync } from 'fs'
 // env-loader removed — keys use safeStorage exclusively
 import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
-import { loadCustomProviders, saveCustomProviders, type CustomProviderDef } from './custom-providers-store'
-import { loadCustomModels, saveCustomModels } from './custom-models-store'
+import { loadCustomProviders, saveCustomProviders, isValidProvider, type CustomProviderDef } from './custom-providers-store'
+import { loadCustomModels, saveCustomModels, addCustomModelId } from './custom-models-store'
 
 // ── App Configuration ─────────────────────────────────────────
 
@@ -72,7 +72,7 @@ let appConfig = DEFAULT_CONFIG
 function migrateCustomData(): void {
   const userData = app.getPath('userData')
 
-  // Migrate customProviders from config.json
+  // Migrate customProviders from config.json → custom-providers.json
   try {
     const configPath = join(userData, 'config.json')
     if (existsSync(configPath)) {
@@ -81,16 +81,18 @@ function migrateCustomData(): void {
       if (Array.isArray(parsed['customProviders']) && parsed['customProviders'].length > 0) {
         const existing = loadCustomProviders()
         if (existing.length === 0) {
-          saveCustomProviders(parsed['customProviders'] as CustomProviderDef[])
+          const toMigrate = (parsed['customProviders'] as unknown[]).filter(isValidProvider)
+          if (toMigrate.length > 0) saveCustomProviders(toMigrate)
         }
-        // Remove from config
         const { customProviders: _, ...rest } = parsed
         writeFileSync(configPath, JSON.stringify(rest, null, 2), 'utf-8')
       }
     }
-  } catch { /* non-fatal */ }
+  } catch {
+    // If save fails, config.json retains the data — no loss
+  }
 
-  // Migrate customModels from catalog-preferences.json
+  // Migrate customModels from catalog-preferences.json → custom-models.json
   try {
     const prefsPath = join(userData, 'catalog-preferences.json')
     if (existsSync(prefsPath)) {
@@ -104,13 +106,14 @@ function migrateCustomData(): void {
           if (Object.keys(existing).length === 0) {
             saveCustomModels(customModels)
           }
-          // Remove from catalog preferences
           const { customModels: _, ...rest } = parsed
           writeFileSync(prefsPath, JSON.stringify(rest, null, 2), 'utf-8')
         }
       }
     }
-  } catch { /* non-fatal */ }
+  } catch {
+    // If save fails, catalog-preferences.json retains the data — no loss
+  }
 }
 
 // ── Menu & Context Menu ──────────────────────────────────────
@@ -401,7 +404,8 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('custom-providers:save', (_event, providers: unknown) => {
     if (!Array.isArray(providers)) throw new Error('Invalid providers format')
-    saveCustomProviders(providers as CustomProviderDef[])
+    const validated = providers.filter(isValidProvider)
+    saveCustomProviders(validated)
   })
 
   // ── Custom models ─────────────────────────────────────────
@@ -410,7 +414,19 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle('custom-models:save', (_event, models: unknown) => {
     if (typeof models !== 'object' || models === null || Array.isArray(models)) throw new Error('Invalid models format')
-    saveCustomModels(models as Record<string, readonly string[]>)
+    // Validate each entry is a string array
+    const validated: Record<string, readonly string[]> = {}
+    for (const [key, value] of Object.entries(models as Record<string, unknown>)) {
+      if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
+        validated[key] = value as string[]
+      }
+    }
+    saveCustomModels(validated)
+  })
+
+  ipcMain.handle('custom-models:add', (_event, provider: unknown, modelId: unknown) => {
+    if (typeof provider !== 'string' || typeof modelId !== 'string') throw new Error('Invalid args')
+    addCustomModelId(provider, modelId)
   })
 
   // ── Session persistence ────────────────────────────────────

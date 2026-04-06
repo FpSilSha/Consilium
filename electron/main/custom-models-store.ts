@@ -31,6 +31,21 @@ export function loadCustomModels(): Readonly<Record<string, readonly string[]>> 
   }
 }
 
+/**
+ * Atomically adds a single model ID for a provider.
+ * Read-merge-write happens on the main process thread — no race.
+ */
+export function addCustomModelId(provider: string, modelId: string): void {
+  const existing = loadCustomModels()
+  const providerModels = existing[provider] ?? []
+  if (providerModels.includes(modelId)) return
+
+  saveCustomModels({
+    ...existing,
+    [provider]: [...providerModels, modelId],
+  })
+}
+
 export function saveCustomModels(models: Readonly<Record<string, readonly string[]>>): void {
   const filePath = getFilePath()
   const dir = dirname(filePath)

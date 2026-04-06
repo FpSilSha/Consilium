@@ -39,7 +39,7 @@ export function saveCustomProviders(providers: readonly CustomProviderDef[]): vo
   renameSync(tmpPath, filePath)
 }
 
-function isValidProvider(entry: unknown): entry is CustomProviderDef {
+export function isValidProvider(entry: unknown): entry is CustomProviderDef {
   if (entry == null || typeof entry !== 'object') return false
   const e = entry as Record<string, unknown>
   return (

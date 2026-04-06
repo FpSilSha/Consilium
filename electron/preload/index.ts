@@ -20,6 +20,7 @@ const api: ConsiliumAPI = {
   customProvidersSave: (providers) => ipcRenderer.invoke('custom-providers:save', providers),
   customModelsLoad: () => ipcRenderer.invoke('custom-models:load'),
   customModelsSave: (models) => ipcRenderer.invoke('custom-models:save', models),
+  customModelsAdd: (provider, modelId) => ipcRenderer.invoke('custom-models:add', provider, modelId),
   windowMinimize: () => ipcRenderer.invoke('window:minimize'),
   windowMaximize: () => ipcRenderer.invoke('window:maximize'),
   windowClose: () => ipcRenderer.invoke('window:close'),

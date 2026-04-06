@@ -30,6 +30,7 @@ export interface ConsiliumAPI {
   customProvidersSave(providers: readonly Record<string, unknown>[]): Promise<void>
   customModelsLoad(): Promise<Readonly<Record<string, readonly string[]>>>
   customModelsSave(models: Readonly<Record<string, readonly string[]>>): Promise<void>
+  customModelsAdd(provider: string, modelId: string): Promise<void>
   configLoad(): Promise<{ values: Record<string, unknown>; descriptions: Record<string, string> }>
   configSave(config: Record<string, unknown>): Promise<void>
   sessionSave(id: string, content: string): Promise<void>
