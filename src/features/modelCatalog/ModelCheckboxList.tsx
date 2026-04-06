@@ -40,6 +40,22 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
     const state = useStore.getState()
     const updatedAllowed = { ...state.allowedModels, [provider]: newAllowed }
     saveCatalogPreferences(updatedAllowed, state.priceOverrides).catch(() => {})
+
+    // Auto-switch advisors whose current model is no longer allowed
+    if (newAllowed.length > 0) {
+      const catalog = state.catalogModels[provider] ?? []
+      const available = catalog.filter((m) => newAllowed.includes(m.id))
+      const firstAvailable = available[0]?.id
+      if (firstAvailable != null) {
+        for (const windowId of state.windowOrder) {
+          const win = state.windows[windowId]
+          if (win == null || win.provider !== provider) continue
+          if (!newAllowed.includes(win.model)) {
+            state.updateWindow(windowId, { model: firstAvailable })
+          }
+        }
+      }
+    }
   }, [provider, setAllowedModels])
 
   const toggleModel = useCallback((modelId: string) => {
