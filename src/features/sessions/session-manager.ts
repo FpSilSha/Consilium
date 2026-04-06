@@ -60,8 +60,9 @@ function sessionWindowToAdvisor(
   sw: SessionWindow,
   state: ReturnType<typeof useStore.getState>,
 ): AdvisorWindow {
+  // Empty personaId is intentional "No Persona" — not an error.
   const persona = state.personas.find((p) => p.id === sw.personaId)
-  const personaError = persona === undefined
+  const personaError = sw.personaId !== '' && persona === undefined
     ? `Persona "${sw.personaLabel}" not found. Select a replacement.`
     : null
 

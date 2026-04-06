@@ -12,7 +12,13 @@ export function buildSystemPrompt(
   personaContent: string,
   sessionInstructions?: string,
 ): string {
-  const layers = [APP_LEVEL_PROMPT, personaContent]
+  // Filter out empty layers so a "No Persona" advisor doesn't get a trailing
+  // `---` separator with nothing after it.
+  const layers: string[] = [APP_LEVEL_PROMPT]
+
+  if (personaContent.trim() !== '') {
+    layers.push(personaContent)
+  }
 
   if (sessionInstructions !== undefined && sessionInstructions.trim() !== '') {
     layers.push(sessionInstructions)

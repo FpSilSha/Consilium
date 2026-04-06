@@ -57,11 +57,25 @@ describe('buildSystemPrompt', () => {
       expect(parts[1]).toBe(personaContent)
     })
 
-    it('works correctly with empty personaContent (second layer is empty string)', () => {
+    it('omits the persona layer entirely when personaContent is empty (No Persona)', () => {
       const result = buildSystemPrompt('')
       const parts = result.split(SEPARATOR)
+      // Only the app-level layer remains — no trailing separator, no empty layer.
+      expect(parts).toHaveLength(1)
+      expect(result.endsWith(SEPARATOR)).toBe(false)
+    })
+
+    it('omits the persona layer when personaContent is whitespace-only', () => {
+      const result = buildSystemPrompt('   \n\n   ')
+      const parts = result.split(SEPARATOR)
+      expect(parts).toHaveLength(1)
+    })
+
+    it('still appends sessionInstructions when persona is empty', () => {
+      const result = buildSystemPrompt('', 'Be concise.')
+      const parts = result.split(SEPARATOR)
       expect(parts).toHaveLength(2)
-      expect(parts[1]).toBe('')
+      expect(parts[1]).toBe('Be concise.')
     })
 
     it('preserves multi-line persona content exactly', () => {
