@@ -83,6 +83,22 @@ Allow calling a vote while a run is active without interrupting the current roun
 - The vote prompt is injected into the shared context as `[Vote] question` (existing behavior) so advisors see it in subsequent turns
 - UI: Vote button changes to "Vote queued..." while waiting, with an option to cancel the pending vote
 
+## Web Search Tool-Use
+
+Wire up real web-search capability so advisors can fetch current information instead of saying "my knowledge may be outdated, consult a recent source." The system prompt currently tells models they have no live web access — this would replace that line with an actual capability.
+
+**Why it's not a prompt-only fix:** Telling a model "you can search the web" without wiring tool-use causes hallucinated searches ("I just looked this up and found…") because the model has no tool to call and no result to ground on. The model must actually be given a search tool and a result loop.
+
+**Implementation scope:**
+- Per-provider tool-use wiring: Anthropic supports server-side `web_search_20250305`, OpenAI has `tools: [{ type: "web_search" }]` on Responses API, Google Gemini has grounded search, OpenRouter passes through provider tools. Each adapter needs its own request shape and response parser.
+- Stream orchestrator must handle a tool-use loop: detect tool_use chunk → execute (or pass through to provider-side) → feed result back → continue stream. Currently the orchestrator is single-shot.
+- UI: surface when an advisor performed a search (citation chips, expandable source list, link previews). Without this the user can't audit whether the model actually searched or made it up.
+- Cost: web-search calls are billed separately on most providers — needs to roll into the running cost tracker with a new line item.
+- Per-advisor toggle: not every advisor needs search. A "Strategy Lead" persona maybe yes; a "Devil's Advocate" maybe no. Toggle in the advisor card editor.
+- Fallback: providers without native search (custom adapters, smaller models) need either a pluggable search backend (Brave, Tavily, SerpAPI) called from the renderer/main process, or graceful "search unavailable for this model" messaging.
+
+**Once shipped, update the system prompt** to replace the "no live web access" line with something like: "If web search is available to you in this session, use it for time-sensitive questions and cite the sources you find."
+
 ## Electron IPC Integration Tests
 
 Current Vitest tests cover pure functions (search, display labels, fuzzy match, etc.) but cannot test Electron IPC round-trips — file persistence, key encryption, adapter storage, custom model/provider saves, session save/load, config read/write.
