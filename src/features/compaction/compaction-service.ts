@@ -102,6 +102,17 @@ const compactingWindows = new Set<string>()
 let isCompactingMainThread = false
 
 /**
+ * How many recent messages a manual main-thread compaction keeps verbatim.
+ *
+ * This is intentionally smaller than the per-advisor `bufferSize` (default 15)
+ * used by automatic compaction. Auto-compaction is preventative — it fires near
+ * the context limit and wants to keep enough recent context to be transparent.
+ * Manual compaction is the user explicitly saying "free space NOW", so we keep
+ * a tighter buffer to make sure the action visibly archives something.
+ */
+export const MANUAL_COMPACTION_BUFFER = 6
+
+/**
  * Checks all windows and triggers compaction for any that need it.
  * Guards against duplicate in-flight compaction jobs per window.
  */
@@ -146,13 +157,10 @@ async function executeMainThreadCompaction(
 ): Promise<CompactionResult | null> {
   const state = useStore.getState()
 
-  // Use the smallest buffer size among all windows
-  const minBuffer = state.windowOrder.reduce((min, id) => {
-    const w = state.windows[id]
-    return w !== undefined ? Math.min(min, w.bufferSize) : min
-  }, 15)
-
-  const { archive } = splitForCompaction(state.messages, minBuffer)
+  // Manual compaction uses an aggressive buffer — the user explicitly clicked
+  // "Compact" and expects the action to actually free space. Auto compaction
+  // uses each window's larger bufferSize for preventative trims.
+  const { archive } = splitForCompaction(state.messages, MANUAL_COMPACTION_BUFFER)
   if (archive.length === 0) return null
 
   const prompt = buildSummaryPrompt(archive)
@@ -160,13 +168,9 @@ async function executeMainThreadCompaction(
 
   // Re-split from live state to avoid dropping messages appended during summarization
   const liveState = useStore.getState()
-  const liveMinBuffer = liveState.windowOrder.reduce((min, id) => {
-    const w = liveState.windows[id]
-    return w !== undefined ? Math.min(min, w.bufferSize) : min
-  }, 15)
   const { archive: liveArchive, buffer: liveBuffer } = splitForCompaction(
     liveState.messages,
-    liveMinBuffer,
+    MANUAL_COMPACTION_BUFFER,
   )
 
   if (liveArchive.length === 0) return null

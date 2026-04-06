@@ -1,7 +1,7 @@
 import { type ReactNode, useCallback, useState } from 'react'
 import { useStore } from '@/store'
 import { Tooltip } from '@/features/ui/Tooltip'
-import { compactMainThread } from './compaction-service'
+import { compactMainThread, MANUAL_COMPACTION_BUFFER } from './compaction-service'
 import { getRawKey } from '@/features/keys/key-vault'
 
 export function MainThreadCompactButton(): ReactNode {
@@ -35,7 +35,10 @@ export function MainThreadCompactButton(): ReactNode {
     }
   }, [])
 
-  if (messageCount < 10) return null
+  // Hide until there's actually something to archive. Manual compaction keeps
+  // MANUAL_COMPACTION_BUFFER messages verbatim, so we need at least one more
+  // than that for the action to do anything.
+  if (messageCount <= MANUAL_COMPACTION_BUFFER) return null
 
   return (
     <div className="relative">

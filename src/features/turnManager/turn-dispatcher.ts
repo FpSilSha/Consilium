@@ -9,6 +9,7 @@ import { buildCostMetadata } from '@/services/api/cost-utils'
 import { getRawKey } from '@/features/keys/key-vault'
 import { isBudgetExceeded } from '@/features/budget/budget-engine'
 import { computeDisplayLabels } from '@/features/windows/display-labels'
+import { checkAutoCompaction } from '@/features/compaction'
 import {
   getNextCard,
   getAllParallelCards,
@@ -328,6 +329,12 @@ function onTurnComplete(): void {
   if (state.turnMode === 'parallel' && state.activeCardIds.length > 0) {
     return
   }
+
+  // Auto-compaction sweep — checks each window's `shouldCompact` against its
+  // own model's context window. The smallest-context advisor effectively drives
+  // compaction because compactWindow shrinks the shared message bus globally.
+  // Per-window guards (compactingWindows set) prevent duplicate concurrent jobs.
+  checkAutoCompaction()
 
   if (isCycleComplete(state.queue)) {
     // Cycle complete — check loop counter
