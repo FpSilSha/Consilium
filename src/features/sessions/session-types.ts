@@ -1,5 +1,14 @@
 import type { Message, AdvisorWindow, TurnMode, QueueCard } from '@/types'
 
+export interface SessionAutoCompaction {
+  readonly enabled: boolean
+  readonly config: {
+    readonly provider: string
+    readonly model: string
+    readonly keyId: string
+  } | null
+}
+
 export interface SessionFile {
   readonly version: 1
   readonly id: string
@@ -15,6 +24,8 @@ export interface SessionFile {
   readonly totalCost: number
   readonly inputFiles: readonly SessionFileRef[]
   readonly outputFiles: readonly SessionFileRef[]
+  /** Optional — older session files won't have this. Restored as off/null when absent. */
+  readonly autoCompaction?: SessionAutoCompaction
 }
 
 export interface SessionWindow {

@@ -36,6 +36,14 @@ export function restoreSession(session: SessionFile): void {
   state.setQueue(session.queue)
   state.setSessionInstructions(session.sessionInstructions ?? '')
 
+  // Restore auto-compaction settings — defaults to off when absent (older sessions
+  // or sessions saved before this feature existed).
+  if (session.autoCompaction != null) {
+    state.setAutoCompaction(session.autoCompaction.enabled, session.autoCompaction.config)
+  } else {
+    state.setAutoCompaction(false, null)
+  }
+
   // Restore windows with graceful degradation
   for (const sw of session.windows) {
     const window = sessionWindowToAdvisor(sw, state)
@@ -168,6 +176,10 @@ export function buildSessionFile(): SessionFile {
     totalCost,
     inputFiles: [],
     outputFiles: [],
+    autoCompaction: {
+      enabled: state.autoCompactionEnabled,
+      config: state.autoCompactionConfig,
+    },
   }
 }
 
@@ -259,22 +271,43 @@ export async function loadSession(id: string): Promise<void> {
 function isValidSessionFile(data: unknown): data is SessionFile {
   if (data == null || typeof data !== 'object') return false
   const s = data as Record<string, unknown>
-  return (
-    s['version'] === 1 &&
-    typeof s['id'] === 'string' &&
-    typeof s['name'] === 'string' &&
-    typeof s['turnMode'] === 'string' &&
-    (s['sessionInstructions'] == null || typeof s['sessionInstructions'] === 'string') &&
-    typeof s['totalCost'] === 'number' &&
-    Array.isArray(s['messages']) &&
-    Array.isArray(s['windows']) &&
-    Array.isArray(s['queue']) &&
-    Array.isArray(s['archivedMessages']) &&
-    typeof s['createdAt'] === 'number' &&
-    typeof s['updatedAt'] === 'number' &&
-    Array.isArray(s['inputFiles']) &&
-    Array.isArray(s['outputFiles'])
-  )
+  if (
+    s['version'] !== 1 ||
+    typeof s['id'] !== 'string' ||
+    typeof s['name'] !== 'string' ||
+    typeof s['turnMode'] !== 'string' ||
+    (s['sessionInstructions'] != null && typeof s['sessionInstructions'] !== 'string') ||
+    typeof s['totalCost'] !== 'number' ||
+    !Array.isArray(s['messages']) ||
+    !Array.isArray(s['windows']) ||
+    !Array.isArray(s['queue']) ||
+    !Array.isArray(s['archivedMessages']) ||
+    typeof s['createdAt'] !== 'number' ||
+    typeof s['updatedAt'] !== 'number' ||
+    !Array.isArray(s['inputFiles']) ||
+    !Array.isArray(s['outputFiles'])
+  ) return false
+
+  // autoCompaction is optional (older session files won't have it). When
+  // present, validate the shape so corrupted data can't crash restore.
+  const ac = s['autoCompaction']
+  if (ac !== undefined) {
+    if (typeof ac !== 'object' || ac === null) return false
+    const acObj = ac as Record<string, unknown>
+    if (typeof acObj['enabled'] !== 'boolean') return false
+    const cfg = acObj['config']
+    if (cfg !== null) {
+      if (typeof cfg !== 'object') return false
+      const cfgObj = cfg as Record<string, unknown>
+      if (
+        typeof cfgObj['provider'] !== 'string' ||
+        typeof cfgObj['model'] !== 'string' ||
+        typeof cfgObj['keyId'] !== 'string'
+      ) return false
+    }
+  }
+
+  return true
 }
 
 /**
