@@ -1,4 +1,4 @@
-import { type ReactNode, useState, useCallback } from 'react'
+import { type ReactNode, useState, useCallback, useEffect } from 'react'
 import type { AdvisorWindow, Provider } from '@/types'
 import { useStore } from '@/store'
 import { Tooltip } from '@/features/ui/Tooltip'
@@ -45,6 +45,14 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   const turnMode = useStore((s) => s.turnMode)
   const queue = useStore((s) => s.queue)
   const addToQueue = useStore((s) => s.addToQueue)
+
+  // Auto-switch model if current model is no longer in the filtered list
+  useEffect(() => {
+    if (!editing || models.length === 0) return
+    if (!models.some((m) => m.id === advisor.model)) {
+      updateWindow(advisor.id, { model: models[0]!.id })
+    }
+  }, [editing, models, advisor.id, advisor.model, updateWindow])
 
   const showQueueAdd = turnMode !== 'sequential' && !queue.some(
     (c) => c.windowId === advisor.id && (c.status === 'waiting' || c.status === 'active'),
