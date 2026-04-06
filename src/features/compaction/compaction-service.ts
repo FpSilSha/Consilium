@@ -1,4 +1,4 @@
-import type { Message, AdvisorWindow } from '@/types'
+import type { Message } from '@/types'
 import { useStore } from '@/store'
 import { streamResponse } from '@/services/api/stream-orchestrator'
 import { createAssistantMessage } from '@/services/context-bus/message-factory'
@@ -8,16 +8,6 @@ import {
   buildSummaryPrompt,
   shouldCompact,
 } from './compaction-engine'
-
-/**
- * The cheap/fast model used for summarization.
- * Falls back through available providers.
- */
-const SUMMARY_MODELS = [
-  { provider: 'anthropic' as const, model: 'claude-haiku-4-5-20251001' },
-  { provider: 'openai' as const, model: 'gpt-4o-mini' },
-  { provider: 'google' as const, model: 'gemini-2.0-flash' },
-] as const
 
 interface CompactionResult {
   readonly archiveSummary: string
@@ -29,6 +19,13 @@ interface CompactionResult {
  * Runs compaction for a specific window.
  * Summarizes older messages, archives them, and marks the window as compacted.
  * Guards against concurrent compaction for the same window.
+ *
+ * Requires the user to have configured an auto-compaction model (via the
+ * AutoCompactButton). If no model is configured or the selected key is no
+ * longer available, this returns null and compaction is skipped — we do NOT
+ * fall back to a static placeholder summary. Better UX is to leave the thread
+ * alone than to silently replace history with a useless "archived N messages"
+ * stub that the advisors can't actually reason about.
  */
 export async function compactWindow(
   windowId: string,
@@ -50,53 +47,50 @@ async function executeWindowCompaction(
   const window = state.windows[windowId]
   if (window === undefined) return null
 
-  // Prefer the user's auto-compaction selection. Fall back to the hardcoded
-  // candidate list (Haiku → 4o-mini → Flash) only if the user hasn't picked
-  // one — this preserves the previous behavior for any code path that calls
-  // compactWindow directly without going through the auto sweep.
-  const summaryConfig = state.autoCompactionConfig !== null
-    ? resolveAutoCompactionConfig(state.autoCompactionConfig)
-    : findSummaryModel(state.keys)
-  if (summaryConfig === null) {
-    // No API key available — createFallbackSummary reads live state internally
-    return createFallbackSummary(windowId)
-  }
+  // Require a user-selected model. Guarded at the checkAutoCompaction level
+  // too, but this is the safety net in case compactWindow is ever called
+  // directly without going through the sweep.
+  if (state.autoCompactionConfig === null) return null
 
-  // Only compute archive for the API summarization path
+  const summaryConfig = resolveAutoCompactionConfig(state.autoCompactionConfig)
+  if (summaryConfig === null) return null
+
   const { archive } = splitForCompaction(state.messages, window.bufferSize)
   if (archive.length === 0) return null
 
   const summaryPrompt = buildSummaryPrompt(archive)
 
+  let summary: string
   try {
-    const summary = await runSummarization(
+    summary = await runSummarization(
       summaryConfig.provider,
       summaryConfig.model,
       summaryConfig.apiKey,
       summaryPrompt,
     )
-
-    // Re-split from live state to avoid dropping messages appended during summarization
-    const liveState = useStore.getState()
-    const liveWindow = liveState.windows[windowId]
-    if (liveWindow === undefined) return null
-
-    const { archive: liveArchive, buffer: liveBuffer } = splitForCompaction(
-      liveState.messages,
-      liveWindow.bufferSize,
-    )
-
-    if (liveArchive.length === 0) return null
-
-    applyCompaction(windowId, liveArchive, liveBuffer, summary)
-
-    return {
-      archiveSummary: summary,
-      archivedCount: liveArchive.length,
-      bufferCount: liveBuffer.length,
-    }
   } catch {
-    return createFallbackSummary(windowId)
+    // Summarization failed — skip compaction entirely. No static fallback.
+    return null
+  }
+
+  // Re-split from live state to avoid dropping messages appended during summarization
+  const liveState = useStore.getState()
+  const liveWindow = liveState.windows[windowId]
+  if (liveWindow === undefined) return null
+
+  const { archive: liveArchive, buffer: liveBuffer } = splitForCompaction(
+    liveState.messages,
+    liveWindow.bufferSize,
+  )
+
+  if (liveArchive.length === 0) return null
+
+  applyCompaction(windowId, liveArchive, liveBuffer, summary)
+
+  return {
+    archiveSummary: summary,
+    archivedCount: liveArchive.length,
+    bufferCount: liveBuffer.length,
   }
 }
 
@@ -209,21 +203,6 @@ async function executeMainThreadCompaction(
   }
 }
 
-function findSummaryModel(
-  keys: readonly { readonly id: string; readonly provider: string }[],
-): { provider: string; model: string; apiKey: string } | null {
-  for (const candidate of SUMMARY_MODELS) {
-    const key = keys.find((k) => k.provider === candidate.provider)
-    if (key !== undefined) {
-      const rawKey = getRawKey(key.id)
-      if (rawKey !== null) {
-        return { provider: candidate.provider, model: candidate.model, apiKey: rawKey }
-      }
-    }
-  }
-  return null
-}
-
 /**
  * Resolves a user-selected auto-compaction config to the {provider, model,
  * apiKey} shape executeWindowCompaction expects. Returns null if the key has
@@ -285,41 +264,4 @@ function applyCompaction(
   const state = useStore.getState()
   state.compactMessages(archive, buffer)
   state.updateWindow(windowId, { isCompacted: true, compactedSummary: summary })
-}
-
-function createFallbackSummary(
-  windowId: string,
-): CompactionResult | null {
-  const liveState = useStore.getState()
-  const liveWindow = liveState.windows[windowId]
-  if (liveWindow === undefined) return null
-
-  const { archive, buffer } = splitForCompaction(
-    liveState.messages,
-    liveWindow.bufferSize,
-  )
-
-  if (archive.length === 0) return null
-
-  const summary = buildFallbackSummaryText(archive)
-  applyCompaction(windowId, archive, buffer, summary)
-
-  return {
-    archiveSummary: summary,
-    archivedCount: archive.length,
-    bufferCount: buffer.length,
-  }
-}
-
-function buildFallbackSummaryText(archive: readonly Message[]): string {
-  const speakers = [...new Set(archive.map((m) => m.personaLabel))]
-  const firstMsg = archive[0]
-  const lastMsg = archive[archive.length - 1]
-
-  return [
-    `[Conversation summary: ${archive.length} messages archived]`,
-    `Participants: ${speakers.join(', ')}`,
-    firstMsg !== undefined ? `Started with: "${firstMsg.content.slice(0, 100)}..."` : '',
-    lastMsg !== undefined ? `Last archived: "${lastMsg.content.slice(0, 100)}..."` : '',
-  ].filter(Boolean).join('\n')
 }

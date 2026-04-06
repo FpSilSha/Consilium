@@ -5,7 +5,6 @@ import {
   shouldCompact,
   splitForCompaction,
   buildSummaryPrompt,
-  buildCompactedContext,
   getContextUsagePercent,
 } from '@/features/compaction/compaction-engine'
 import { estimateTokens } from '@/services/tokenizer/char-estimator'
@@ -263,48 +262,6 @@ describe('buildSummaryPrompt', () => {
     const prompt = buildSummaryPrompt([])
     expect(prompt).toContain('Summarize the following conversation')
     expect(typeof prompt).toBe('string')
-  })
-})
-
-// ---------------------------------------------------------------------------
-// buildCompactedContext
-// ---------------------------------------------------------------------------
-
-describe('buildCompactedContext', () => {
-  it('preamble contains the archive summary text', () => {
-    const buffer = [makeMessage({ content: 'recent message' })]
-    const { preamble } = buildCompactedContext('my archive summary', buffer)
-    expect(preamble).toContain('my archive summary')
-  })
-
-  it('preamble contains both section headers', () => {
-    const { preamble } = buildCompactedContext('summary', [])
-    expect(preamble).toContain('Conversation History (Summarized)')
-    expect(preamble).toContain('Recent Messages (Verbatim)')
-  })
-
-  it('recentMessages is the exact same array reference as the buffer passed in', () => {
-    const buffer = [makeMessage({ content: 'a' }), makeMessage({ id: '2', content: 'b' })]
-    const { recentMessages } = buildCompactedContext('summary', buffer)
-    expect(recentMessages).toBe(buffer)
-  })
-
-  it('works with an empty buffer — recentMessages is empty', () => {
-    const { recentMessages } = buildCompactedContext('compact summary', [])
-    expect(recentMessages).toHaveLength(0)
-  })
-
-  it('works with an empty summary — preamble still has correct structure', () => {
-    const { preamble } = buildCompactedContext('', [makeMessage({ content: 'hi' })])
-    expect(preamble).toContain('Conversation History (Summarized)')
-    expect(preamble).toContain('Recent Messages (Verbatim)')
-  })
-
-  it('preamble appears before recentMessages in the conceptual output order', () => {
-    const buffer = [makeMessage({ content: 'recent' })]
-    const { preamble, recentMessages } = buildCompactedContext('old stuff summarized', buffer)
-    expect(preamble.indexOf('old stuff summarized')).toBeGreaterThanOrEqual(0)
-    expect(recentMessages[0].content).toBe('recent')
   })
 })
 

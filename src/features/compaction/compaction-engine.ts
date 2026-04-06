@@ -78,27 +78,6 @@ export function buildSummaryPrompt(
 }
 
 /**
- * Builds the compacted payload that gets sent to an agent:
- * [System Prompt] → [Archive summary] → [Buffer of raw recent messages]
- *
- * Returns the summary as a system-level context preamble and the raw buffer messages.
- */
-export function buildCompactedContext(
-  archiveSummary: string,
-  buffer: readonly Message[],
-): { readonly preamble: string; readonly recentMessages: readonly Message[] } {
-  const preamble = [
-    '--- Conversation History (Summarized) ---',
-    '',
-    archiveSummary,
-    '',
-    '--- Recent Messages (Verbatim) ---',
-  ].join('\n')
-
-  return { preamble, recentMessages: buffer }
-}
-
-/**
  * Returns the percentage of context window used by the current thread.
  */
 export function getContextUsagePercent(

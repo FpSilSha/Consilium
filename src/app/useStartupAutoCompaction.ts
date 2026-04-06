@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useStore } from '@/store'
+import { computeStartupAutoCompactionPlan } from './startup-auto-compaction'
 
 /** Module-scope guard — run exactly once per app process */
 let hasRun = false
@@ -14,12 +15,9 @@ interface ConfigAPI {
   configSave(config: Record<string, unknown>): Promise<void>
 }
 
-function isValidAutoCompactionConfig(v: unknown): v is { provider: string; model: string; keyId: string } {
-  if (typeof v !== 'object' || v === null) return false
-  const o = v as Record<string, unknown>
-  return typeof o['provider'] === 'string'
-    && typeof o['model'] === 'string'
-    && typeof o['keyId'] === 'string'
+/** Test-only: reset the module-scope guard so tests can run the hook repeatedly. */
+export function _resetStartupAutoCompactionForTests(): void {
+  hasRun = false
 }
 
 /**
@@ -31,9 +29,8 @@ function isValidAutoCompactionConfig(v: unknown): v is { provider: string; model
  * global setting is disabled, written back to disk, and a warning is surfaced
  * so the user knows why auto-compaction turned off.
  *
- * Why wait for keys: we need the keys array to validate the saved keyId. The
- * current session's initializeNewSession runs earlier (before keys load), so
- * we apply global → current session here as a one-shot patch.
+ * All decision logic lives in `computeStartupAutoCompactionPlan` so it can be
+ * unit-tested without React, Zustand, or Electron IPC.
  */
 export function useStartupAutoCompaction(): void {
   const keysLoaded = useStore((s) => s.keysLoaded)
@@ -48,40 +45,28 @@ export function useStartupAutoCompaction(): void {
     void (async () => {
       try {
         const data = await api.configLoad()
-        const rawEnabled = data.values['autoCompactionEnabled']
-        const rawConfig = data.values['autoCompactionConfig']
-
-        const enabled = typeof rawEnabled === 'boolean' ? rawEnabled : false
-        const config = isValidAutoCompactionConfig(rawConfig) ? rawConfig : null
-
         const store = useStore.getState()
+        const plan = computeStartupAutoCompactionPlan(
+          data.values,
+          store.keys.map((k) => k.id),
+        )
 
-        // Nothing to do if global was off to begin with
-        if (!enabled || config === null) {
-          store.setGlobalAutoCompaction(false, null)
-          return
+        store.setGlobalAutoCompaction(plan.globalEnabled, plan.globalConfig)
+
+        if (plan.sessionOverride !== null) {
+          store.setAutoCompaction(plan.sessionOverride.enabled, plan.sessionOverride.config)
         }
 
-        // Validate the referenced key still exists
-        const keyStillExists = store.keys.some((k) => k.id === config.keyId)
-        if (!keyStillExists) {
-          store.setGlobalAutoCompaction(false, null)
-          store.setAutoCompaction(false, null)
-          store.setAutoCompactionWarning(
-            'Auto-compaction was turned off — the previously selected key/model is no longer available. Pick a new one to re-enable.',
-          )
-          // Persist the disabled state so we don't warn again on next launch
+        if (plan.warning !== null) {
+          store.setAutoCompactionWarning(plan.warning)
+        }
+
+        if (plan.persistedUpdate !== null) {
           await api.configSave({
             ...data.values,
-            autoCompactionEnabled: false,
-            autoCompactionConfig: null,
+            ...plan.persistedUpdate,
           })
-          return
         }
-
-        // Key is valid — apply to global AND current session
-        store.setGlobalAutoCompaction(true, config)
-        store.setAutoCompaction(true, config)
       } catch {
         // Config load/save errors are non-fatal — auto-compaction just stays off
       }
