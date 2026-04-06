@@ -41,17 +41,21 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
     const updatedAllowed = { ...state.allowedModels, [provider]: newAllowed }
     saveCatalogPreferences(updatedAllowed, state.priceOverrides).catch(() => {})
 
-    // Auto-switch advisors whose current model is no longer allowed
+    // Auto-switch advisors whose current model is no longer allowed — use cheapest
     if (newAllowed.length > 0) {
       const catalog = state.catalogModels[provider] ?? []
       const available = catalog.filter((m) => newAllowed.includes(m.id))
-      const firstAvailable = available[0]?.id
-      if (firstAvailable != null) {
+      if (available.length > 0) {
+        // Pick cheapest: free (both prices 0) first, then lowest output price
+        const free = available.filter((m) => m.inputPricePerToken === 0 && m.outputPricePerToken === 0)
+        const cheapest = free.length > 0
+          ? free[0]!.id
+          : [...available].sort((a, b) => a.outputPricePerToken - b.outputPricePerToken)[0]!.id
         for (const windowId of state.windowOrder) {
           const win = state.windows[windowId]
           if (win == null || win.provider !== provider) continue
           if (!newAllowed.includes(win.model)) {
-            state.updateWindow(windowId, { model: firstAvailable })
+            state.updateWindow(windowId, { model: cheapest })
           }
         }
       }

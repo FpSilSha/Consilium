@@ -51,11 +51,15 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   )
   const models = useFilteredModels(selectedProvider)
 
-  // Auto-switch model if current model is no longer in the filtered list
+  // Auto-switch model if current model is no longer in the filtered list — pick cheapest
   useEffect(() => {
     if (!editing || models.length === 0) return
     if (!models.some((m) => m.id === advisor.model)) {
-      updateWindow(advisor.id, { model: models[0]!.id })
+      const free = models.filter((m) => m.inputPricePerToken === 0 && m.outputPricePerToken === 0)
+      const cheapest = free.length > 0
+        ? free[0]!.id
+        : [...models].sort((a, b) => a.outputPricePerToken - b.outputPricePerToken)[0]!.id
+      updateWindow(advisor.id, { model: cheapest })
     }
   }, [editing, models, advisor.id, advisor.model, updateWindow])
 
