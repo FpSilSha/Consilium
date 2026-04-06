@@ -13,8 +13,14 @@ const CLAUDE_HAIKU_OUTPUT_PRICE = 0.000004
 
 describe('buildCostMetadata', () => {
   describe('when tokenUsage is undefined', () => {
-    it('returns undefined regardless of modelId', () => {
+    it('returns undefined for a known PAID model', () => {
+      // We don't fabricate token counts — paid models without usage data
+      // should report undefined so the message is flagged as untracked.
       expect(buildCostMetadata(undefined, 'claude-opus-4-6')).toBeUndefined()
+    })
+
+    it('returns undefined for an unknown model', () => {
+      expect(buildCostMetadata(undefined, 'totally-made-up-model')).toBeUndefined()
     })
   })
 
@@ -157,6 +163,21 @@ describe('buildCostMetadata', () => {
       expect(result).not.toBeUndefined()
       expect(result?.estimatedCost).toBe(0)
       expect(result?.isEstimate).toBe(false)
+    })
+
+    it('regression: free model with NO usage data still returns confirmed $0', () => {
+      // Cut-off / aborted streams don't have token usage — the partial-message
+      // path in stopAll calls buildCostMetadata(undefined, model). For free
+      // models the cost is exactly $0 regardless of tokens, so we should not
+      // return undefined and miscount the message as untracked.
+      seedFreeModel()
+      const result = buildCostMetadata(undefined, FREE_MODEL_ID)
+
+      expect(result).not.toBeUndefined()
+      expect(result?.estimatedCost).toBe(0)
+      expect(result?.isEstimate).toBe(false)
+      expect(result?.inputTokens).toBe(0)
+      expect(result?.outputTokens).toBe(0)
     })
 
     it('distinguishes free-with-catalog-hit from unknown-no-hit', () => {

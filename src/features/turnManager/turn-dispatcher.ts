@@ -86,14 +86,19 @@ export function stopAll(): void {
     controller.abort()
     state.removeActiveCard(cardId)
 
-    // Preserve partial content as a message with cut-off marker (fresh read per window)
+    // Preserve partial content as a message with cut-off marker (fresh read per window).
+    // We don't have token usage from the aborted stream — buildCostMetadata still
+    // returns confirmed-$0 metadata for known-free models so the partial isn't
+    // miscounted as "untracked" in the cost breakdown.
     const win = useStore.getState().windows[windowId]
     if (win != null && win.streamContent.trim() !== '') {
       const partialContent = `${win.streamContent.trim()}\n\n*(response cut off)*`
+      const costMeta = buildCostMetadata(undefined, win.model)
       const message = createAssistantMessage(
         partialContent,
         win.personaLabel,
         windowId,
+        costMeta,
       )
       state.appendMessage(message)
     }
