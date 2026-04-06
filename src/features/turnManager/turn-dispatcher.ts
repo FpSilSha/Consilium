@@ -161,16 +161,20 @@ function dispatchAgentTurn(card: QueueCard): void {
   // Validate key and persona before marking card as active
   const key = state.keys.find((k) => k.id === window.keyId)
   if (key === undefined) {
-    state.setCardStatus(card.id, 'errored', 'API key not found')
-    state.updateWindow(card.windowId, { isStreaming: false, error: 'API key not found' })
+    const errMsg = 'API key not found'
+    state.setCardStatus(card.id, 'errored', errMsg)
+    state.updateWindow(card.windowId, { isStreaming: false, error: errMsg })
+    state.addErrorLog({ id: crypto.randomUUID(), timestamp: Date.now(), advisorLabel: window.personaLabel, accentColor: window.accentColor, message: errMsg, provider: window.provider, model: window.model })
     onTurnComplete()
     return
   }
 
   const apiKey = getRawKey(key.id)
   if (apiKey === null) {
-    state.setCardStatus(card.id, 'errored', 'Could not retrieve API key')
-    state.updateWindow(card.windowId, { isStreaming: false, error: 'Could not retrieve API key' })
+    const errMsg = 'Could not retrieve API key'
+    state.setCardStatus(card.id, 'errored', errMsg)
+    state.updateWindow(card.windowId, { isStreaming: false, error: errMsg })
+    state.addErrorLog({ id: crypto.randomUUID(), timestamp: Date.now(), advisorLabel: window.personaLabel, accentColor: window.accentColor, message: errMsg, provider: window.provider, model: window.model })
     onTurnComplete()
     return
   }
@@ -270,6 +274,17 @@ function dispatchAgentTurn(card: QueueCard): void {
         runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
       })
       current.setCardStatus(card.id, 'errored', error)
+
+      // Auto-push to error log so it appears in the left sidebar
+      current.addErrorLog({
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        advisorLabel: freshWindow?.personaLabel ?? window.personaLabel,
+        accentColor: freshWindow?.accentColor ?? window.accentColor,
+        message: error,
+        provider: freshWindow?.provider ?? window.provider,
+        model: freshWindow?.model ?? window.model,
+      })
       current.removeActiveCard(card.id)
 
       // Use queueMicrotask to avoid unbounded recursive call stack
