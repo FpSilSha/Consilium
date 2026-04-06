@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useStore } from '@/store'
 import { fetchAllCatalogs } from '@/services/api/catalog/fetch-all-catalogs'
 import { loadCatalogPreferences } from '@/features/modelCatalog/catalog-persistence'
+import { fetchOpenRouterCatalogPublic } from '@/features/modelSelector/openrouter-models'
 import type { Provider } from '@/types'
 
 /** Module-scope guard — ensures exactly one fetch per app process */
@@ -21,6 +22,9 @@ export function useStartupCatalogFetch(): void {
     hasStartupFetchRun = true
 
     const controller = new AbortController()
+
+    // Fetch OpenRouter catalog immediately (no key needed) so pricing is available early
+    fetchOpenRouterCatalogPublic().catch(() => {})
 
     // Load persisted preferences first, then fetch catalogs
     loadCatalogPreferences()
