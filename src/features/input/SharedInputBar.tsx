@@ -5,7 +5,7 @@ import { createUserMessage } from '@/services/context-bus'
 import { handleUserMessage, startRun } from '@/features/turnManager'
 import { isUserTurn } from '@/features/turnManager'
 import { hasMentions, executeAgentExchange, repeatLastExchange, hasLastExchange } from '@/features/agentInteraction'
-import { AttachButton } from './AttachButton'
+import { AttachButton, readBrowserFile } from './AttachButton'
 import { CompileDocumentButton } from '@/features/chat/CompileDocumentButton'
 
 export function SharedInputBar(): ReactNode {
@@ -68,8 +68,27 @@ export function SharedInputBar(): ReactNode {
     setAttachments((prev) => prev.filter((a) => a.id !== id))
   }, [])
 
+  const [dragOver, setDragOver] = useState(false)
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const files = e.dataTransfer.files
+    if (files.length === 0) return
+
+    const newAttachments = await Promise.all(
+      Array.from(files).map((file) => readBrowserFile(file)),
+    )
+    setAttachments((prev) => [...prev, ...newAttachments])
+  }, [])
+
   return (
-    <div className="flex flex-col gap-2">
+    <div
+      className={`flex flex-col gap-2 ${dragOver ? 'rounded-lg ring-2 ring-accent-blue ring-offset-2 ring-offset-surface-base' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+    >
       {/* Action buttons above input */}
       <div className="flex items-center gap-2">
         {showRepeat && hasLastExchange() && (

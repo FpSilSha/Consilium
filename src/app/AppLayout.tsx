@@ -68,14 +68,14 @@ export function AppLayout(): ReactNode {
     return api.onMenuAction(handleMenuAction)
   }, [handleMenuAction])
 
-  // Prevent file drag-and-drop from navigating the window
+  // Prevent file drag-and-drop from navigating the window (handled by SharedInputBar)
   useEffect(() => {
-    const preventDrag = (e: DragEvent) => { e.preventDefault() }
-    document.addEventListener('dragover', preventDrag)
-    document.addEventListener('drop', preventDrag)
+    const preventNav = (e: DragEvent) => { e.preventDefault() }
+    document.addEventListener('dragover', preventNav)
+    document.addEventListener('drop', preventNav)
     return () => {
-      document.removeEventListener('dragover', preventDrag)
-      document.removeEventListener('drop', preventDrag)
+      document.removeEventListener('dragover', preventNav)
+      document.removeEventListener('drop', preventNav)
     }
   }, [])
 
