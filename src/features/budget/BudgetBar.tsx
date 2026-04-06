@@ -59,7 +59,7 @@ export function BudgetBar(): ReactNode {
 
       {/* Budget — clickable to set */}
       <div className="flex items-center gap-1.5">
-        <Tooltip text="Click to set session budget" position="bottom">
+        <Tooltip text="Click to set session budget. Warning: cost can't be measured mid-stream — calculated after output." position="bottom">
           <button
             onClick={() => setShowBudgetInput(true)}
             className="text-left text-xs text-content-muted transition-colors hover:text-content-primary"
@@ -149,9 +149,9 @@ export function BudgetBar(): ReactNode {
 
       {/* Budget exceeded */}
       {exceeded && (
-        <div className="fixed bottom-16 right-4 z-40 rounded-lg border border-accent-red bg-accent-red/20 px-4 py-2">
-          <span className="text-xs text-accent-red">
-            Budget exceeded. All API calls halted.
+        <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-lg border border-accent-red bg-surface-panel px-6 py-3 shadow-lg">
+          <span className="text-sm font-medium text-accent-red">
+            Budget exceeded — all API calls halted
           </span>
         </div>
       )}
