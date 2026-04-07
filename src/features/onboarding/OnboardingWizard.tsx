@@ -40,7 +40,12 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
   const addKey = useStore((s) => s.addKey)
   const addWindow = useStore((s) => s.addWindow)
   const addToQueue = useStore((s) => s.addToQueue)
-  const personas = useStore((s) => s.personas)
+  // Onboarding shows only built-in personas. Custom personas are out of
+  // scope for first-run setup — they live in Configuration > Personas
+  // and are introduced after onboarding completes. Filtering here keeps
+  // the onboarding picker focused and avoids showing the user their own
+  // custom personas on a reinstall before they've even seen the app.
+  const personas = useStore((s) => s.personas).filter((p) => p.isBuiltIn)
   const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -147,12 +152,13 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
 
   const windowOrder = useStore((s) => s.windowOrder)
 
-  const handleFinish = useCallback(() => {
+  const handleFinish = useCallback(async () => {
+    // Only override the default "No Persona" if the user explicitly picked one.
     const persona = selectedPersonaId !== null
       ? personas.find((p) => p.id === selectedPersonaId)
-      : personas[0]
+      : undefined
 
-    const base = createDefaultAdvisorWindow(windowOrder, personas, keys)
+    const base = await createDefaultAdvisorWindow(windowOrder, personas, keys)
     const newWindow = {
       ...base,
       ...(selectedModel !== '' ? { model: selectedModel } : {}),

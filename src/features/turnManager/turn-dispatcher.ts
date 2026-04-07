@@ -4,10 +4,14 @@ import { streamResponse, isTransientError } from '@/services/api/stream-orchestr
 import type { StreamCallbacks } from '@/services/api/stream-orchestrator'
 import { createAssistantMessage } from '@/services/context-bus/message-factory'
 import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
+import { resolveAdvisorSystemPrompt } from '@/features/systemPrompts/system-prompt-resolver'
 import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { buildCostMetadata } from '@/services/api/cost-utils'
 import { getRawKey } from '@/features/keys/key-vault'
 import { isBudgetExceeded } from '@/features/budget/budget-engine'
+import { computeDisplayLabels } from '@/features/windows/display-labels'
+import { checkAutoCompaction } from '@/features/compaction'
+import { abortActiveCompile } from '@/features/documents/compile-controller'
 import {
   getNextCard,
   getAllParallelCards,
@@ -74,15 +78,49 @@ export function startRun(): void {
 }
 
 /**
- * Stops all active agent streams and pauses the queue.
+ * Stops all active streams and pauses the queue.
+ *
+ * Aborts:
+ *   - Every advisor turn in `activeControllers` (managed locally)
+ *   - The in-flight compile, if any (lives in compile-controller's
+ *     module-scoped registry — separate from activeControllers because
+ *     compile is not a turn)
+ *
+ * This is the single "stop everything spending money" entry point. The
+ * budget-exceeded paths in dispatchNextTurn and onTurnComplete call this,
+ * so the budget cap correctly halts BOTH advisor turns and compile.
  */
 export function stopAll(): void {
+  // Abort the compile stream first — it's a one-shot, no per-window cleanup
+  // needed, so doing it before the advisor loop minimizes the window where
+  // a still-running compile could fire callbacks against state we're about
+  // to mutate.
+  abortActiveCompile()
+
   const entries = [...activeControllers.entries()]
   activeControllers.clear()
   const state = useStore.getState()
   for (const [cardId, { controller, windowId }] of entries) {
     controller.abort()
     state.removeActiveCard(cardId)
+
+    // Preserve partial content as a message with cut-off marker (fresh read per window).
+    // We don't have token usage from the aborted stream — buildCostMetadata still
+    // returns confirmed-$0 metadata for known-free models so the partial isn't
+    // miscounted as "untracked" in the cost breakdown.
+    const win = useStore.getState().windows[windowId]
+    if (win != null && win.streamContent.trim() !== '') {
+      const partialContent = `${win.streamContent.trim()}\n\n*(response cut off)*`
+      const costMeta = buildCostMetadata(undefined, win.model)
+      const message = createAssistantMessage(
+        partialContent,
+        win.personaLabel,
+        windowId,
+        costMeta,
+      )
+      state.appendMessage(message)
+    }
+
     state.updateWindow(windowId, { isStreaming: false, streamContent: '' })
   }
   // Prep queue for next start — reset all cards to waiting
@@ -147,24 +185,42 @@ function dispatchAgentTurn(card: QueueCard): void {
   // Validate key and persona before marking card as active
   const key = state.keys.find((k) => k.id === window.keyId)
   if (key === undefined) {
-    state.setCardStatus(card.id, 'errored', 'API key not found')
-    state.updateWindow(card.windowId, { isStreaming: false, error: 'API key not found' })
+    const errMsg = 'API key not found'
+    state.setCardStatus(card.id, 'errored', errMsg)
+    state.updateWindow(card.windowId, { isStreaming: false, error: errMsg })
+    state.addErrorLog({ id: crypto.randomUUID(), timestamp: Date.now(), advisorLabel: window.personaLabel, accentColor: window.accentColor, message: errMsg, provider: window.provider, model: window.model })
     onTurnComplete()
     return
   }
 
   const apiKey = getRawKey(key.id)
   if (apiKey === null) {
-    state.setCardStatus(card.id, 'errored', 'Could not retrieve API key')
-    state.updateWindow(card.windowId, { isStreaming: false, error: 'Could not retrieve API key' })
+    const errMsg = 'Could not retrieve API key'
+    state.setCardStatus(card.id, 'errored', errMsg)
+    state.updateWindow(card.windowId, { isStreaming: false, error: errMsg })
+    state.addErrorLog({ id: crypto.randomUUID(), timestamp: Date.now(), advisorLabel: window.personaLabel, accentColor: window.accentColor, message: errMsg, provider: window.provider, model: window.model })
     onTurnComplete()
     return
   }
 
   const persona = state.personas.find((p) => p.id === window.personaId)
-  const personaContent = persona?.content ?? ''
-  const systemPrompt = buildSystemPrompt(personaContent, state.sessionInstructions || undefined)
-  const threadMessages = messagesToApiFormat(state.messages)
+  let personaContent = persona?.content ?? ''
+
+  // When duplicate personas exist, hint the model to provide unique perspectives.
+  // Skip for "No Persona" advisors — there's no persona to be unique about.
+  const displayLabels = computeDisplayLabels(state.windowOrder, state.windows)
+  const displayLabel = displayLabels.get(card.windowId) ?? window.personaLabel
+  const hasDuplicates = displayLabel !== window.personaLabel
+  if (hasDuplicates && window.personaId !== '') {
+    personaContent += `\n\nNote: There may be other ${window.personaLabel} advisors in this chat. Provide unique perspectives still based in truth where possible, but don't be contrarian for the sake of it.`
+  }
+
+  const advisorPromptOverride = resolveAdvisorSystemPrompt(state.systemPromptsConfig, state.customSystemPrompts)
+  const systemPrompt = buildSystemPrompt(personaContent, state.sessionInstructions || undefined, advisorPromptOverride)
+  const threadMessages = messagesToApiFormat(state.messages, {
+    windowId: card.windowId,
+    personaLabel: window.personaLabel,
+  })
 
   // Mark card as active and prepare callbacks before setting isStreaming
   state.setCardStatus(card.id, 'active')
@@ -247,6 +303,17 @@ function dispatchAgentTurn(card: QueueCard): void {
         runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
       })
       current.setCardStatus(card.id, 'errored', error)
+
+      // Auto-push to error log so it appears in the left sidebar
+      current.addErrorLog({
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        advisorLabel: freshWindow?.personaLabel ?? window.personaLabel,
+        accentColor: freshWindow?.accentColor ?? window.accentColor,
+        message: error,
+        provider: freshWindow?.provider ?? window.provider,
+        model: freshWindow?.model ?? window.model,
+      })
       current.removeActiveCard(card.id)
 
       // Use queueMicrotask to avoid unbounded recursive call stack
@@ -269,7 +336,7 @@ function dispatchAgentTurn(card: QueueCard): void {
   )
 
   activeControllers.set(card.id, { controller, windowId: card.windowId })
-  state.updateWindow(card.windowId, { isStreaming: true, streamContent: '', error: null })
+  useStore.getState().updateWindow(card.windowId, { isStreaming: true, streamContent: '', error: null })
 }
 
 function onTurnComplete(): void {
@@ -286,6 +353,12 @@ function onTurnComplete(): void {
   if (state.turnMode === 'parallel' && state.activeCardIds.length > 0) {
     return
   }
+
+  // Auto-compaction sweep — checks each window's `shouldCompact` against its
+  // own model's context window. The smallest-context advisor effectively drives
+  // compaction because compactWindow shrinks the shared message bus globally.
+  // Per-window guards (compactingWindows set) prevent duplicate concurrent jobs.
+  checkAutoCompaction()
 
   if (isCycleComplete(state.queue)) {
     // Cycle complete — check loop counter
@@ -309,15 +382,17 @@ function onTurnComplete(): void {
   dispatchNextTurn()
 }
 
-/** Resets all queue cards to 'waiting' for the next round without stopping. */
+/** Resets queue cards to 'waiting' for the next round, preserving skipped cards. */
 function resetQueueForNextRound(): void {
   const state = useStore.getState()
   state.setQueue(
-    state.queue.map((c) => ({
-      ...c,
-      status: 'waiting' as const,
-      errorLabel: null,
-    })),
+    state.queue
+      .filter((c) => c.status !== 'skipped')
+      .map((c) => ({
+        ...c,
+        status: 'waiting' as const,
+        errorLabel: null,
+      })),
   )
 }
 

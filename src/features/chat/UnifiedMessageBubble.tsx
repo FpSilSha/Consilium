@@ -52,9 +52,9 @@ export function UnifiedMessageBubble({ message }: UnifiedMessageBubbleProps): Re
 
   const cost = message.costMetadata
 
-  // Strip identity header prefix that LLMs sometimes echo back
-  // e.g. "[Security Engineer]: Okay." → "Okay."
-  const displayContent = stripIdentityHeader(message.content, message.personaLabel)
+  // Identity headers are no longer injected into the model's own past turns,
+  // so models don't echo them back. Display content as-is.
+  const displayContent = message.content
 
   // Detect if message is "document-like" — long with markdown headings
   const isDocumentLike = displayContent.length > 500 && /^#{1,3}\s/m.test(displayContent)
@@ -194,23 +194,3 @@ function AssistantBubble({ message, displayContent, accentColor, modelName, isDo
   )
 }
 
-/**
- * Strips identity header prefix that LLMs sometimes echo back.
- * e.g. "[Security Engineer]: Okay." → "Okay."
- * Also handles "[You]: ..." for user messages echoed by agents.
- */
-function stripIdentityHeader(content: string, personaLabel: string): string {
-  // Trim leading whitespace first, then check for prefix
-  const trimmed = content.trimStart()
-
-  const prefix = `[${personaLabel}]: `
-  if (trimmed.startsWith(prefix)) {
-    return trimmed.slice(prefix.length)
-  }
-  // Generic pattern: [AnyLabel]: at the start
-  const match = trimmed.match(/^\[[\w\s'-]+\]:\s*/)
-  if (match != null) {
-    return trimmed.slice(match[0].length)
-  }
-  return content
-}

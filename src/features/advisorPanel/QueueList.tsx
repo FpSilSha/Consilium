@@ -65,7 +65,7 @@ export function QueueList(): ReactNode {
     [windows, windowOrder],
   )
 
-  const isReadOnly = turnMode === 'sequential' || turnMode === 'parallel'
+  const isReadOnly = turnMode === 'sequential'
 
   // ── Read-only view for Sequential / Parallel ────────────────
   if (isReadOnly) {
@@ -76,6 +76,7 @@ export function QueueList(): ReactNode {
           <div className="border-b border-edge-subtle px-3 py-2">
             <button
               onClick={() => {
+                addToQueue(createUserCard())
                 for (const windowId of windowOrder) {
                   addToQueue(createAgentCard(windowId))
                 }

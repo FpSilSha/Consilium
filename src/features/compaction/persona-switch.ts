@@ -4,6 +4,10 @@ import { streamResponse } from '@/services/api/stream-orchestrator'
 import { getRawKey } from '@/features/keys/key-vault'
 import { createSystemMessage } from '@/services/context-bus/message-factory'
 import { formatWithIdentityHeader } from '@/services/context-bus/identity-headers'
+import {
+  resolvePersonaSwitchPromptTemplate,
+  substitutePersonaSwitchPlaceholders,
+} from '@/features/systemPrompts/system-prompt-resolver'
 
 /**
  * Cheap/fast models for summarization, tried in order.
@@ -79,24 +83,26 @@ async function summarizeForPersonaSwitch(
 
   if (messages.length === 0) return null
 
+  // Resolve the user's persona-switch prompt selection. Returns null
+  // when the user has set the mode to 'off' — in that case we skip
+  // summarization entirely and let `performPersonaSwitch` proceed
+  // without a compacted reframing. The new persona starts fresh with
+  // the visible thread.
+  const template = resolvePersonaSwitchPromptTemplate(
+    state.systemPromptsConfig,
+    state.customSystemPrompts,
+  )
+  if (template == null) return null
+
   const formatted = messages
     .map(formatWithIdentityHeader)
     .join('\n\n')
 
-  const prompt = [
-    `Summarize the following conversation concisely. The advisor "${oldLabel}" is being replaced by "${newLabel}".`,
-    'Preserve:',
-    '- Key decisions and conclusions',
-    '- Important facts, numbers, and code snippets',
-    '- Who said what (using their persona labels)',
-    '- Action items and open questions',
-    '',
-    'Keep the summary under 500 words. Use the original persona labels in brackets.',
-    '',
-    '---',
-    '',
-    formatted,
-  ].join('\n')
+  const prompt = substitutePersonaSwitchPlaceholders(template, {
+    oldLabel,
+    newLabel,
+    messages: formatted,
+  })
 
   const summaryConfig = findSummaryModel(state.keys)
   if (summaryConfig == null) {

@@ -1,5 +1,6 @@
 import { useStore } from '@/store'
 import { startRun, stopAll, dispatchNextTurn } from '@/features/turnManager'
+import { saveCurrentSession, initializeNewSession } from '@/features/sessions/session-manager'
 import { buildInitialQueue } from '@/features/turnManager/queue-builder'
 import { createDefaultAdvisorWindow } from '@/features/windows/advisor-factory'
 import type { TurnMode } from '@/types'
@@ -20,64 +21,62 @@ function switchMode(mode: TurnMode): void {
 }
 
 export function getCommands(): readonly Command[] {
-  const state = useStore.getState()
-
   return [
     {
       id: 'start-run',
       label: 'Start Run',
       keywords: ['start', 'run', 'go', 'begin'],
       execute: startRun,
-      isAvailable: () => !state.isRunning,
+      isAvailable: () => !useStore.getState().isRunning,
     },
     {
       id: 'pause-run',
       label: 'Pause Run',
       keywords: ['pause', 'hold', 'wait'],
       execute: () => useStore.getState().setPaused(true),
-      isAvailable: () => state.isRunning && !state.isPaused,
+      isAvailable: () => { const s = useStore.getState(); return s.isRunning && !s.isPaused },
     },
     {
       id: 'resume-run',
       label: 'Resume Run',
       keywords: ['resume', 'continue', 'unpause'],
       execute: () => { useStore.getState().setPaused(false); dispatchNextTurn() },
-      isAvailable: () => state.isRunning && state.isPaused,
+      isAvailable: () => { const s = useStore.getState(); return s.isRunning && s.isPaused },
     },
     {
       id: 'stop-run',
       label: 'Stop Run',
       keywords: ['stop', 'cancel', 'halt', 'abort'],
       execute: stopAll,
-      isAvailable: () => state.isRunning,
+      isAvailable: () => useStore.getState().isRunning,
     },
     {
       id: 'mode-sequential',
       label: 'Sequential Mode',
       keywords: ['sequential', 'seq', 'round-robin'],
       execute: () => switchMode('sequential'),
-      isAvailable: () => !state.isRunning,
+      isAvailable: () => !useStore.getState().isRunning,
     },
     {
       id: 'mode-parallel',
       label: 'Parallel Mode',
       keywords: ['parallel', 'par', 'simultaneous', 'all'],
       execute: () => switchMode('parallel'),
-      isAvailable: () => !state.isRunning,
+      isAvailable: () => !useStore.getState().isRunning,
     },
     {
       id: 'mode-manual',
       label: 'Manual Mode',
       keywords: ['manual', 'man', 'trigger'],
       execute: () => switchMode('manual'),
-      isAvailable: () => !state.isRunning,
+      isAvailable: () => !useStore.getState().isRunning,
     },
     {
       id: 'mode-queue',
       label: 'Queue Mode',
       keywords: ['queue', 'custom', 'drag', 'order'],
       execute: () => switchMode('queue'),
-      isAvailable: () => !state.isRunning,
+      isAvailable: () => !useStore.getState().isRunning,
     },
     {
       id: 'add-advisor',
@@ -85,8 +84,9 @@ export function getCommands(): readonly Command[] {
       keywords: ['add', 'advisor', 'new', 'agent'],
       execute: () => {
         const s = useStore.getState()
-        const newWindow = createDefaultAdvisorWindow(s.windowOrder, s.personas, s.keys)
-        s.addWindow(newWindow)
+        createDefaultAdvisorWindow(s.windowOrder, s.personas, s.keys)
+          .then((newWindow) => useStore.getState().addWindow(newWindow))
+          .catch(() => {})
       },
       isAvailable: () => true,
     },
@@ -102,10 +102,16 @@ export function getCommands(): readonly Command[] {
       label: 'New Consilium',
       keywords: ['new', 'session', 'consilium', 'clear', 'reset'],
       execute: () => {
+        // stopAll tears down advisor turns AND the compile stream
+        // (centralized via abortActiveCompile inside stopAll).
+        stopAll()
+        saveCurrentSession().catch(() => {})
         const s = useStore.getState()
         s.clearMessages()
         s.clearAllWindows()
         s.setCurrentSessionId(null)
+        s.setSessionCustomName(null)
+        initializeNewSession().catch(() => {})
       },
       isAvailable: () => true,
     },
@@ -118,7 +124,7 @@ export function getCommands(): readonly Command[] {
         const btn = document.querySelector<HTMLButtonElement>('[data-action="call-vote"]')
         btn?.click()
       },
-      isAvailable: () => state.windowOrder.length > 0,
+      isAvailable: () => useStore.getState().windowOrder.length > 0,
     },
   ]
 }

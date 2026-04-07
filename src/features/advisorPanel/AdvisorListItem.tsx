@@ -1,4 +1,4 @@
-import { type ReactNode, useState, useCallback } from 'react'
+import { type ReactNode, useState, useCallback, useEffect } from 'react'
 import type { AdvisorWindow, Provider } from '@/types'
 import { useStore } from '@/store'
 import { Tooltip } from '@/features/ui/Tooltip'
@@ -6,7 +6,7 @@ import { getModelById } from '@/features/modelSelector/model-registry'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
 import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
 import { performPersonaSwitch } from '@/features/compaction'
-import { retryAdvisor } from '@/features/turnManager'
+import { retryAdvisor, createAgentCard } from '@/features/turnManager'
 import { getDisplayLabel } from '@/features/windows/display-labels'
 import { PersonaPreview } from './PersonaPreview'
 
@@ -42,7 +42,26 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   const windowOrder = useStore((s) => s.windowOrder)
   const windows = useStore((s) => s.windows)
   const displayLabel = getDisplayLabel(advisor.id, windowOrder, windows)
+  const turnMode = useStore((s) => s.turnMode)
+  const queue = useStore((s) => s.queue)
+  const addToQueue = useStore((s) => s.addToQueue)
+
+  const showQueueAdd = turnMode !== 'sequential' && !queue.some(
+    (c) => c.windowId === advisor.id && (c.status === 'waiting' || c.status === 'active'),
+  )
   const models = useFilteredModels(selectedProvider)
+
+  // Auto-switch model if current model is no longer in the filtered list — pick cheapest
+  useEffect(() => {
+    if (!editing || models.length === 0) return
+    if (!models.some((m) => m.id === advisor.model)) {
+      const free = models.filter((m) => m.inputPricePerToken === 0 && m.outputPricePerToken === 0)
+      const cheapest = free.length > 0
+        ? free[0]!.id
+        : [...models].sort((a, b) => a.outputPricePerToken - b.outputPricePerToken)[0]!.id
+      updateWindow(advisor.id, { model: cheapest })
+    }
+  }, [editing, models, advisor.id, advisor.model, updateWindow])
 
   const pendingPersona = pendingPersonaId !== null
     ? personas.find((p) => p.id === pendingPersonaId)
@@ -76,12 +95,21 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
   }, [advisor.id, updateWindow])
 
   const handlePersonaSelect = useCallback((personaId: string) => {
-    if (personaId === advisor.personaId) return
+    // Sentinel "__none__" represents "No Persona" — stored as empty personaId.
+    const normalized = personaId === '__none__' ? '' : personaId
+    if (normalized === advisor.personaId) return
+
+    // Removing the lens (switching to "No Persona") doesn't need a compaction
+    // reframe — there's no new persona that needs context. Update directly.
+    if (normalized === '') {
+      updateWindow(advisor.id, { personaId: '', personaLabel: 'No Persona' })
+      return
+    }
 
     if (messageCount > 0) {
-      setPendingPersonaId(personaId)
+      setPendingPersonaId(normalized)
     } else {
-      const persona = personas.find((p) => p.id === personaId)
+      const persona = personas.find((p) => p.id === normalized)
       if (persona != null) {
         updateWindow(advisor.id, { personaId: persona.id, personaLabel: persona.name })
       }
@@ -151,19 +179,22 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
           <label className="text-[10px] font-medium uppercase tracking-wider text-content-disabled">
             Persona
           </label>
-          <button
-            onClick={() => setShowPreview(!showPreview)}
-            className="text-[10px] text-content-muted transition-colors hover:text-content-primary"
-          >
-            {showPreview ? 'Hide' : 'Preview'}
-          </button>
+          {(pendingPersonaId ?? advisor.personaId) !== '' && (
+            <button
+              onClick={() => setShowPreview(!showPreview)}
+              className="text-[10px] text-content-muted transition-colors hover:text-content-primary"
+            >
+              {showPreview ? 'Hide' : 'Preview'}
+            </button>
+          )}
         </div>
         <select
-          value={pendingPersonaId ?? advisor.personaId}
+          value={pendingPersonaId ?? (advisor.personaId === '' ? '__none__' : advisor.personaId)}
           onChange={(e) => { handlePersonaSelect(e.target.value); setShowPreview(false) }}
           disabled={isSwitching}
           className="mb-2 w-full rounded-md border border-edge-subtle bg-surface-panel px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus disabled:opacity-50"
         >
+          <option value="__none__">No Persona</option>
           {personas.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
@@ -261,6 +292,16 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
         )}
       </div>
 
+      {showQueueAdd && (
+        <Tooltip text="Add to queue" position="left">
+          <button
+            onClick={() => addToQueue(createAgentCard(advisor.id))}
+            className="shrink-0 rounded p-0.5 text-xs text-content-disabled opacity-0 transition-opacity hover:text-accent-blue group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100"
+          >
+            +
+          </button>
+        </Tooltip>
+      )}
       <Tooltip text="Remove advisor" position="left">
         <button
           onClick={() => removeWindow(advisor.id)}

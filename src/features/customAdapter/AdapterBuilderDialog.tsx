@@ -66,7 +66,7 @@ export function AdapterBuilderDialog({ existing, onSave, onClose }: AdapterBuild
 
   // Build a live definition for the test panel — memoized to avoid needless re-renders
   const liveDefinition = useMemo<CustomAdapterDefinition>(() => ({
-    id: existing?.id ?? 'test',
+    id: existing?.id ?? '__test-preview__',
     name: name || 'Test',
     request,
     response,

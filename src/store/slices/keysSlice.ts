@@ -6,6 +6,7 @@ export interface KeysSlice {
   readonly keysLoaded: boolean
   addKey: (key: ApiKey) => void
   removeKey: (keyId: string) => void
+  updateKey: (keyId: string, updates: Partial<Pick<ApiKey, 'verified'>>) => void
   setKeys: (keys: readonly ApiKey[]) => void
   setKeysLoaded: (loaded: boolean) => void
 }
@@ -22,6 +23,11 @@ export const createKeysSlice: StateCreator<KeysSlice> = (set) => ({
   removeKey: (keyId) =>
     set((state) => ({
       keys: state.keys.filter((k) => k.id !== keyId),
+    })),
+
+  updateKey: (keyId, updates) =>
+    set((state) => ({
+      keys: state.keys.map((k) => k.id === keyId ? { ...k, ...updates } : k),
     })),
 
   setKeys: (keys) => set({ keys }),

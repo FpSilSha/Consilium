@@ -10,6 +10,10 @@ import { createTurnSlice } from './slices/turnSlice'
 import { createBudgetSlice } from './slices/budgetSlice'
 import { createModelCatalogSlice } from './slices/modelCatalogSlice'
 import { createCustomAdaptersSlice } from './slices/customAdaptersSlice'
+import { createDocumentsSlice } from './slices/documentsSlice'
+import { createSystemPromptsSlice } from './slices/systemPromptsSlice'
+import { createCustomCompilePromptsSlice } from './slices/customCompilePromptsSlice'
+import { createCustomCompactPromptsSlice } from './slices/customCompactPromptsSlice'
 
 export const useStore = create<RootState>()((...args) => ({
   ...createKeysSlice(...args),
@@ -22,6 +26,10 @@ export const useStore = create<RootState>()((...args) => ({
   ...createBudgetSlice(...args),
   ...createModelCatalogSlice(...args),
   ...createCustomAdaptersSlice(...args),
+  ...createDocumentsSlice(...args),
+  ...createSystemPromptsSlice(...args),
+  ...createCustomCompilePromptsSlice(...args),
+  ...createCustomCompactPromptsSlice(...args),
 }))
 
 export type { RootState } from './types'

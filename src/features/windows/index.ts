@@ -1,1 +1,1 @@
-export { createDefaultAdvisorWindow, DEFAULT_MODEL_ID } from './advisor-factory'
+export { createDefaultAdvisorWindow } from './advisor-factory'

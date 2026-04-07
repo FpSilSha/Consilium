@@ -3,6 +3,7 @@ import { useStore } from '@/store'
 import { streamResponse } from '@/services/api/stream-orchestrator'
 import { createUserMessage, createAssistantMessage } from '@/services/context-bus/message-factory'
 import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
+import { resolveAdvisorSystemPrompt } from '@/features/systemPrompts/system-prompt-resolver'
 import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { getRawKey } from '@/features/keys/key-vault'
 import type { AdvisorVote, VoteTally } from './vote-types'
@@ -20,6 +21,22 @@ export class VoteInProgressError extends Error {
 
 /** Prevents concurrent vote calls from corrupting the shared thread. */
 let isVoteInFlight = false
+
+/** Monotonic generation counter — incremented on each vote, checked before writing results. */
+let voteGeneration = 0
+
+/** Active vote stream controllers — aborted when vote is cancelled or session switches. */
+const activeVoteControllers = new Set<AbortController>()
+
+/** Aborts all in-flight vote streams. Called during session switching. */
+export function cancelActiveVotes(): void {
+  for (const controller of activeVoteControllers) {
+    controller.abort()
+  }
+  activeVoteControllers.clear()
+  isVoteInFlight = false
+  voteGeneration++
+}
 
 /**
  * Broadcasts a "Call for Vote" question to all active advisors.
@@ -42,6 +59,7 @@ export async function callForVote(question: string): Promise<VoteTally> {
 }
 
 async function executeVote(question: string): Promise<VoteTally> {
+  const currentGen = ++voteGeneration
   const state = useStore.getState()
 
   // Append the vote question + instruction as a temporary user message
@@ -67,12 +85,15 @@ async function executeVote(question: string): Promise<VoteTally> {
     }
   }
 
-  // Replace the temporary vote prompt with the clean question only
-  const finalState = useStore.getState()
-  const cleanedMessages = finalState.messages.map((m) =>
-    m.id === userMsg.id ? { ...m, content: `[Vote] ${question}` } : m,
-  )
-  finalState.setMessages(cleanedMessages)
+  // Replace the temporary vote prompt with the clean question only —
+  // skip if the vote was cancelled and a new session loaded
+  if (currentGen === voteGeneration) {
+    const finalState = useStore.getState()
+    const cleanedMessages = finalState.messages.map((m) =>
+      m.id === userMsg.id ? { ...m, content: `[Vote] ${question}` } : m,
+    )
+    finalState.setMessages(cleanedMessages)
+  }
 
   return tallyVotes(votes)
 }
@@ -92,54 +113,73 @@ async function collectVoteFromWindow(
   if (apiKey === null) return null
 
   const persona = state.personas.find((p) => p.id === window.personaId)
+  const advisorPromptOverride = resolveAdvisorSystemPrompt(state.systemPromptsConfig, state.customSystemPrompts)
   const systemPrompt = buildSystemPrompt(
     persona?.content ?? '',
     state.sessionInstructions || undefined,
+    advisorPromptOverride,
   )
 
-  const messages = messagesToApiFormat(currentMessages)
+  const messages = messagesToApiFormat(currentMessages, {
+    windowId,
+    personaLabel: window.personaLabel,
+  })
 
   state.updateWindow(windowId, { isStreaming: true, streamContent: '', error: null })
 
   return new Promise((resolve) => {
-    streamResponse(
-      {
-        provider: window.provider,
-        model: window.model,
-        apiKey,
-        systemPrompt,
-        messages,
-        maxTokens: 150,
-      },
-      {
-        onChunk: (content) => {
-          const current = useStore.getState()
-          const currentWindow = current.windows[windowId]
-          if (currentWindow === undefined) return
-          current.updateWindow(windowId, {
-            streamContent: currentWindow.streamContent + content,
-          })
+    let ctrl: AbortController | null = null
+    try {
+      ctrl = streamResponse(
+        {
+          provider: window.provider,
+          model: window.model,
+          apiKey,
+          systemPrompt,
+          messages,
+          maxTokens: 150,
         },
-        onDone: (fullContent) => {
-          const msg = createAssistantMessage(fullContent, window.personaLabel, windowId)
-          const current = useStore.getState()
-          current.appendMessage(msg)
-          current.updateWindow(windowId, { isStreaming: false, streamContent: '' })
+        {
+          onChunk: (content) => {
+            const current = useStore.getState()
+            const currentWindow = current.windows[windowId]
+            if (currentWindow === undefined) return
+            current.updateWindow(windowId, {
+              streamContent: currentWindow.streamContent + content,
+            })
+          },
+          onDone: (fullContent) => {
+            if (ctrl != null) activeVoteControllers.delete(ctrl)
+            // Discard late-arriving responses after vote cancellation / session switch
+            if (ctrl?.signal.aborted) { resolve(null); return }
 
-          const vote = parseVoteResponse(
-            fullContent,
-            windowId,
-            window.personaLabel,
-            window.accentColor,
-          )
-          resolve(vote)
+            const msg = createAssistantMessage(fullContent, window.personaLabel, windowId)
+            const current = useStore.getState()
+            current.appendMessage(msg)
+            current.updateWindow(windowId, { isStreaming: false, streamContent: '' })
+
+            const vote = parseVoteResponse(
+              fullContent,
+              windowId,
+              window.personaLabel,
+              window.accentColor,
+            )
+            resolve(vote)
+          },
+          onError: (error) => {
+            if (ctrl != null) activeVoteControllers.delete(ctrl)
+            if (ctrl?.signal.aborted) { resolve(null); return }
+
+            const current = useStore.getState()
+            current.updateWindow(windowId, { isStreaming: false, streamContent: '', error })
+            resolve(null)
+          },
         },
-        onError: (error) => {
-          const current = useStore.getState()
-          current.updateWindow(windowId, { isStreaming: false, streamContent: '', error })
-          resolve(null)
-        },
-      },
-    )
+      )
+      activeVoteControllers.add(ctrl)
+    } catch {
+      state.updateWindow(windowId, { isStreaming: false, streamContent: '' })
+      resolve(null)
+    }
   })
 }

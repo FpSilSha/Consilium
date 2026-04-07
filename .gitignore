@@ -26,6 +26,11 @@ dist/
 build/
 out/
 release/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Generated images / scratch
+Gemini_Generated_Image_*.png
 
 # Python
 __pycache__/
@@ -44,8 +49,7 @@ personal/
 private/
 
 # Claude Code local files
-.claude/sessions/
-.claude/metrics/
+.claude/
 
 # MCP config (local dev tooling)
 .mcp.json

@@ -5,8 +5,9 @@ import { createUserMessage } from '@/services/context-bus'
 import { handleUserMessage, startRun } from '@/features/turnManager'
 import { isUserTurn } from '@/features/turnManager'
 import { hasMentions, executeAgentExchange, repeatLastExchange, hasLastExchange } from '@/features/agentInteraction'
-import { AttachButton } from './AttachButton'
+import { AttachButton, readBrowserFile } from './AttachButton'
 import { CompileDocumentButton } from '@/features/chat/CompileDocumentButton'
+import { MainThreadCompactButton, AutoCompactButton } from '@/features/compaction'
 
 export function SharedInputBar(): ReactNode {
   const [input, setInput] = useState('')
@@ -15,6 +16,7 @@ export function SharedInputBar(): ReactNode {
   const isRunning = useStore((s) => s.isRunning)
   const turnMode = useStore((s) => s.turnMode)
   const queue = useStore((s) => s.queue)
+  const windowCount = useStore((s) => s.windowOrder.length)
   const [showRepeat, setShowRepeat] = useState(false)
 
   const showUserTurnHint = isRunning && isUserTurn(queue)
@@ -42,10 +44,12 @@ export function SharedInputBar(): ReactNode {
 
     if (isRunning) {
       handleUserMessage()
-    } else if (turnMode === 'parallel') {
+    } else if (turnMode !== 'manual' && windowCount > 0 && queue.length > 0) {
       startRun()
+      // The message was sent before the run started — mark the user turn as done
+      handleUserMessage()
     }
-  }, [input, attachments, appendMessage, isRunning, turnMode])
+  }, [input, attachments, appendMessage, isRunning, turnMode, queue, windowCount])
 
   const handleRepeat = useCallback(() => {
     repeatLastExchange().catch(() => {})
@@ -65,8 +69,45 @@ export function SharedInputBar(): ReactNode {
     setAttachments((prev) => prev.filter((a) => a.id !== id))
   }, [])
 
+  const [dragOver, setDragOver] = useState(false)
+
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const MAX_DROP_SIZE = 10 * 1024 * 1024 // 10 MB per file
+    const MAX_DROP_COUNT = 10
+
+    const allFiles = Array.from(e.dataTransfer.files)
+    const validFiles = allFiles
+      .filter((f) => f.size <= MAX_DROP_SIZE)
+      .slice(0, MAX_DROP_COUNT)
+
+    const rejected = allFiles.length - validFiles.length
+    if (rejected > 0) {
+      useStore.getState().addErrorLog({
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        advisorLabel: 'System',
+        accentColor: '#4A90D9',
+        message: `${rejected} file(s) skipped — exceeds ${MAX_DROP_SIZE / 1024 / 1024}MB limit or max ${MAX_DROP_COUNT} files`,
+      })
+    }
+
+    if (validFiles.length === 0) return
+
+    const newAttachments = await Promise.all(
+      validFiles.map((file) => readBrowserFile(file)),
+    )
+    setAttachments((prev) => [...prev, ...newAttachments])
+  }, [])
+
   return (
-    <div className="flex flex-col gap-2">
+    <div
+      className={`flex flex-col gap-2 ${dragOver ? 'rounded-lg ring-2 ring-accent-blue ring-offset-2 ring-offset-surface-base' : ''}`}
+      onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+    >
       {/* Action buttons above input */}
       <div className="flex items-center gap-2">
         {showRepeat && hasLastExchange() && (
@@ -78,6 +119,8 @@ export function SharedInputBar(): ReactNode {
           </button>
         )}
         <CompileDocumentButton />
+        <MainThreadCompactButton />
+        <AutoCompactButton />
       </div>
 
       {/* Attachment previews */}

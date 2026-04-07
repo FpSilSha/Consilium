@@ -10,6 +10,12 @@ import { setSessionLoadingFlag } from '@/app/useSessionAutoSave'
 export function restoreSession(session: SessionFile): void {
   const state = useStore.getState()
 
+  // Force-clear streaming state on all windows before removing them —
+  // catches streams from @mentions and compile-document that stopAll doesn't track
+  for (const windowId of state.windowOrder) {
+    state.updateWindow(windowId, { isStreaming: false, streamContent: '' })
+  }
+
   // Clear existing state before restoring
   for (const windowId of state.windowOrder) {
     state.removeWindow(windowId)
@@ -28,16 +34,53 @@ export function restoreSession(session: SessionFile): void {
   // Restore turn state
   state.setTurnMode(session.turnMode)
   state.setQueue(session.queue)
-  state.setSessionInstructions(session.sessionInstructions)
+  state.setSessionInstructions(session.sessionInstructions ?? '')
+
+  // Restore auto-compaction settings. Precedence:
+  //   1. Session file's explicit value (if present)
+  //   2. Global default from store (if set)
+  //   3. Off
+  if (session.autoCompaction != null) {
+    state.setAutoCompaction(session.autoCompaction.enabled, session.autoCompaction.config)
+  } else if (state.globalAutoCompactionEnabled && state.globalAutoCompactionConfig !== null) {
+    state.setAutoCompaction(true, state.globalAutoCompactionConfig)
+  } else {
+    state.setAutoCompaction(false, null)
+  }
+
+  // Clear any in-flight compile draft + previous compile cost ledger from
+  // the prior session. The compile controller is aborted explicitly in
+  // loadSession before this point, so any callback that fires after will
+  // be discarded by its sessionId guard.
+  state.setDraftCompile(null)
+  // Restore the persisted compile cost (or 0 if absent — older session
+  // files won't have this field). resetCompileCost first so a missing
+  // field cleanly drops to 0.
+  state.resetCompileCost()
+  if (typeof session.sessionCompileCost === 'number' && session.sessionCompileCost > 0) {
+    state.accumulateCompileCost(session.sessionCompileCost)
+  }
+
+  // CRITICAL ORDERING: setCurrentSessionId MUST happen before
+  // restoreDocuments, because restoreDocuments runs synchronously up to
+  // its first await and that synchronous portion includes the sessionId
+  // check. If currentSessionId is still the previous session here, the
+  // check fails on the first iteration and no documents load.
+  state.setCurrentSessionId(session.id)
+  state.setSessionCustomName(session.name)
+
+  // Restore documents. The session holds a list of IDs; we fetch each doc
+  // by ID via the documents:load IPC. Missing files are silently dropped —
+  // no crash, no migration. Fired async so session restore isn't blocked.
+  // restoreDocuments captures the current sessionId at start and bails if
+  // the session has changed underneath it before all loads complete.
+  void restoreDocuments(session.documentIds ?? [], session.id)
 
   // Restore windows with graceful degradation
   for (const sw of session.windows) {
     const window = sessionWindowToAdvisor(sw, state)
     state.addWindow(window)
   }
-
-  // Set current session ID
-  state.setCurrentSessionId(session.id)
 
   // Check for model mismatches against allowed models
   const freshState = useStore.getState()
@@ -51,8 +94,9 @@ function sessionWindowToAdvisor(
   sw: SessionWindow,
   state: ReturnType<typeof useStore.getState>,
 ): AdvisorWindow {
+  // Empty personaId is intentional "No Persona" — not an error.
   const persona = state.personas.find((p) => p.id === sw.personaId)
-  const personaError = persona === undefined
+  const personaError = sw.personaId !== '' && persona === undefined
     ? `Persona "${sw.personaLabel}" not found. Select a replacement.`
     : null
 
@@ -82,22 +126,126 @@ function sessionWindowToAdvisor(
 }
 
 /**
+ * Resolves session document IDs to full SessionDocument objects via the
+ * documents:load IPC. Missing documents (deleted or never persisted) are
+ * silently skipped — graceful degradation per the storage design.
+ *
+ * `expectedSessionId` is captured at the call site (restoreSession) and
+ * used to bail out if the user switches sessions while async loads are
+ * in flight. Without this guard, a slow restore could overwrite the
+ * newer session's document list with stale data.
+ */
+async function restoreDocuments(ids: readonly string[], expectedSessionId: string): Promise<void> {
+  const state = useStore.getState()
+
+  if (ids.length === 0) {
+    state.setSessionDocuments([])
+    return
+  }
+
+  const api = (window as { consiliumAPI?: { documentsLoad: (id: string) => Promise<Record<string, unknown> | null> } }).consiliumAPI
+  if (api == null) {
+    state.setSessionDocuments([])
+    return
+  }
+
+  const loaded: import('@/features/documents/types').SessionDocument[] = []
+  for (const id of ids) {
+    // Bail mid-loop if session changed — don't waste IPC calls on a
+    // session the user has already abandoned.
+    if (useStore.getState().currentSessionId !== expectedSessionId) return
+
+    try {
+      const doc = await api.documentsLoad(id)
+      if (doc != null && isValidSessionDocument(doc)) {
+        loaded.push(doc as unknown as import('@/features/documents/types').SessionDocument)
+      }
+    } catch {
+      // Skip — corrupted or missing doc files don't crash session restore
+    }
+  }
+
+  // Final check before commit — the awaits above may have spanned a session switch.
+  if (useStore.getState().currentSessionId !== expectedSessionId) return
+  state.setSessionDocuments(loaded)
+}
+
+function isValidSessionDocument(d: Record<string, unknown>): boolean {
+  return (
+    typeof d['id'] === 'string' && d['id'] !== '' &&
+    typeof d['title'] === 'string' &&
+    typeof d['content'] === 'string' &&
+    typeof d['provider'] === 'string' &&
+    typeof d['model'] === 'string' &&
+    typeof d['modelName'] === 'string' &&
+    typeof d['cost'] === 'number' &&
+    typeof d['createdAt'] === 'number'
+  )
+}
+
+/** Prevents concurrent initializeNewSession calls from double-creating. */
+let initInProgress = false
+
+/**
+ * Initializes a new session with an ID and saves an initial entry.
+ * Called on app load (post-onboarding) and on "New Consilium".
+ * The session appears immediately in the sidebar.
+ */
+export async function initializeNewSession(): Promise<void> {
+  if (initInProgress) return
+  const state = useStore.getState()
+  if (state.currentSessionId != null) return
+  initInProgress = true
+  try {
+    const sessionId = crypto.randomUUID()
+    state.setCurrentSessionId(sessionId)
+    state.setSessionCustomName(null)
+
+    // New sessions inherit the global auto-compaction default.
+    // If global hasn't loaded from config.json yet (keys still loading),
+    // useStartupAutoCompaction will patch the current session once it runs.
+    if (state.globalAutoCompactionEnabled && state.globalAutoCompactionConfig !== null) {
+      state.setAutoCompaction(true, state.globalAutoCompactionConfig)
+    }
+
+    // Fresh sessions start with no document references and a zero compile-cost ledger
+    state.setSessionDocuments([])
+    state.resetCompileCost()
+    state.setDraftCompile(null)
+
+    await saveCurrentSession()
+  } finally {
+    initInProgress = false
+  }
+}
+
+/**
  * Builds a SessionFile from the current app state.
  */
 export function buildSessionFile(): SessionFile {
   const state = useStore.getState()
   const sessionId = state.currentSessionId ?? crypto.randomUUID()
 
-  const totalCost = state.windowOrder.reduce((sum, id) => {
+  // Combined session total: per-advisor running cost + isolated compile cost.
+  // Compile is not an advisor turn so it lives in its own slice field.
+  // This must include sessionCompileCost so the persisted totalCost matches
+  // what getSessionTotalCost() returns at runtime.
+  const advisorCost = state.windowOrder.reduce((sum, id) => {
     const w = state.windows[id]
     return sum + (w?.runningCost ?? 0)
   }, 0)
+  const totalCost = advisorCost + state.sessionCompileCost
 
-  // Derive a name from the first user message or advisors
-  const firstUserMsg = state.messages.find((m) => m.role === 'user')
-  const name = firstUserMsg != null
-    ? firstUserMsg.content.slice(0, 60).replace(/\n/g, ' ').trim() || 'Untitled'
-    : state.windowOrder.map((id) => state.windows[id]?.personaLabel).filter(Boolean).join(', ') || 'Untitled'
+  // Use custom name if set, otherwise derive from first user message or advisors
+  const name = state.sessionCustomName != null
+    ? state.sessionCustomName
+    : (() => {
+        const firstUserMsg = state.messages.find((m) => m.role === 'user')
+        return firstUserMsg != null
+          ? firstUserMsg.content.slice(0, 40).replace(/\n/g, ' ').trim() || 'Untitled'
+          : state.windowOrder.map((id) => state.windows[id]?.personaLabel).filter(Boolean).join(', ')
+            || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      })()
 
   return {
     version: 1,
@@ -129,6 +277,12 @@ export function buildSessionFile(): SessionFile {
     totalCost,
     inputFiles: [],
     outputFiles: [],
+    autoCompaction: {
+      enabled: state.autoCompactionEnabled,
+      config: state.autoCompactionConfig,
+    },
+    documentIds: state.documentIds,
+    sessionCompileCost: state.sessionCompileCost,
   }
 }
 
@@ -194,26 +348,109 @@ export async function loadSession(id: string): Promise<void> {
   const api = getSessionAPI()
   if (api == null) return
 
-  // Stop any active run before switching sessions
-  const { isRunning } = useStore.getState()
-  if (isRunning) {
-    const { stopAll } = await import('@/features/turnManager')
-    stopAll()
-  }
+  // Stop all active streams before switching sessions — covers advisor turns,
+  // compile document (via stopAll → abortActiveCompile), and votes.
+  const { stopAll } = await import('@/features/turnManager')
+  stopAll()
+  const { cancelActiveVotes } = await import('@/features/voting/vote-service')
+  cancelActiveVotes()
 
   const content = await api.sessionLoad(id)
   if (content == null) return
 
   try {
-    const session = JSON.parse(content) as SessionFile
-    if (session.version !== 1) return
+    const parsed: unknown = JSON.parse(content)
+    if (!isValidSessionFile(parsed)) return
     setSessionLoadingFlag(true)
-    restoreSession(session)
+    restoreSession(parsed)
     // Suppress auto-save for one render cycle after restore
     setTimeout(() => setSessionLoadingFlag(false), 100)
   } catch {
     setSessionLoadingFlag(false)
   }
+}
+
+/** Runtime shape check for session files — prevents crashes from corrupted data. */
+function isValidSessionFile(data: unknown): data is SessionFile {
+  if (data == null || typeof data !== 'object') return false
+  const s = data as Record<string, unknown>
+  if (
+    s['version'] !== 1 ||
+    typeof s['id'] !== 'string' ||
+    typeof s['name'] !== 'string' ||
+    typeof s['turnMode'] !== 'string' ||
+    (s['sessionInstructions'] != null && typeof s['sessionInstructions'] !== 'string') ||
+    typeof s['totalCost'] !== 'number' ||
+    !Array.isArray(s['messages']) ||
+    !Array.isArray(s['windows']) ||
+    !Array.isArray(s['queue']) ||
+    !Array.isArray(s['archivedMessages']) ||
+    typeof s['createdAt'] !== 'number' ||
+    typeof s['updatedAt'] !== 'number' ||
+    !Array.isArray(s['inputFiles']) ||
+    !Array.isArray(s['outputFiles'])
+  ) return false
+
+  // autoCompaction is optional (older session files won't have it). When
+  // present, validate the shape so corrupted data can't crash restore.
+  const ac = s['autoCompaction']
+  if (ac !== undefined) {
+    if (typeof ac !== 'object' || ac === null) return false
+    const acObj = ac as Record<string, unknown>
+    if (typeof acObj['enabled'] !== 'boolean') return false
+    const cfg = acObj['config']
+    if (cfg !== null) {
+      if (typeof cfg !== 'object') return false
+      const cfgObj = cfg as Record<string, unknown>
+      if (
+        typeof cfgObj['provider'] !== 'string' ||
+        typeof cfgObj['model'] !== 'string' ||
+        typeof cfgObj['keyId'] !== 'string'
+      ) return false
+    }
+  }
+
+  // documentIds: optional, must be an array of strings if present
+  const docIds = s['documentIds']
+  if (docIds !== undefined) {
+    if (!Array.isArray(docIds)) return false
+    if (!docIds.every((id) => typeof id === 'string')) return false
+  }
+
+  // sessionCompileCost: optional, must be a non-negative finite number if present
+  const compileCost = s['sessionCompileCost']
+  if (compileCost !== undefined) {
+    if (typeof compileCost !== 'number' || !Number.isFinite(compileCost) || compileCost < 0) return false
+  }
+
+  return true
+}
+
+/**
+ * Renames a session. If it's the current session, updates the store.
+ * Otherwise loads, renames, and re-saves the session file.
+ */
+export async function renameSession(id: string, newName: string): Promise<void> {
+  const state = useStore.getState()
+
+  // Current session — just update the store, auto-save will persist it
+  if (id === state.currentSessionId) {
+    state.setSessionCustomName(newName)
+    await saveCurrentSession()
+    return
+  }
+
+  // Historical session — load, rename, re-save
+  const api = getSessionAPI()
+  if (api == null) return
+
+  const content = await api.sessionLoad(id)
+  if (content == null) return
+
+  try {
+    const session = JSON.parse(content) as Record<string, unknown>
+    await api.sessionSave(id, JSON.stringify({ ...session, name: newName }))
+  } catch { /* non-fatal */ }
 }
 
 /**

@@ -1,5 +1,6 @@
 import { type ReactNode, useState, useRef, useEffect, useCallback } from 'react'
 import type { ModelInfo } from '@/types'
+import { searchModels } from './model-search'
 
 interface SearchableModelSelectProps {
   readonly models: readonly ModelInfo[]
@@ -25,12 +26,7 @@ export function SearchableModelSelect({
 
   const selectedName = models.find((m) => m.id === value)?.name ?? value
 
-  const filtered = search.trim() === ''
-    ? models
-    : models.filter((m) => {
-        const q = search.toLowerCase()
-        return m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q)
-      })
+  const filtered = searchModels(models, search)
 
   const handleSelect = useCallback((modelId: string) => {
     onChange(modelId)

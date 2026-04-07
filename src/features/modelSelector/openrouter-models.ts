@@ -27,8 +27,22 @@ function parsePrice(s: string | undefined): number {
 }
 
 /**
+ * Fetches the OpenRouter model catalog without authentication.
+ * The /v1/models endpoint is public — no key required.
+ * Called on app startup so pricing is available before any advisor streams.
+ */
+export async function fetchOpenRouterCatalogPublic(): Promise<readonly ModelInfo[]> {
+  const cached = useStore.getState().catalogModels['openrouter'] ?? []
+  if (cached.length > 0) return cached
+  if (pendingFetch != null) return pendingFetch
+
+  pendingFetch = doFetch(null).finally(() => { pendingFetch = null })
+  return pendingFetch
+}
+
+/**
  * Fetches the full model list from OpenRouter's API.
- * Requires an API key for authentication.
+ * Optionally authenticated — key adds rate limit headroom but is not required.
  * Results are cached in the Zustand store. Concurrent calls are deduplicated.
  */
 export async function fetchOpenRouterModels(apiKey: string): Promise<readonly ModelInfo[]> {
@@ -40,10 +54,13 @@ export async function fetchOpenRouterModels(apiKey: string): Promise<readonly Mo
   return pendingFetch
 }
 
-async function doFetch(apiKey: string): Promise<readonly ModelInfo[]> {
+async function doFetch(apiKey: string | null): Promise<readonly ModelInfo[]> {
   try {
+    const headers: Record<string, string> = {}
+    if (apiKey != null) headers['Authorization'] = `Bearer ${apiKey}`
+
     const response = await fetch(OPENROUTER_MODELS_URL, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+      headers,
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
 

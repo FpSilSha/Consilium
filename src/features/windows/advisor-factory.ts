@@ -28,36 +28,44 @@ function getAvailableModels(provider: Provider): readonly ModelInfo[] {
 
 /**
  * Picks the cheapest model from a list.
- * Prefers models with known pricing (price > 0) over unknown pricing.
+ * Models with price 0 are genuinely free (cheapest possible).
+ * Models with both input and output price of -1 are treated as unknown pricing
+ * and deprioritized. All others are sorted by output price ascending.
  */
 function cheapestFromList(models: readonly ModelInfo[]): ModelInfo | undefined {
   if (models.length === 0) return undefined
 
-  const withPrice = models.filter((m) => m.outputPricePerToken > 0)
-  if (withPrice.length > 0) {
-    return [...withPrice].sort((a, b) => a.outputPricePerToken - b.outputPricePerToken)[0]
+  // Free models (price === 0) are the cheapest — pick first one found
+  const free = models.filter((m) => m.inputPricePerToken === 0 && m.outputPricePerToken === 0)
+  if (free.length > 0) return free[0]
+
+  // Among paid models, sort by output price ascending
+  const paid = models.filter((m) => m.outputPricePerToken > 0)
+  if (paid.length > 0) {
+    return [...paid].sort((a, b) => a.outputPricePerToken - b.outputPricePerToken)[0]
   }
 
+  // Fallback — unknown pricing
   return models[0]
 }
 
 /**
- * Triggers background catalog fetches for providers that have keys but
- * no cached catalog. This ensures the catalog will be available for the
- * next "Add Advisor" click even if it's not ready for the current one.
+ * Ensures the catalog is loaded for providers that need dynamic fetching.
+ * Awaits the fetch if catalog is empty, so the first Add Advisor click
+ * gets real model data instead of a hardcoded fallback.
  */
-function triggerMissingCatalogFetches(providerKeys: ReadonlyMap<Provider, ApiKey>): void {
+async function ensureCatalogLoaded(providerKeys: ReadonlyMap<Provider, ApiKey>): Promise<void> {
   for (const [provider, key] of providerKeys) {
     const catalog = useStore.getState().catalogModels[provider] ?? []
     if (catalog.length > 0) continue
 
-    // Only OpenRouter needs a dynamic fetch — others use the static registry
     if (provider === 'openrouter') {
       const rawKey = getRawKey(key.id)
       if (rawKey == null) continue
-      import('@/features/modelSelector/openrouter-models')
-        .then((mod) => mod.fetchOpenRouterModels(rawKey))
-        .catch(() => { /* non-fatal — catalog stays empty until next attempt */ })
+      try {
+        const { fetchOpenRouterModels } = await import('@/features/modelSelector/openrouter-models')
+        await fetchOpenRouterModels(rawKey)
+      } catch { /* non-fatal — will use fallback */ }
     }
   }
 }
@@ -67,7 +75,6 @@ function triggerMissingCatalogFetches(providerKeys: ReadonlyMap<Provider, ApiKey
  * Returns the provider with the cheapest available model.
  */
 function pickBestProviderAndModel(keys: readonly ApiKey[]): { readonly provider: Provider; readonly keyId: string; readonly model: string } {
-  // Get unique providers that have keys
   const providerKeys = new Map<Provider, ApiKey>()
   for (const key of keys) {
     if (!providerKeys.has(key.provider as Provider)) {
@@ -75,12 +82,9 @@ function pickBestProviderAndModel(keys: readonly ApiKey[]): { readonly provider:
     }
   }
 
-  // Fire-and-forget: ensure catalogs are loading for future Add Advisor clicks
-  triggerMissingCatalogFetches(providerKeys)
-
   let bestProvider: Provider = 'anthropic'
   let bestKeyId = ''
-  let bestModel = 'claude-sonnet-4-6'
+  let bestModel = 'claude-haiku-4-5-20251001'
   let bestPrice = Infinity
 
   for (const [provider, key] of providerKeys) {
@@ -88,7 +92,7 @@ function pickBestProviderAndModel(keys: readonly ApiKey[]): { readonly provider:
     const cheapest = cheapestFromList(models)
     if (cheapest == null) continue
 
-    const price = cheapest.outputPricePerToken > 0 ? cheapest.outputPricePerToken : Infinity
+    const price = cheapest.outputPricePerToken
     if (price < bestPrice) {
       bestPrice = price
       bestProvider = provider
@@ -103,7 +107,7 @@ function pickBestProviderAndModel(keys: readonly ApiKey[]): { readonly provider:
     const models = getAvailableModels(firstProvider)
     bestProvider = firstProvider
     bestKeyId = firstKey.id
-    bestModel = models[0]?.id ?? 'claude-sonnet-4-6'
+    bestModel = models[0]?.id ?? 'claude-haiku-4-5-20251001'
   }
 
   return { provider: bestProvider, keyId: bestKeyId, model: bestModel }
@@ -111,21 +115,29 @@ function pickBestProviderAndModel(keys: readonly ApiKey[]): { readonly provider:
 
 /**
  * Creates a new AdvisorWindow with sensible defaults.
- * Single source of truth for advisor creation across the app.
+ * Awaits catalog loading for providers like OpenRouter before picking a model.
  * Picks the cheapest available model across all providers that have keys.
  */
-export function createDefaultAdvisorWindow(
+export async function createDefaultAdvisorWindow(
   windowOrder: readonly string[],
-  personas: readonly Persona[],
+  _personas: readonly Persona[],
   keys: readonly ApiKey[],
-): AdvisorWindow {
+): Promise<AdvisorWindow> {
+  // Ensure catalogs are loaded before picking a model
+  const providerKeys = new Map<Provider, ApiKey>()
+  for (const key of keys) {
+    if (!providerKeys.has(key.provider as Provider)) {
+      providerKeys.set(key.provider as Provider, key)
+    }
+  }
+  await ensureCatalogLoaded(providerKeys)
+
   const defaultTheme = BUILT_IN_THEMES[0]!
   const accentColor = getAccentColor(
     windowOrder.length,
     defaultTheme.colors.accentPalette,
   )
 
-  const firstPersona = personas[0]
   const { provider, keyId, model } = pickBestProviderAndModel(keys)
 
   return {
@@ -133,8 +145,9 @@ export function createDefaultAdvisorWindow(
     provider,
     keyId,
     model,
-    personaId: firstPersona?.id ?? '',
-    personaLabel: firstPersona?.name ?? 'Advisor',
+    // Default new advisors to "No Persona" — users opt in to a lens via the dropdown.
+    personaId: '',
+    personaLabel: 'No Persona',
     accentColor,
     runningCost: 0,
     isStreaming: false,

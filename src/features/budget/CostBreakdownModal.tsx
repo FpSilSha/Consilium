@@ -8,6 +8,12 @@ interface CostBreakdownModalProps {
   readonly windowOrder: readonly string[]
   readonly orModels: readonly import('@/types').ModelInfo[]
   readonly totalCost: number
+  /**
+   * Cumulative cost of compile-document calls in this session. Compile is
+   * not per-advisor so it doesn't appear in the per-window breakdown rows;
+   * we render it as a separate line item below the advisors when non-zero.
+   */
+  readonly compileCost: number
   readonly onClose: () => void
 }
 
@@ -28,6 +34,7 @@ export function CostBreakdownModal({
   windowOrder,
   orModels,
   totalCost,
+  compileCost,
   onClose,
 }: CostBreakdownModalProps): ReactNode {
   // Build per-advisor breakdown
@@ -59,6 +66,20 @@ export function CostBreakdownModal({
           </button>
         </div>
 
+        {/* Estimate accuracy disclaimer. Every cost number in this
+            modal — and the running totals on the budget bar — comes
+            from OpenRouter's published per-model pricing combined
+            with locally-estimated token counts. The actual provider
+            invoices the user receives WILL differ from these numbers,
+            often by a meaningful margin. Surfacing the disclaimer
+            here so users don't treat these figures as authoritative. */}
+        <p className="mt-3 rounded-md border border-yellow-500/30 bg-yellow-900/20 px-3 py-2 text-[11px] leading-relaxed text-yellow-200">
+          <strong>Estimates only.</strong> All costs shown here are calculated locally from
+          OpenRouter's published per-model pricing and Consilium's token counter. They are NOT
+          guaranteed to match what your actual provider bills you — different providers round,
+          discount, and meter differently. Use these numbers as a rough guide, not as an invoice.
+        </p>
+
         {/* Total */}
         <div className="mt-3 flex items-baseline justify-between border-b border-edge-subtle pb-3">
           <span className="text-xs text-content-muted">Session Total</span>
@@ -74,9 +95,9 @@ export function CostBreakdownModal({
           </div>
         </div>
 
-        {/* Per-advisor rows */}
+        {/* Per-advisor rows + compile pseudo-row */}
         <div className="mt-3 flex flex-col gap-2">
-          {entries.length === 0 ? (
+          {entries.length === 0 && compileCost === 0 ? (
             <p className="py-4 text-center text-xs text-content-disabled">
               No advisor activity yet.
             </p>
@@ -126,6 +147,31 @@ export function CostBreakdownModal({
                 </div>
               </div>
             ))
+          )}
+
+          {/* Compile-document pseudo-row — shown when there's any compile cost.
+              Compile is not an advisor turn, so it doesn't fit the per-window
+              breakdown above. Rendered with a neutral icon and a "Compile"
+              label so users can see where their money went. */}
+          {compileCost > 0 && (
+            <div className="flex items-center gap-3 rounded-md border border-edge-subtle bg-surface-base px-3 py-2">
+              <div className="flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-content-disabled text-[8px] text-content-inverse">
+                ✎
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-medium text-content-primary">
+                  Compile Document
+                </div>
+                <div className="truncate text-[10px] text-content-disabled">
+                  isolated calls outside any advisor
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <span className="text-xs text-content-primary">
+                  ~${compileCost.toFixed(4)}
+                </span>
+              </div>
+            </div>
           )}
         </div>
       </div>

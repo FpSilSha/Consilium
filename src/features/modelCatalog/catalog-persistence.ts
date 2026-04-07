@@ -46,6 +46,18 @@ export async function saveCatalogPreferences(
   }
 }
 
+/**
+ * Persists a user-added custom model ID for a provider.
+ * Uses the atomic custom-models:add IPC — read-merge-write happens
+ * on the main process thread with no race condition.
+ */
+export async function saveCustomModelId(provider: string, modelId: string): Promise<void> {
+  try {
+    await (window as { consiliumAPI?: { customModelsAdd(p: string, m: string): Promise<void> } })
+      .consiliumAPI?.customModelsAdd(provider, modelId)
+  } catch { /* non-fatal */ }
+}
+
 function getConsiliumAPI(): { catalogPrefsLoad(): Promise<unknown>; catalogPrefsSave(data: unknown): Promise<void> } | undefined {
   if (typeof window === 'undefined') return undefined
   const w = window as { consiliumAPI?: { catalogPrefsLoad(): Promise<unknown>; catalogPrefsSave(data: unknown): Promise<void> } }

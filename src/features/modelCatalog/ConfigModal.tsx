@@ -36,12 +36,9 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
   useEffect(() => {
     const api = getAPI()
     if (api == null) return
-    api.configLoad().then((config) => {
-      const providers = config.values['customProviders']
-      if (Array.isArray(providers)) {
-        setCustomProviders(providers as CustomProviderDef[])
-      }
-    }).catch(() => {})
+    api.customProvidersLoad()
+      .then((providers) => setCustomProviders(providers as CustomProviderDef[]))
+      .catch(() => {})
   }, [])
 
   const handleAddProvider = useCallback(async (provider: CustomProviderDef) => {
@@ -49,13 +46,9 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
     setCustomProviders(updated)
     setActiveTab(`custom:${provider.id}`)
 
-    // Save to config
     const api = getAPI()
     if (api == null) return
-    try {
-      const config = await api.configLoad()
-      await api.configSave({ ...config.values, customProviders: updated })
-    } catch { /* non-fatal */ }
+    try { await api.customProvidersSave(updated) } catch { /* non-fatal */ }
   }, [customProviders])
 
   const handleRemoveProvider = useCallback(async (id: string) => {
@@ -78,10 +71,7 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
 
     const api = getAPI()
     if (api == null) return
-    try {
-      const config = await api.configLoad()
-      await api.configSave({ ...config.values, customProviders: updated })
-    } catch { /* non-fatal */ }
+    try { await api.customProvidersSave(updated) } catch { /* non-fatal */ }
   }, [customProviders])
 
   const handleUpdateProvider = useCallback(async (updated: CustomProviderDef) => {
@@ -90,10 +80,7 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
 
     const api = getAPI()
     if (api == null) return
-    try {
-      const config = await api.configLoad()
-      await api.configSave({ ...config.values, customProviders: newList })
-    } catch { /* non-fatal */ }
+    try { await api.customProvidersSave(newList) } catch { /* non-fatal */ }
   }, [customProviders])
 
   const isBuiltIn = BUILT_IN_PROVIDERS.some((p) => p.value === activeTab)
@@ -375,5 +362,7 @@ function getAPI() {
   return (window as { consiliumAPI?: {
     configLoad(): Promise<{ values: Record<string, unknown>; descriptions: Record<string, string> }>
     configSave(config: Record<string, unknown>): Promise<void>
+    customProvidersLoad(): Promise<readonly Record<string, unknown>[]>
+    customProvidersSave(providers: readonly Record<string, unknown>[]): Promise<void>
   } }).consiliumAPI ?? null
 }

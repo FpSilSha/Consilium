@@ -54,14 +54,29 @@ export function splitForCompaction(
  * Builds a summary prompt for the archive portion.
  * This prompt is sent to a cheap/fast model (e.g., Haiku, GPT-4o-mini)
  * to generate a condensed summary of the older conversation.
+ *
+ * Accepts an optional `template` string that uses the `{messages}`
+ * placeholder to inject the formatted archive. When `template` is
+ * omitted, the function reproduces the pre-feature hardcoded default
+ * byte-for-byte so the existing tests continue to pass without
+ * modification. Callers that use the Compact Prompts library should
+ * pass the resolved template from the resolver.
  */
 export function buildSummaryPrompt(
   archiveMessages: readonly Message[],
+  template?: string,
 ): string {
   const formatted = archiveMessages
     .map(formatWithIdentityHeader)
     .join('\n\n')
 
+  if (template != null) {
+    // Single-pass regex substitution — same cascade-safe pattern used
+    // by the persona-switch and compact-prompts resolvers.
+    return template.replace(/\{messages\}/g, () => formatted)
+  }
+
+  // Default path — preserves the historical prompt verbatim.
   return [
     'Summarize the following conversation concisely. Preserve:',
     '- Key decisions and conclusions',
@@ -75,27 +90,6 @@ export function buildSummaryPrompt(
     '',
     formatted,
   ].join('\n')
-}
-
-/**
- * Builds the compacted payload that gets sent to an agent:
- * [System Prompt] → [Archive summary] → [Buffer of raw recent messages]
- *
- * Returns the summary as a system-level context preamble and the raw buffer messages.
- */
-export function buildCompactedContext(
-  archiveSummary: string,
-  buffer: readonly Message[],
-): { readonly preamble: string; readonly recentMessages: readonly Message[] } {
-  const preamble = [
-    '--- Conversation History (Summarized) ---',
-    '',
-    archiveSummary,
-    '',
-    '--- Recent Messages (Verbatim) ---',
-  ].join('\n')
-
-  return { preamble, recentMessages: buffer }
 }
 
 /**

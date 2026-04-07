@@ -4,45 +4,126 @@ import { app, BrowserWindow, ipcMain, shell, dialog, Menu } from 'electron'
 // app.commandLine.appendSwitch('remote-debugging-port', '9333')
 import { join, resolve, normalize, sep, basename, extname } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync, renameSync } from 'fs'
-import { loadEnvFile, writeEnvFile } from './env-loader'
+// env-loader removed — keys use safeStorage exclusively
 import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
+import { loadCustomPersonas, saveCustomPersona, deleteCustomPersona, isValidCustomPersona } from './persona-store'
+import { loadCustomSystemPrompts, saveCustomSystemPrompt, deleteCustomSystemPrompt, isValidStoredSystemPrompt } from './system-prompt-store'
+import { loadCustomCompilePrompts, saveCustomCompilePrompt, deleteCustomCompilePrompt, isValidStoredCompilePrompt } from './compile-prompt-store'
+import { loadCustomCompactPrompts, saveCustomCompactPrompt, deleteCustomCompactPrompt, isValidStoredCompactPrompt } from './compact-prompt-store'
+import { loadCustomProviders, saveCustomProviders, isValidProvider, type CustomProviderDef } from './custom-providers-store'
+import { loadCustomModels, saveCustomModels, addCustomModelId } from './custom-models-store'
+import { loadDocument, saveDocument, deleteDocument, isValidDocument } from './documents-store'
 
 // ── App Configuration ─────────────────────────────────────────
 
-interface CustomProviderDef {
-  readonly id: string
-  readonly name: string
-  readonly baseUrl: string
-  readonly modelListEndpoint: string | null
-  readonly healthCheckEndpoint: string | null
-  readonly costEndpoint: string | null
+interface AutoCompactionConfigPersisted {
+  readonly provider: string
+  readonly model: string
+  readonly keyId: string
 }
 
 interface AppConfig {
   readonly maxSessionSizeMB: number
-  readonly autoSaveDebounceMs: number
-  readonly defaultTurnMode: string
   readonly maxFileAttachmentMB: number
   readonly showOnboarding: boolean
-  readonly customProviders: readonly CustomProviderDef[]
+  readonly autoCompactionEnabled: boolean
+  readonly autoCompactionConfig: AutoCompactionConfigPersisted | null
+  /** Output token cap for Compile Document calls. Must be > 0. */
+  readonly compileMaxTokens: number
+  /** Default model used for compile when no per-call override is provided. */
+  readonly compileModelConfig: AutoCompactionConfigPersisted | null
+  /**
+   * Default compile preset ID. Renderer owns the list of valid preset IDs
+   * in src/features/chat/compile-presets.ts — main process accepts any
+   * non-empty string and renderer resolves unknown IDs to the default at
+   * runtime (graceful degradation).
+   */
+  readonly compilePresetId: string
+  /**
+   * System Prompts library — mode + custom-id pair for each of the two
+   * categories. Modes are 'base' | 'custom' | 'off' (validated as
+   * non-empty strings here; renderer enforces the enum). Custom IDs may
+   * be null when mode is base or off.
+   *
+   * Renderer (useStartupCustomSystemPrompts) reconciles unknown custom
+   * IDs against the loaded library and rewrites this back to disk if a
+   * referenced custom is gone — same self-healing pattern as
+   * compilePresetId.
+   */
+  readonly advisorSystemPromptMode: string
+  readonly advisorSystemPromptCustomId: string | null
+  readonly personaSwitchPromptMode: string
+  readonly personaSwitchPromptCustomId: string | null
+  /**
+   * Currently-selected compact prompt ID (library base or custom).
+   * Consumed by both the manual Compact button and the auto-compaction
+   * pipeline. Defaults to the built-in base entry ID.
+   *
+   * Validated as any non-empty string — runtime resolution via
+   * resolveCompactPromptTemplateWithFallback handles the unknown-ID
+   * case by falling back to the built-in base.
+   */
+  readonly compactPromptId: string
 }
 
 /** Description for each config key — shown in the Edit Configuration modal */
 export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
   maxSessionSizeMB: 'Maximum session file size in megabytes before save is rejected.',
-  autoSaveDebounceMs: 'Delay in milliseconds before auto-saving after a change. Lower = more frequent saves.',
-  defaultTurnMode: 'Default turn mode for new sessions: sequential, parallel, manual, or queue.',
   maxFileAttachmentMB: 'Maximum file size in megabytes for attachments.',
   showOnboarding: 'Show the onboarding wizard on next startup. Automatically set to false after completing the wizard.',
+  autoCompactionEnabled: 'When true, new sessions inherit auto-compaction turned on using the configured model.',
+  autoCompactionConfig: 'Default summarization model for auto-compaction on new sessions. Managed via the Auto-compact button.',
+  compileMaxTokens: 'Maximum output tokens for Compile Document calls. Higher values let the document grow longer before being truncated. Default 16384. Provider may cap server-side.',
+  compileModelConfig: 'Default model used by Compile Document. Managed via Edit → Compile Settings.',
+  compilePresetId: 'Default compile preset (style template). Managed via Edit → Compile Settings.',
+  advisorSystemPromptMode: 'Advisor Layer-1 system prompt mode: base, custom, or off. Managed via Configuration → System Prompts.',
+  advisorSystemPromptCustomId: 'Custom advisor system prompt ID (when mode is custom). Managed via Configuration → System Prompts.',
+  personaSwitchPromptMode: 'Persona-switch summarization prompt mode: base, custom, or off. Managed via Configuration → System Prompts.',
+  personaSwitchPromptCustomId: 'Custom persona-switch prompt ID (when mode is custom). Managed via Configuration → System Prompts.',
+  compactPromptId: 'Currently-selected compact prompt template ID (used by both manual Compact and auto-compaction). Managed via Configuration → Compact Prompts.',
 }
 
 const DEFAULT_CONFIG: AppConfig = {
   maxSessionSizeMB: 100,
-  autoSaveDebounceMs: 2000,
-  defaultTurnMode: 'sequential',
   maxFileAttachmentMB: 10,
   showOnboarding: true,
-  customProviders: [],
+  autoCompactionEnabled: false,
+  autoCompactionConfig: null,
+  compileMaxTokens: 16384,
+  compileModelConfig: null,
+  // Hardcoded default — must match `DEFAULT_PRESET_ID` in
+  // src/features/chat/compile-presets.ts. Kept as a string here so the
+  // main process doesn't need to import renderer-side modules.
+  compilePresetId: 'comprehensive',
+  // System Prompts library defaults — both categories on 'base', no
+  // custom selected. New installs get the prior pre-feature behavior
+  // (built-in advisor prompt + built-in persona-switch prompt).
+  advisorSystemPromptMode: 'base',
+  advisorSystemPromptCustomId: null,
+  personaSwitchPromptMode: 'base',
+  personaSwitchPromptCustomId: null,
+  // Matches BUILT_IN_COMPACT_PROMPT_ID in src/features/compactPrompts/
+  // built-in-compact-prompts.ts. Kept as a literal string here because
+  // the main process doesn't import from the renderer tree.
+  compactPromptId: 'builtin_compact_default',
+}
+
+function isValidAutoCompactionConfig(v: unknown): v is AutoCompactionConfigPersisted {
+  if (typeof v !== 'object' || v === null) return false
+  const o = v as Record<string, unknown>
+  return typeof o['provider'] === 'string'
+    && typeof o['model'] === 'string'
+    && typeof o['keyId'] === 'string'
+}
+
+/** Validates a string field that's allowed to be either a non-empty string or null. */
+function isValidNullableString(v: unknown): boolean {
+  return v === null || typeof v === 'string'
+}
+
+/** Valid system prompt mode values: 'base' | 'custom' | 'off'. */
+function isValidPromptMode(v: unknown): boolean {
+  return v === 'base' || v === 'custom' || v === 'off'
 }
 
 function loadAppConfig(): AppConfig {
@@ -52,11 +133,32 @@ function loadAppConfig(): AppConfig {
     const parsed = JSON.parse(content) as Record<string, unknown>
     return {
       maxSessionSizeMB: typeof parsed['maxSessionSizeMB'] === 'number' ? parsed['maxSessionSizeMB'] : DEFAULT_CONFIG.maxSessionSizeMB,
-      autoSaveDebounceMs: typeof parsed['autoSaveDebounceMs'] === 'number' ? parsed['autoSaveDebounceMs'] : DEFAULT_CONFIG.autoSaveDebounceMs,
-      defaultTurnMode: typeof parsed['defaultTurnMode'] === 'string' ? parsed['defaultTurnMode'] : DEFAULT_CONFIG.defaultTurnMode,
       maxFileAttachmentMB: typeof parsed['maxFileAttachmentMB'] === 'number' ? parsed['maxFileAttachmentMB'] : DEFAULT_CONFIG.maxFileAttachmentMB,
       showOnboarding: typeof parsed['showOnboarding'] === 'boolean' ? parsed['showOnboarding'] : DEFAULT_CONFIG.showOnboarding,
-      customProviders: parseCustomProviders(parsed['customProviders']),
+      autoCompactionEnabled: typeof parsed['autoCompactionEnabled'] === 'boolean' ? parsed['autoCompactionEnabled'] : DEFAULT_CONFIG.autoCompactionEnabled,
+      autoCompactionConfig: isValidAutoCompactionConfig(parsed['autoCompactionConfig']) ? parsed['autoCompactionConfig'] : DEFAULT_CONFIG.autoCompactionConfig,
+      compileMaxTokens: typeof parsed['compileMaxTokens'] === 'number' && parsed['compileMaxTokens'] > 0
+        ? parsed['compileMaxTokens']
+        : DEFAULT_CONFIG.compileMaxTokens,
+      compileModelConfig: isValidAutoCompactionConfig(parsed['compileModelConfig']) ? parsed['compileModelConfig'] : DEFAULT_CONFIG.compileModelConfig,
+      compilePresetId: typeof parsed['compilePresetId'] === 'string' && parsed['compilePresetId'] !== ''
+        ? parsed['compilePresetId']
+        : DEFAULT_CONFIG.compilePresetId,
+      advisorSystemPromptMode: isValidPromptMode(parsed['advisorSystemPromptMode'])
+        ? (parsed['advisorSystemPromptMode'] as string)
+        : DEFAULT_CONFIG.advisorSystemPromptMode,
+      advisorSystemPromptCustomId: isValidNullableString(parsed['advisorSystemPromptCustomId'])
+        ? (parsed['advisorSystemPromptCustomId'] as string | null)
+        : DEFAULT_CONFIG.advisorSystemPromptCustomId,
+      personaSwitchPromptMode: isValidPromptMode(parsed['personaSwitchPromptMode'])
+        ? (parsed['personaSwitchPromptMode'] as string)
+        : DEFAULT_CONFIG.personaSwitchPromptMode,
+      personaSwitchPromptCustomId: isValidNullableString(parsed['personaSwitchPromptCustomId'])
+        ? (parsed['personaSwitchPromptCustomId'] as string | null)
+        : DEFAULT_CONFIG.personaSwitchPromptCustomId,
+      compactPromptId: typeof parsed['compactPromptId'] === 'string' && parsed['compactPromptId'] !== ''
+        ? parsed['compactPromptId']
+        : DEFAULT_CONFIG.compactPromptId,
     }
   } catch {
     try {
@@ -67,24 +169,6 @@ function loadAppConfig(): AppConfig {
   }
 }
 
-function parseCustomProviders(raw: unknown): readonly CustomProviderDef[] {
-  if (!Array.isArray(raw)) return []
-  return raw.filter((entry): entry is CustomProviderDef => {
-    if (entry == null || typeof entry !== 'object') return false
-    const e = entry as Record<string, unknown>
-    return typeof e['id'] === 'string' && e['id'] !== ''
-      && typeof e['name'] === 'string' && e['name'] !== ''
-      && typeof e['baseUrl'] === 'string' && e['baseUrl'] !== ''
-  }).map((e) => ({
-    id: e.id,
-    name: e.name,
-    baseUrl: e.baseUrl,
-    modelListEndpoint: typeof e.modelListEndpoint === 'string' ? e.modelListEndpoint : null,
-    healthCheckEndpoint: typeof e.healthCheckEndpoint === 'string' ? e.healthCheckEndpoint : null,
-    costEndpoint: typeof e.costEndpoint === 'string' ? e.costEndpoint : null,
-  }))
-}
-
 function saveAppConfig(config: AppConfig): void {
   const configPath = join(app.getPath('userData'), 'config.json')
   mkdirSync(app.getPath('userData'), { recursive: true })
@@ -92,6 +176,57 @@ function saveAppConfig(config: AppConfig): void {
 }
 
 let appConfig = DEFAULT_CONFIG
+
+/**
+ * One-time migration: moves customProviders from config.json to custom-providers.json
+ * and customModels from catalog-preferences.json to custom-models.json.
+ */
+function migrateCustomData(): void {
+  const userData = app.getPath('userData')
+
+  // Migrate customProviders from config.json → custom-providers.json
+  try {
+    const configPath = join(userData, 'config.json')
+    if (existsSync(configPath)) {
+      const content = readFileSync(configPath, 'utf-8')
+      const parsed = JSON.parse(content) as Record<string, unknown>
+      if (Array.isArray(parsed['customProviders']) && parsed['customProviders'].length > 0) {
+        const existing = loadCustomProviders()
+        if (existing.length === 0) {
+          const toMigrate = (parsed['customProviders'] as unknown[]).filter(isValidProvider)
+          if (toMigrate.length > 0) saveCustomProviders(toMigrate)
+        }
+        const { customProviders: _, ...rest } = parsed
+        writeFileSync(configPath, JSON.stringify(rest, null, 2), 'utf-8')
+      }
+    }
+  } catch {
+    // If save fails, config.json retains the data — no loss
+  }
+
+  // Migrate customModels from catalog-preferences.json → custom-models.json
+  try {
+    const prefsPath = join(userData, 'catalog-preferences.json')
+    if (existsSync(prefsPath)) {
+      const content = readFileSync(prefsPath, 'utf-8')
+      const parsed = JSON.parse(content) as Record<string, unknown>
+      if (parsed['customModels'] != null && typeof parsed['customModels'] === 'object' && !Array.isArray(parsed['customModels'])) {
+        const customModels = parsed['customModels'] as Record<string, readonly string[]>
+        const hasEntries = Object.values(customModels).some((arr) => Array.isArray(arr) && arr.length > 0)
+        if (hasEntries) {
+          const existing = loadCustomModels()
+          if (Object.keys(existing).length === 0) {
+            saveCustomModels(customModels)
+          }
+          const { customModels: _, ...rest } = parsed
+          writeFileSync(prefsPath, JSON.stringify(rest, null, 2), 'utf-8')
+        }
+      }
+    }
+  } catch {
+    // If save fails, catalog-preferences.json retains the data — no loss
+  }
+}
 
 // ── Menu & Context Menu ──────────────────────────────────────
 
@@ -125,8 +260,14 @@ function createAppMenu(): void {
       label: 'Edit',
       submenu: [
         {
-          label: 'Edit Configuration',
-          click: () => { mainWindow?.webContents.send('menu:edit-config') },
+          // Single entry by design — opens the unified ConfigurationModal
+          // on the renderer side, which contains panes for personas, the
+          // four prompt libraries, compile settings, auto-compaction
+          // settings, and the raw config editor. The Ctrl+, accelerator
+          // matches VS Code's Settings shortcut.
+          label: 'Configuration…',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => { mainWindow?.webContents.send('menu:configuration') },
         },
       ],
     },
@@ -232,30 +373,6 @@ function isPathWithinAllowed(targetPath: string, allowedRoots: readonly string[]
   })
 }
 
-function validateEnvEntries(entries: unknown): Record<string, string> | null {
-  if (typeof entries !== 'object' || entries === null || Array.isArray(entries)) {
-    return null
-  }
-
-  const result: Record<string, string> = {}
-  for (const [key, value] of Object.entries(entries as Record<string, unknown>)) {
-    // Skip prototype pollution keys
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
-      continue
-    }
-    if (typeof key !== 'string' || typeof value !== 'string') {
-      return null
-    }
-    // Validate key format: alphanumeric and underscores only
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
-      return null
-    }
-    result[key] = value
-  }
-
-  return result
-}
-
 function registerIpcHandlers(): void {
   ipcMain.handle('get-user-data-path', () => app.getPath('userData'))
 
@@ -278,16 +395,6 @@ function registerIpcHandlers(): void {
     // Only allow http/https URLs to prevent file:// or other protocol abuse
     if (!url.startsWith('https://') && !url.startsWith('http://')) throw new Error('Only http(s) URLs allowed')
     return shell.openExternal(url)
-  })
-
-  ipcMain.handle('read-env-file', () => loadEnvFile())
-
-  ipcMain.handle('write-env-file', async (_event, entries: unknown) => {
-    const validated = validateEnvEntries(entries)
-    if (validated === null) {
-      throw new Error('Invalid entries format: expected Record<string, string> with valid env key names')
-    }
-    writeEnvFile(validated)
   })
 
   ipcMain.handle('keys:available', () => isEncryptionAvailable())
@@ -386,10 +493,44 @@ function registerIpcHandlers(): void {
     const raw = newConfig as Record<string, unknown>
     const validated: AppConfig = {
       maxSessionSizeMB: typeof raw['maxSessionSizeMB'] === 'number' ? raw['maxSessionSizeMB'] : appConfig.maxSessionSizeMB,
-      autoSaveDebounceMs: typeof raw['autoSaveDebounceMs'] === 'number' ? raw['autoSaveDebounceMs'] : appConfig.autoSaveDebounceMs,
-      defaultTurnMode: typeof raw['defaultTurnMode'] === 'string' ? raw['defaultTurnMode'] : appConfig.defaultTurnMode,
       maxFileAttachmentMB: typeof raw['maxFileAttachmentMB'] === 'number' ? raw['maxFileAttachmentMB'] : appConfig.maxFileAttachmentMB,
-      customProviders: parseCustomProviders(raw['customProviders'] ?? appConfig.customProviders),
+      showOnboarding: typeof raw['showOnboarding'] === 'boolean' ? raw['showOnboarding'] : appConfig.showOnboarding,
+      autoCompactionEnabled: typeof raw['autoCompactionEnabled'] === 'boolean' ? raw['autoCompactionEnabled'] : appConfig.autoCompactionEnabled,
+      autoCompactionConfig: raw['autoCompactionConfig'] === null
+        ? null
+        : isValidAutoCompactionConfig(raw['autoCompactionConfig'])
+          ? raw['autoCompactionConfig']
+          : appConfig.autoCompactionConfig,
+      compileMaxTokens: typeof raw['compileMaxTokens'] === 'number' && raw['compileMaxTokens'] > 0
+        ? raw['compileMaxTokens']
+        : appConfig.compileMaxTokens,
+      compileModelConfig: raw['compileModelConfig'] === null
+        ? null
+        : isValidAutoCompactionConfig(raw['compileModelConfig'])
+          ? raw['compileModelConfig']
+          : appConfig.compileModelConfig,
+      compilePresetId: typeof raw['compilePresetId'] === 'string' && raw['compilePresetId'] !== ''
+        ? raw['compilePresetId']
+        : appConfig.compilePresetId,
+      advisorSystemPromptMode: isValidPromptMode(raw['advisorSystemPromptMode'])
+        ? (raw['advisorSystemPromptMode'] as string)
+        : appConfig.advisorSystemPromptMode,
+      advisorSystemPromptCustomId: raw['advisorSystemPromptCustomId'] === null
+        ? null
+        : typeof raw['advisorSystemPromptCustomId'] === 'string'
+          ? raw['advisorSystemPromptCustomId']
+          : appConfig.advisorSystemPromptCustomId,
+      personaSwitchPromptMode: isValidPromptMode(raw['personaSwitchPromptMode'])
+        ? (raw['personaSwitchPromptMode'] as string)
+        : appConfig.personaSwitchPromptMode,
+      personaSwitchPromptCustomId: raw['personaSwitchPromptCustomId'] === null
+        ? null
+        : typeof raw['personaSwitchPromptCustomId'] === 'string'
+          ? raw['personaSwitchPromptCustomId']
+          : appConfig.personaSwitchPromptCustomId,
+      compactPromptId: typeof raw['compactPromptId'] === 'string' && raw['compactPromptId'] !== ''
+        ? raw['compactPromptId']
+        : appConfig.compactPromptId,
     }
     appConfig = validated
     saveAppConfig(validated)
@@ -407,6 +548,118 @@ function registerIpcHandlers(): void {
   ipcMain.handle('adapters:delete', (_event, id: unknown) => {
     if (typeof id !== 'string') throw new Error('Invalid adapter ID')
     deleteAdapterDefinition(id)
+  })
+
+  // ── Custom personas ────────────────────────────────────────
+
+  ipcMain.handle('personas:load', () => loadCustomPersonas())
+
+  ipcMain.handle('personas:save', (_event, persona: unknown) => {
+    if (!isValidCustomPersona(persona)) {
+      throw new Error('Invalid custom persona: must include id, name, content, createdAt, updatedAt')
+    }
+    saveCustomPersona(persona)
+  })
+
+  ipcMain.handle('personas:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid persona ID')
+    return deleteCustomPersona(id)
+  })
+
+  // ── Custom system prompts ──────────────────────────────────
+
+  ipcMain.handle('system-prompts:load', () => loadCustomSystemPrompts())
+
+  ipcMain.handle('system-prompts:save', (_event, entry: unknown) => {
+    if (!isValidStoredSystemPrompt(entry)) {
+      throw new Error('Invalid system prompt: must include id, category, name, content, createdAt, updatedAt')
+    }
+    saveCustomSystemPrompt(entry)
+  })
+
+  ipcMain.handle('system-prompts:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid system prompt ID')
+    return deleteCustomSystemPrompt(id)
+  })
+
+  // ── Custom compile prompts ─────────────────────────────────
+
+  ipcMain.handle('compile-prompts:load', () => loadCustomCompilePrompts())
+
+  ipcMain.handle('compile-prompts:save', (_event, entry: unknown) => {
+    if (!isValidStoredCompilePrompt(entry)) {
+      throw new Error('Invalid compile prompt: must include id, label, description, prompt, createdAt, updatedAt')
+    }
+    saveCustomCompilePrompt(entry)
+  })
+
+  ipcMain.handle('compile-prompts:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid compile prompt ID')
+    return deleteCustomCompilePrompt(id)
+  })
+
+  // ── Custom compact prompts ─────────────────────────────────
+
+  ipcMain.handle('compact-prompts:load', () => loadCustomCompactPrompts())
+
+  ipcMain.handle('compact-prompts:save', (_event, entry: unknown) => {
+    if (!isValidStoredCompactPrompt(entry)) {
+      throw new Error('Invalid compact prompt: must include id, name, content, createdAt, updatedAt')
+    }
+    saveCustomCompactPrompt(entry)
+  })
+
+  ipcMain.handle('compact-prompts:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid compact prompt ID')
+    return deleteCustomCompactPrompt(id)
+  })
+
+  // ── Custom providers ───────────────────────────────────────
+
+  ipcMain.handle('custom-providers:load', () => loadCustomProviders())
+
+  ipcMain.handle('custom-providers:save', (_event, providers: unknown) => {
+    if (!Array.isArray(providers)) throw new Error('Invalid providers format')
+    const validated = providers.filter(isValidProvider)
+    saveCustomProviders(validated)
+  })
+
+  // ── Custom models ─────────────────────────────────────────
+
+  ipcMain.handle('custom-models:load', () => loadCustomModels())
+
+  ipcMain.handle('custom-models:save', (_event, models: unknown) => {
+    if (typeof models !== 'object' || models === null || Array.isArray(models)) throw new Error('Invalid models format')
+    // Validate each entry is a string array
+    const validated: Record<string, readonly string[]> = {}
+    for (const [key, value] of Object.entries(models as Record<string, unknown>)) {
+      if (Array.isArray(value) && value.every((v) => typeof v === 'string')) {
+        validated[key] = value as string[]
+      }
+    }
+    saveCustomModels(validated)
+  })
+
+  ipcMain.handle('custom-models:add', (_event, provider: unknown, modelId: unknown) => {
+    if (typeof provider !== 'string' || typeof modelId !== 'string') throw new Error('Invalid args')
+    addCustomModelId(provider, modelId)
+  })
+
+  // ── Compiled documents ─────────────────────────────────────
+
+  ipcMain.handle('documents:load', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid document id')
+    return loadDocument(id)
+  })
+
+  ipcMain.handle('documents:save', (_event, doc: unknown) => {
+    if (!isValidDocument(doc)) throw new Error('Invalid document — missing required fields')
+    saveDocument(doc)
+  })
+
+  ipcMain.handle('documents:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid document id')
+    return deleteDocument(id)
   })
 
   // ── Session persistence ────────────────────────────────────
@@ -504,7 +757,7 @@ function registerIpcHandlers(): void {
 
     if (result.canceled || result.filePaths.length === 0) return []
 
-    const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
+    const MAX_FILE_SIZE = appConfig.maxFileAttachmentMB * 1024 * 1024
     const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg'])
     const MIME_MAP: Record<string, string> = {
       '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -563,6 +816,7 @@ function registerIpcHandlers(): void {
 
 app.whenReady().then(() => {
   appConfig = loadAppConfig()
+  migrateCustomData()
   createAppMenu()
   registerIpcHandlers()
   createWindow()

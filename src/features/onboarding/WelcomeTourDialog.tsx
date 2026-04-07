@@ -8,6 +8,7 @@ const TOUR_ITEMS = [
   { num: 5, title: 'Voting', desc: 'Use "Call for Vote" to get YAY/NAY/ABSTAIN from all advisors on any question.' },
   { num: 6, title: 'Command Palette', desc: 'Press Ctrl+K to quickly access actions like starting a run, switching modes, or adding advisors.' },
   { num: 7, title: 'Budget', desc: 'Set a spending cap in the sidebar. Warning at 80%, all API calls halt at 100%.' },
+  { num: 8, title: 'Sessions', desc: 'Your conversations are saved automatically. Double-click a session name in the sidebar to rename it.' },
 ] as const
 
 interface WelcomeTourDialogProps {

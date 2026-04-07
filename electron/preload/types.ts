@@ -8,8 +8,6 @@ export interface StoredKey {
 export interface ConsiliumAPI {
   readonly platform: string
   getUserDataPath(): Promise<string>
-  readEnvFile(): Promise<Readonly<Record<string, string>>>
-  writeEnvFile(entries: Readonly<Record<string, string>>): Promise<void>
   openFolder(path: string): Promise<void>
   keysAvailable(): Promise<boolean>
   keysLoad(): Promise<readonly StoredKey[]>
@@ -28,6 +26,26 @@ export interface ConsiliumAPI {
   adaptersLoad(): Promise<readonly Record<string, unknown>[]>
   adaptersSave(def: Record<string, unknown>): Promise<void>
   adaptersDelete(id: string): Promise<void>
+  personasLoad(): Promise<readonly Record<string, unknown>[]>
+  personasSave(persona: Record<string, unknown>): Promise<void>
+  personasDelete(id: string): Promise<boolean>
+  systemPromptsLoad(): Promise<readonly Record<string, unknown>[]>
+  systemPromptsSave(entry: Record<string, unknown>): Promise<void>
+  systemPromptsDelete(id: string): Promise<boolean>
+  compilePromptsLoad(): Promise<readonly Record<string, unknown>[]>
+  compilePromptsSave(entry: Record<string, unknown>): Promise<void>
+  compilePromptsDelete(id: string): Promise<boolean>
+  compactPromptsLoad(): Promise<readonly Record<string, unknown>[]>
+  compactPromptsSave(entry: Record<string, unknown>): Promise<void>
+  compactPromptsDelete(id: string): Promise<boolean>
+  customProvidersLoad(): Promise<readonly Record<string, unknown>[]>
+  customProvidersSave(providers: readonly Record<string, unknown>[]): Promise<void>
+  customModelsLoad(): Promise<Readonly<Record<string, readonly string[]>>>
+  customModelsSave(models: Readonly<Record<string, readonly string[]>>): Promise<void>
+  customModelsAdd(provider: string, modelId: string): Promise<void>
+  documentsLoad(id: string): Promise<Record<string, unknown> | null>
+  documentsSave(doc: Record<string, unknown>): Promise<void>
+  documentsDelete(id: string): Promise<boolean>
   configLoad(): Promise<{ values: Record<string, unknown>; descriptions: Record<string, string> }>
   configSave(config: Record<string, unknown>): Promise<void>
   sessionSave(id: string, content: string): Promise<void>

@@ -11,6 +11,7 @@ function makeMessage(
   role: Message['role'],
   content: string,
   personaLabel = 'Advisor',
+  windowId = 'win-test',
 ): Message {
   return {
     id: `msg-${++_idCounter}`,
@@ -18,7 +19,7 @@ function makeMessage(
     content,
     personaLabel,
     timestamp: Date.now(),
-    windowId: 'win-test',
+    windowId,
   }
 }
 
@@ -174,6 +175,84 @@ describe('messagesToApiFormat', () => {
       const multiLine = 'Line one\nLine two\nLine three'
       const result = messagesToApiFormat([makeMessage('assistant', multiLine, 'Writer')])
       expect(result[0]?.content).toBe(`[Writer]: ${multiLine}`)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Self-context stripping (Option A: break few-shot self-imitation)
+  // ---------------------------------------------------------------------------
+
+  describe('self-context stripping', () => {
+    it('strips [Label]: prefix from the calling advisor\'s own past assistant turns', () => {
+      const msgs = [
+        makeMessage('user', 'design a vault', 'You', 'win-1'),
+        makeMessage('assistant', 'Use AES-256.', 'Security Engineer', 'win-1'),
+      ]
+      const result = messagesToApiFormat(msgs, {
+        windowId: 'win-1',
+        personaLabel: 'Security Engineer',
+      })
+      expect(result[1]?.content).toBe('Use AES-256.')
+    })
+
+    it('keeps [You]: prefix on user turns even when self is provided', () => {
+      const msgs = [makeMessage('user', 'hello', 'You', 'win-1')]
+      const result = messagesToApiFormat(msgs, {
+        windowId: 'win-1',
+        personaLabel: 'Security Engineer',
+      })
+      expect(result[0]?.content).toBe('[You]: hello')
+    })
+
+    it('keeps [Label]: prefix on OTHER advisors\' turns', () => {
+      const msgs = [
+        makeMessage('assistant', 'Use AES-256.', 'Security Engineer', 'win-1'),
+        makeMessage('assistant', 'I disagree.', 'Risk Analyst', 'win-2'),
+      ]
+      const result = messagesToApiFormat(msgs, {
+        windowId: 'win-1',
+        personaLabel: 'Security Engineer',
+      })
+      expect(result[0]?.content).toBe('Use AES-256.')
+      expect(result[1]?.content).toBe('[Risk Analyst]: I disagree.')
+    })
+
+    it('keeps prefix on same window if personaLabel differs (post persona switch)', () => {
+      // Window 1 used to be "Security Engineer", now occupied by "Risk Analyst".
+      // Old messages must keep their prefix so the new persona doesn't think
+      // they were its own words.
+      const msgs = [
+        makeMessage('assistant', 'Use AES-256.', 'Security Engineer', 'win-1'),
+      ]
+      const result = messagesToApiFormat(msgs, {
+        windowId: 'win-1',
+        personaLabel: 'Risk Analyst',
+      })
+      expect(result[0]?.content).toBe('[Security Engineer]: Use AES-256.')
+    })
+
+    it('keeps prefix on duplicate-persona advisors with different windowIds', () => {
+      // Two "Security Engineer" advisors — each must NOT strip the other's prefix.
+      const msgs = [
+        makeMessage('assistant', 'option A', 'Security Engineer', 'win-1'),
+        makeMessage('assistant', 'option B', 'Security Engineer', 'win-2'),
+      ]
+      const result = messagesToApiFormat(msgs, {
+        windowId: 'win-1',
+        personaLabel: 'Security Engineer',
+      })
+      expect(result[0]?.content).toBe('option A') // self
+      expect(result[1]?.content).toBe('[Security Engineer]: option B') // sibling
+    })
+
+    it('omitting self leaves all messages prefixed (back-compat)', () => {
+      const msgs = [
+        makeMessage('user', 'q', 'You', 'win-1'),
+        makeMessage('assistant', 'a', 'Security Engineer', 'win-1'),
+      ]
+      const result = messagesToApiFormat(msgs)
+      expect(result[0]?.content).toBe('[You]: q')
+      expect(result[1]?.content).toBe('[Security Engineer]: a')
     })
   })
 })

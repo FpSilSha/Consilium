@@ -71,7 +71,7 @@ export function AttachButton({ onAttach }: AttachButtonProps): ReactNode {
 }
 
 /** Reads a browser File object into an Attachment */
-async function readBrowserFile(file: File): Promise<Attachment> {
+export async function readBrowserFile(file: File): Promise<Attachment> {
   const isImage = file.type.startsWith('image/')
   const data = await (isImage ? readAsBase64(file) : file.text())
   return {

@@ -13,15 +13,23 @@ export function BudgetBar(): ReactNode {
   const windows = useStore((s) => s.windows)
   const messages = useStore((s) => s.messages)
   const orModels = useStore((s) => s.catalogModels['openrouter']) ?? []
+  // Subscribe to sessionCompileCost so the displayed total updates when
+  // a compile finishes (Zustand re-renders only on subscribed slices).
+  const sessionCompileCost = useStore((s) => s.sessionCompileCost)
 
   const [showBudgetInput, setShowBudgetInput] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
   const [budgetValue, setBudgetValue] = useState('')
 
-  const totalCost = windowOrder.reduce((sum, id) => {
+  // Combined total: advisor running costs + compile cost (which is tracked
+  // separately because compile is not an advisor turn). The progress bar
+  // and budget checks use getSessionTotalCost() which sums the same fields,
+  // so this stays in sync.
+  const advisorCost = windowOrder.reduce((sum, id) => {
     const w = windows[id]
     return sum + (w?.runningCost ?? 0)
   }, 0)
+  const totalCost = advisorCost + sessionCompileCost
 
   const untrackedCount = messages.filter(
     (m) => m.role === 'assistant' && m.costMetadata == null,
@@ -59,7 +67,7 @@ export function BudgetBar(): ReactNode {
 
       {/* Budget — clickable to set */}
       <div className="flex items-center gap-1.5">
-        <Tooltip text="Click to set session budget" position="bottom">
+        <Tooltip text="Click to set session budget. Warning: cost can't be measured mid-stream — calculated after output." position="bottom">
           <button
             onClick={() => setShowBudgetInput(true)}
             className="text-left text-xs text-content-muted transition-colors hover:text-content-primary"
@@ -88,6 +96,7 @@ export function BudgetBar(): ReactNode {
           windowOrder={windowOrder}
           orModels={orModels}
           totalCost={totalCost}
+          compileCost={sessionCompileCost}
           onClose={() => setShowBreakdown(false)}
         />
       )}
@@ -95,10 +104,19 @@ export function BudgetBar(): ReactNode {
       {/* Budget input dialog */}
       {showBudgetInput && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="mx-4 max-w-xs rounded-lg border border-edge-subtle bg-surface-panel p-4">
+          <div className="mx-4 w-full max-w-md rounded-lg border border-edge-subtle bg-surface-panel p-5">
             <h3 className="mb-2 text-sm font-medium text-content-primary">Session Budget</h3>
             <p className="mb-3 text-xs text-content-muted">
               Set a spending cap. Warning at 80%, halt at 100%. Enter 0 for no limit.
+            </p>
+            {/* Same disclaimer as the cost breakdown modal — the budget
+                check uses the same OpenRouter-based estimates that the
+                cost numbers do, so the cap is enforced against figures
+                that will not exactly match the user's actual bill. */}
+            <p className="mb-3 rounded-md border border-yellow-500/30 bg-yellow-900/20 px-3 py-2 text-xs leading-relaxed text-yellow-200">
+              <strong>Heads up:</strong> the budget halt fires against cost estimates calculated
+              from OpenRouter's published pricing, not your actual provider invoice. Real charges
+              may differ — use a cap that gives you headroom.
             </p>
             <input
               type="number"
@@ -149,9 +167,9 @@ export function BudgetBar(): ReactNode {
 
       {/* Budget exceeded */}
       {exceeded && (
-        <div className="fixed bottom-16 right-4 z-40 rounded-lg border border-accent-red bg-accent-red/20 px-4 py-2">
-          <span className="text-xs text-accent-red">
-            Budget exceeded. All API calls halted.
+        <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-lg border border-accent-red bg-surface-panel px-6 py-3 shadow-lg">
+          <span className="text-sm font-medium text-accent-red">
+            Budget exceeded — all API calls halted
           </span>
         </div>
       )}

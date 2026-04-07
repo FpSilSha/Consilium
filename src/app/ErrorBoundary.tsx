@@ -1,4 +1,5 @@
 import { Component, type ReactNode, type ErrorInfo } from 'react'
+import { redactKeys } from '@/features/keys'
 
 interface Props {
   readonly children: ReactNode
@@ -20,13 +21,13 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: unknown): State {
-    const message = error instanceof Error ? error.message : 'Unknown error'
+    const message = error instanceof Error ? redactKeys(error.message) : 'Unknown error'
     return { hasError: true, error: message }
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // eslint-disable-next-line no-console
-    console.error('[ErrorBoundary]', error, info.componentStack)
+    console.error('[ErrorBoundary]', redactKeys(error.message), info.componentStack)
   }
 
   render(): ReactNode {

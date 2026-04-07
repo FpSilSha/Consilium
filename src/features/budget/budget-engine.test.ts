@@ -87,6 +87,38 @@ describe('getSessionTotalCost', () => {
     expect(getSessionTotalCost()).toBe(5)
   })
 
+  // Compile cost lives outside windows — verify it's included in the total
+
+  it('includes sessionCompileCost when present in state', () => {
+    vi.mocked(useStore.getState).mockReturnValue({
+      windowOrder: ['w1'],
+      windows: { w1: { runningCost: 1.0 } },
+      sessionCompileCost: 0.5,
+    } as any)
+
+    expect(getSessionTotalCost()).toBeCloseTo(1.5)
+  })
+
+  it('returns just the compile cost when no advisor cost exists', () => {
+    vi.mocked(useStore.getState).mockReturnValue({
+      windowOrder: [],
+      windows: {},
+      sessionCompileCost: 2.25,
+    } as any)
+
+    expect(getSessionTotalCost()).toBe(2.25)
+  })
+
+  it('treats missing sessionCompileCost as 0 (back-compat for old store mocks)', () => {
+    vi.mocked(useStore.getState).mockReturnValue({
+      windowOrder: ['w1'],
+      windows: { w1: { runningCost: 3.0 } },
+      // sessionCompileCost intentionally absent
+    } as any)
+
+    expect(getSessionTotalCost()).toBe(3.0)
+  })
+
   it('returns 0 when all windows have zero cost', () => {
     mockStoreWithWindows(
       { w1: { runningCost: 0 }, w2: { runningCost: 0 } },

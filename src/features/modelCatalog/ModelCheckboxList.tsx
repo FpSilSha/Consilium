@@ -4,8 +4,9 @@ import { useStore } from '@/store'
 import { Tooltip } from '@/features/ui/Tooltip'
 import { getModelsForProvider } from '@/features/modelSelector/model-registry'
 import { getRawKey } from '@/features/keys/key-vault'
-import { saveCatalogPreferences } from './catalog-persistence'
+import { saveCatalogPreferences, saveCustomModelId } from './catalog-persistence'
 import { testModelId, testWillCost } from './model-validation'
+import { searchModels } from './model-search'
 
 interface ModelCheckboxListProps {
   readonly provider: Provider
@@ -24,13 +25,7 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
     ? catalogModels
     : getModelsForProvider(provider)
 
-  const filteredModels = useMemo(() => {
-    if (search.trim() === '') return allModels
-    const q = search.toLowerCase()
-    return allModels.filter((m) =>
-      m.id.toLowerCase().includes(q) || m.name.toLowerCase().includes(q),
-    )
-  }, [allModels, search])
+  const filteredModels = useMemo(() => searchModels(allModels, search), [allModels, search])
 
   // Empty allowedIds = no curation, all models available, checkboxes unchecked
   const isCurated = allowedIds.length > 0
@@ -45,6 +40,26 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
     const state = useStore.getState()
     const updatedAllowed = { ...state.allowedModels, [provider]: newAllowed }
     saveCatalogPreferences(updatedAllowed, state.priceOverrides).catch(() => {})
+
+    // Auto-switch advisors whose current model is no longer allowed — use cheapest
+    if (newAllowed.length > 0) {
+      const catalog = state.catalogModels[provider] ?? []
+      const available = catalog.filter((m) => newAllowed.includes(m.id))
+      if (available.length > 0) {
+        // Pick cheapest: free (both prices 0) first, then lowest output price
+        const free = available.filter((m) => m.inputPricePerToken === 0 && m.outputPricePerToken === 0)
+        const cheapest = free.length > 0
+          ? free[0]!.id
+          : [...available].sort((a, b) => a.outputPricePerToken - b.outputPricePerToken)[0]!.id
+        for (const windowId of state.windowOrder) {
+          const win = state.windows[windowId]
+          if (win == null || win.provider !== provider) continue
+          if (!newAllowed.includes(win.model)) {
+            state.updateWindow(windowId, { model: cheapest })
+          }
+        }
+      }
+    }
   }, [provider, setAllowedModels])
 
   const toggleModel = useCallback((modelId: string) => {
@@ -102,9 +117,6 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
         )}
       </div>
 
-      {/* Add custom model ID */}
-      <CustomModelInput provider={provider} onAdded={toggleModel} />
-
       {/* Search */}
       <div className="mb-2">
         <input
@@ -115,6 +127,13 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
           className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1.5 text-xs text-content-primary placeholder-content-disabled outline-none focus:border-edge-focus"
         />
       </div>
+
+      {/* Add custom model ID */}
+      <Tooltip text="Add updated models not listed" position="bottom">
+        <div className="mb-2">
+          <CustomModelInput provider={provider} onAdded={toggleModel} />
+        </div>
+      </Tooltip>
 
       {/* Table header */}
       <div className="mb-1 flex items-center gap-2 px-2 text-[10px] font-medium uppercase tracking-wider text-content-disabled">
@@ -258,6 +277,8 @@ function CustomModelInput({ provider, onAdded }: {
       setCatalogModels(provider, [...catalogModels, newModel])
       onAdded(trimmed)
       setCustomId('')
+      // Persist so it survives restart
+      saveCustomModelId(provider, trimmed).catch(() => {})
     } else {
       setTestResult(result.error ?? 'Invalid model ID')
     }

@@ -1,5 +1,14 @@
 import type { Message, AdvisorWindow, TurnMode, QueueCard } from '@/types'
 
+export interface SessionAutoCompaction {
+  readonly enabled: boolean
+  readonly config: {
+    readonly provider: string
+    readonly model: string
+    readonly keyId: string
+  } | null
+}
+
 export interface SessionFile {
   readonly version: 1
   readonly id: string
@@ -15,6 +24,24 @@ export interface SessionFile {
   readonly totalCost: number
   readonly inputFiles: readonly SessionFileRef[]
   readonly outputFiles: readonly SessionFileRef[]
+  /** Optional — older session files won't have this. Restored as off/null when absent. */
+  readonly autoCompaction?: SessionAutoCompaction
+  /**
+   * IDs of compiled documents this session references. The actual document
+   * content lives in standalone files in the documents directory; sessions
+   * just hold the references. Missing files are silently dropped on load.
+   * Optional for back-compat with older sessions saved before this field.
+   */
+  readonly documentIds?: readonly string[]
+  /**
+   * Cumulative cost of compile-document calls in this session, in dollars.
+   * Compile is not an advisor turn, so its cost doesn't roll into any
+   * window's runningCost — it lives in this dedicated field. Without this
+   * persistence, the budget cap would silently regress on every session
+   * reload. Optional for back-compat with older sessions saved before this
+   * field; absence is treated as 0.
+   */
+  readonly sessionCompileCost?: number
 }
 
 export interface SessionWindow {

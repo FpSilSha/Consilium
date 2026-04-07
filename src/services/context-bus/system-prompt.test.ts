@@ -57,11 +57,25 @@ describe('buildSystemPrompt', () => {
       expect(parts[1]).toBe(personaContent)
     })
 
-    it('works correctly with empty personaContent (second layer is empty string)', () => {
+    it('omits the persona layer entirely when personaContent is empty (No Persona)', () => {
       const result = buildSystemPrompt('')
       const parts = result.split(SEPARATOR)
+      // Only the app-level layer remains — no trailing separator, no empty layer.
+      expect(parts).toHaveLength(1)
+      expect(result.endsWith(SEPARATOR)).toBe(false)
+    })
+
+    it('omits the persona layer when personaContent is whitespace-only', () => {
+      const result = buildSystemPrompt('   \n\n   ')
+      const parts = result.split(SEPARATOR)
+      expect(parts).toHaveLength(1)
+    })
+
+    it('still appends sessionInstructions when persona is empty', () => {
+      const result = buildSystemPrompt('', 'Be concise.')
+      const parts = result.split(SEPARATOR)
       expect(parts).toHaveLength(2)
-      expect(parts[1]).toBe('')
+      expect(parts[1]).toBe('Be concise.')
     })
 
     it('preserves multi-line persona content exactly', () => {
@@ -119,6 +133,45 @@ describe('buildSystemPrompt', () => {
       const persona = 'Last line of persona.'
       const result = buildSystemPrompt(persona)
       expect(result.endsWith(persona)).toBe(true)
+    })
+  })
+
+  describe('advisorPromptOverride (Layer 1 from System Prompts library)', () => {
+    it('uses the override string instead of the default APP_LEVEL_PROMPT', () => {
+      const override = 'CUSTOM ADVISOR INSTRUCTIONS'
+      const result = buildSystemPrompt('Persona body.', undefined, override)
+      expect(result).toContain(override)
+      // The default APP_LEVEL_PROMPT should NOT appear when an override is provided
+      expect(result).not.toContain('You are one of several AI advisors')
+    })
+
+    it('treats undefined override as "use default"', () => {
+      const result = buildSystemPrompt('Persona body.', undefined, undefined)
+      expect(result).toContain('You are one of several AI advisors')
+    })
+
+    it('skips Layer 1 entirely when the override is an empty string (off mode)', () => {
+      const result = buildSystemPrompt('Persona body.', undefined, '')
+      // No app-level layer at all — only persona content
+      expect(result).toBe('Persona body.')
+    })
+
+    it('skips Layer 1 when the override is whitespace only', () => {
+      const result = buildSystemPrompt('Persona body.', undefined, '   \n\n  ')
+      expect(result).toBe('Persona body.')
+    })
+
+    it('off Layer 1 + persona + session instructions produces 2 layers', () => {
+      const result = buildSystemPrompt('Persona.', 'Session rule.', '')
+      const parts = result.split(SEPARATOR)
+      expect(parts).toHaveLength(2)
+      expect(parts[0]).toBe('Persona.')
+      expect(parts[1]).toBe('Session rule.')
+    })
+
+    it('off Layer 1 + empty persona + empty session = empty string (no separators)', () => {
+      const result = buildSystemPrompt('', undefined, '')
+      expect(result).toBe('')
     })
   })
 })

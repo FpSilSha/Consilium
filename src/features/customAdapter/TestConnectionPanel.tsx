@@ -21,10 +21,14 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
   const [result, setResult] = useState<TestResult>({ status: 'idle', parsedChunks: [] })
   const controllerRef = useRef<AbortController | null>(null)
 
-  // Cleanup on unmount — abort any in-flight test stream
+  // Cleanup on unmount — abort any in-flight test stream and remove test adapter
   useEffect(() => {
-    return () => { controllerRef.current?.abort() }
-  }, [])
+    return () => {
+      controllerRef.current?.abort()
+      useStore.getState().removeCustomAdapter(definition.id)
+      evictAdapterCache(definition.id)
+    }
+  }, [definition.id])
 
   const handleTest = useCallback(() => {
     const trimmedKey = apiKey.trim()
@@ -53,6 +57,9 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
           status: 'success',
           parsedChunks: [...prev.parsedChunks, `[done] "${fullContent.slice(0, 50)}..."${usageStr}`],
         }))
+        // Clean up temporary test adapter from store
+        useStore.getState().removeCustomAdapter(definition.id)
+        evictAdapterCache(definition.id)
       },
       onError: (error) => {
         setResult((prev) => ({
@@ -60,6 +67,8 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
           parsedChunks: [...prev.parsedChunks, `[error] ${error}`],
           error,
         }))
+        useStore.getState().removeCustomAdapter(definition.id)
+        evictAdapterCache(definition.id)
       },
     }
 
@@ -86,7 +95,9 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
       status: prev.status === 'running' ? 'error' : prev.status,
       error: 'Cancelled',
     }))
-  }, [])
+    useStore.getState().removeCustomAdapter(definition.id)
+    evictAdapterCache(definition.id)
+  }, [definition.id])
 
   return (
     <div className="flex flex-col gap-3">
@@ -139,7 +150,7 @@ export function TestConnectionPanel({ definition }: TestConnectionPanelProps): R
           </div>
           <div className="max-h-40 overflow-y-auto font-mono text-[10px] text-content-primary">
             {result.parsedChunks.map((line, i) => (
-              <div key={i} className={line.startsWith('[error]') ? 'text-error' : line.startsWith('[done]') ? 'text-success' : ''}>
+              <div key={`${i}-${line.slice(0, 20)}`} className={line.startsWith('[error]') ? 'text-error' : line.startsWith('[done]') ? 'text-success' : ''}>
                 {line}
               </div>
             ))}

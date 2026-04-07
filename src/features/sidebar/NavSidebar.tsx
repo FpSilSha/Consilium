@@ -4,7 +4,8 @@ import { NavButton } from './NavButton'
 import { SessionHistoryList } from './SessionHistoryList'
 import { ErrorLog } from './ErrorLog'
 import { BudgetBar } from '@/features/budget'
-import { saveCurrentSession } from '@/features/sessions/session-manager'
+import { saveCurrentSession, initializeNewSession } from '@/features/sessions/session-manager'
+import { stopAll } from '@/features/turnManager'
 
 export function NavSidebar(): ReactNode {
   const windowCount = useStore((s) => s.windowOrder.length)
@@ -12,20 +13,30 @@ export function NavSidebar(): ReactNode {
   const setConfigModalOpen = useStore((s) => s.setConfigModalOpen)
 
   const [confirmNewSession, setConfirmNewSession] = useState(false)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
 
   const handleNewConsilium = useCallback(() => {
-    if (windowCount === 0 && messageCount === 0) return
+    if (windowCount === 0 && messageCount === 0) {
+      setToastMessage('This is already a new session!')
+      setTimeout(() => setToastMessage(null), 2500)
+      return
+    }
     setConfirmNewSession(true)
   }, [windowCount, messageCount])
 
   const executeNewConsilium = useCallback(async () => {
+    // stopAll tears down advisor turns AND the compile stream (centralized
+    // via abortActiveCompile inside stopAll).
+    stopAll()
     // Save current session before clearing
     await saveCurrentSession().catch(() => {})
     const { clearMessages, clearAllWindows } = useStore.getState()
     clearMessages()
     clearAllWindows()
     useStore.getState().setCurrentSessionId(null)
+    useStore.getState().setSessionCustomName(null)
     setConfirmNewSession(false)
+    await initializeNewSession()
   }, [])
 
   return (
@@ -52,6 +63,11 @@ export function NavSidebar(): ReactNode {
         >
           + New Consilium
         </button>
+        {toastMessage != null && (
+          <div className="mt-1.5 rounded-md bg-surface-hover px-3 py-1.5 text-center text-[10px] text-content-muted animate-pulse">
+            {toastMessage}
+          </div>
+        )}
       </div>
 
       {/* Session history — max ~6 items before scroll */}
