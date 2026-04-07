@@ -24,8 +24,6 @@ interface AutoCompactionConfigPersisted {
 
 interface AppConfig {
   readonly maxSessionSizeMB: number
-  readonly autoSaveDebounceMs: number
-  readonly defaultTurnMode: string
   readonly maxFileAttachmentMB: number
   readonly showOnboarding: boolean
   readonly autoCompactionEnabled: boolean
@@ -71,8 +69,6 @@ interface AppConfig {
 /** Description for each config key — shown in the Edit Configuration modal */
 export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
   maxSessionSizeMB: 'Maximum session file size in megabytes before save is rejected.',
-  autoSaveDebounceMs: 'Delay in milliseconds before auto-saving after a change. Lower = more frequent saves.',
-  defaultTurnMode: 'Default turn mode for new sessions: sequential, parallel, manual, or queue.',
   maxFileAttachmentMB: 'Maximum file size in megabytes for attachments.',
   showOnboarding: 'Show the onboarding wizard on next startup. Automatically set to false after completing the wizard.',
   autoCompactionEnabled: 'When true, new sessions inherit auto-compaction turned on using the configured model.',
@@ -89,8 +85,6 @@ export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
 const DEFAULT_CONFIG: AppConfig = {
   maxSessionSizeMB: 100,
-  autoSaveDebounceMs: 2000,
-  defaultTurnMode: 'sequential',
   maxFileAttachmentMB: 10,
   showOnboarding: true,
   autoCompactionEnabled: false,
@@ -139,8 +133,6 @@ function loadAppConfig(): AppConfig {
     const parsed = JSON.parse(content) as Record<string, unknown>
     return {
       maxSessionSizeMB: typeof parsed['maxSessionSizeMB'] === 'number' ? parsed['maxSessionSizeMB'] : DEFAULT_CONFIG.maxSessionSizeMB,
-      autoSaveDebounceMs: typeof parsed['autoSaveDebounceMs'] === 'number' ? parsed['autoSaveDebounceMs'] : DEFAULT_CONFIG.autoSaveDebounceMs,
-      defaultTurnMode: typeof parsed['defaultTurnMode'] === 'string' ? parsed['defaultTurnMode'] : DEFAULT_CONFIG.defaultTurnMode,
       maxFileAttachmentMB: typeof parsed['maxFileAttachmentMB'] === 'number' ? parsed['maxFileAttachmentMB'] : DEFAULT_CONFIG.maxFileAttachmentMB,
       showOnboarding: typeof parsed['showOnboarding'] === 'boolean' ? parsed['showOnboarding'] : DEFAULT_CONFIG.showOnboarding,
       autoCompactionEnabled: typeof parsed['autoCompactionEnabled'] === 'boolean' ? parsed['autoCompactionEnabled'] : DEFAULT_CONFIG.autoCompactionEnabled,
@@ -501,8 +493,6 @@ function registerIpcHandlers(): void {
     const raw = newConfig as Record<string, unknown>
     const validated: AppConfig = {
       maxSessionSizeMB: typeof raw['maxSessionSizeMB'] === 'number' ? raw['maxSessionSizeMB'] : appConfig.maxSessionSizeMB,
-      autoSaveDebounceMs: typeof raw['autoSaveDebounceMs'] === 'number' ? raw['autoSaveDebounceMs'] : appConfig.autoSaveDebounceMs,
-      defaultTurnMode: typeof raw['defaultTurnMode'] === 'string' ? raw['defaultTurnMode'] : appConfig.defaultTurnMode,
       maxFileAttachmentMB: typeof raw['maxFileAttachmentMB'] === 'number' ? raw['maxFileAttachmentMB'] : appConfig.maxFileAttachmentMB,
       showOnboarding: typeof raw['showOnboarding'] === 'boolean' ? raw['showOnboarding'] : appConfig.showOnboarding,
       autoCompactionEnabled: typeof raw['autoCompactionEnabled'] === 'boolean' ? raw['autoCompactionEnabled'] : appConfig.autoCompactionEnabled,

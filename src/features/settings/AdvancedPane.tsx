@@ -74,11 +74,6 @@ const HIDDEN_KEYS: ReadonlySet<string> = new Set([
  *     main process check rejects every save as exceeding 0 MB).
  *     Capping at 1 (min) and 10000 (max, 10 GB) leaves headroom for
  *     unusual users without allowing the silent-brick footgun.
- *   - autoSaveDebounceMs = 0 means "save on every keystroke" which
- *     is theoretically valid but pathological — and the renderer
- *     currently hard-codes 2000ms anyway (see OPEN_ADDITIONS for
- *     the dead-config-field cleanup task). Cap at 60000 (1 minute)
- *     so a typo can't effectively disable auto-save.
  *   - maxFileAttachmentMB = 0 blocks all attachments. Cap at 1 / 1000
  *     for the same reason as maxSessionSizeMB.
  *
@@ -87,24 +82,7 @@ const HIDDEN_KEYS: ReadonlySet<string> = new Set([
  */
 const NUMBER_FIELD_LIMITS: Readonly<Record<string, { readonly min: number; readonly max: number }>> = {
   maxSessionSizeMB: { min: 1, max: 10_000 },
-  autoSaveDebounceMs: { min: 1, max: 60_000 },
   maxFileAttachmentMB: { min: 1, max: 1_000 },
-}
-
-/**
- * Description override for fields whose runtime behavior differs
- * from what the main-process CONFIG_DESCRIPTIONS string promises.
- * The fields are still persisted (so existing config.json files
- * round-trip cleanly) but the renderer flags them with a clearer
- * note in the pane until they're either wired or removed.
- *
- * Tracked in OPEN_ADDITIONS as "Dead AppConfig field cleanup".
- */
-const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = {
-  autoSaveDebounceMs:
-    'Currently unused — useSessionAutoSave hard-codes 2000ms. Field persists for forward compatibility. (Tracked in OPEN_ADDITIONS.)',
-  defaultTurnMode:
-    'Currently unused — turnSlice initial state is hard-coded to "sequential". Field persists for forward compatibility. (Tracked in OPEN_ADDITIONS.)',
 }
 
 /**
@@ -302,7 +280,7 @@ export function AdvancedPane(): ReactNode {
                       {key}
                     </label>
                     <p className="mb-1.5 text-[10px] text-content-disabled">
-                      {DESCRIPTION_OVERRIDES[key] ?? config.descriptions[key] ?? ''}
+                      {config.descriptions[key] ?? ''}
                     </p>
                     {typeof originalValue === 'number' ? (
                       <input
