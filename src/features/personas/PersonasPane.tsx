@@ -256,7 +256,7 @@ function PersonaRow({
           </span>
           <span className="truncate text-xs font-medium text-content-primary">{persona.name}</span>
           {persona.isBuiltIn && (
-            <span className="rounded bg-surface-hover px-1.5 py-0 text-[9px] font-medium uppercase tracking-wider text-content-muted">
+            <span className="rounded bg-accent-blue/15 px-1.5 py-0 text-[9px] font-medium uppercase tracking-wider text-accent-blue">
               base
             </span>
           )}

@@ -266,7 +266,13 @@ function CompactPromptRow({
           </span>
           <span className="truncate text-xs font-medium text-content-primary">{name}</span>
           {badge != null && (
-            <span className="rounded bg-surface-hover px-1.5 py-0 text-[9px] font-medium uppercase tracking-wider text-content-muted">
+            <span
+              className={`rounded px-1.5 py-0 text-[9px] font-medium uppercase tracking-wider ${
+                badge === 'base'
+                  ? 'bg-accent-blue/15 text-accent-blue'
+                  : 'bg-surface-hover text-content-muted'
+              }`}
+            >
               {badge}
             </span>
           )}
