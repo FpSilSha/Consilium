@@ -92,7 +92,7 @@ export const PANES: readonly PaneDef[] = [
     id: 'compile-prompts',
     label: 'Compile Prompts',
     group: 'libraries',
-    kind: 'placeholder',
+    kind: 'native',
     blurb: 'The five built-in compile presets become base entries here. Add your own custom compile prompts that appear in the Compile Document dropdown.',
   },
   {

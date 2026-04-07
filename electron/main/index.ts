@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSy
 import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
 import { loadCustomPersonas, saveCustomPersona, deleteCustomPersona, isValidCustomPersona } from './persona-store'
 import { loadCustomSystemPrompts, saveCustomSystemPrompt, deleteCustomSystemPrompt, isValidStoredSystemPrompt } from './system-prompt-store'
+import { loadCustomCompilePrompts, saveCustomCompilePrompt, deleteCustomCompilePrompt, isValidStoredCompilePrompt } from './compile-prompt-store'
 import { loadCustomProviders, saveCustomProviders, isValidProvider, type CustomProviderDef } from './custom-providers-store'
 import { loadCustomModels, saveCustomModels, addCustomModelId } from './custom-models-store'
 import { loadDocument, saveDocument, deleteDocument, isValidDocument } from './documents-store'
@@ -567,6 +568,22 @@ function registerIpcHandlers(): void {
   ipcMain.handle('system-prompts:delete', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '') throw new Error('Invalid system prompt ID')
     return deleteCustomSystemPrompt(id)
+  })
+
+  // ── Custom compile prompts ─────────────────────────────────
+
+  ipcMain.handle('compile-prompts:load', () => loadCustomCompilePrompts())
+
+  ipcMain.handle('compile-prompts:save', (_event, entry: unknown) => {
+    if (!isValidStoredCompilePrompt(entry)) {
+      throw new Error('Invalid compile prompt: must include id, label, description, prompt, createdAt, updatedAt')
+    }
+    saveCustomCompilePrompt(entry)
+  })
+
+  ipcMain.handle('compile-prompts:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid compile prompt ID')
+    return deleteCustomCompilePrompt(id)
   })
 
   // ── Custom providers ───────────────────────────────────────

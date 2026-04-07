@@ -3,6 +3,7 @@ import { PANES_BY_GROUP, GROUP_LABELS, DEFAULT_PANE, getPane, type PaneId, type 
 import { DirtyGuardContext, type DirtyGuard, type SetDirtyGuard } from './dirty-guard'
 import { PersonasPane } from '@/features/personas/PersonasPane'
 import { SystemPromptsPane } from '@/features/systemPrompts/SystemPromptsPane'
+import { CompilePromptsPane } from '@/features/compilePrompts/CompilePromptsPane'
 
 /**
  * Unified Configuration modal — replaces the per-feature settings modals
@@ -293,6 +294,8 @@ function PaneBody({
         return <PersonasPane />
       case 'system-prompts':
         return <SystemPromptsPane />
+      case 'compile-prompts':
+        return <CompilePromptsPane />
       default:
         // Pane is declared as native but no component is wired here yet
         // — surface in dev so the omission doesn't render a blank pane.

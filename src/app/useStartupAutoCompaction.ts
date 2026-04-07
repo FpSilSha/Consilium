@@ -1,7 +1,12 @@
 import { useEffect } from 'react'
 import { useStore } from '@/store'
 import { computeStartupAutoCompactionPlan } from './startup-auto-compaction'
-import { isKnownPresetId, DEFAULT_PRESET_ID } from '@/features/chat/compile-presets'
+// DEFAULT_PRESET_ID is no longer used in this file — the compile preset
+// validation was relaxed to accept any non-empty string so that saved
+// custom preset IDs survive the startup race with the custom-prompts
+// loader. See the comment near rawCompilePresetId for details. The
+// runtime resolver in compile-prompts-resolver.ts handles the unknown-ID
+// fallback.
 
 /** Module-scope guard — run exactly once per app process */
 let hasRun = false
@@ -100,21 +105,28 @@ export function useStartupAutoCompaction(): void {
           }
         }
 
-        // Compile preset — load from disk, validate against the known
-        // preset list, fall back to the default if unknown. If the saved
-        // ID is unknown (e.g., a renamed preset in a future release), we
-        // also clean up the disk so we don't re-validate the stale value
-        // on every launch.
+        // Compile preset — load from disk and apply. Historical note:
+        // this used to validate against isKnownPresetId (the base
+        // COMPILE_PRESETS array only) and reset unknown IDs to the
+        // default + clean disk. With the custom compile prompts
+        // library now in play, an ID can refer to a custom entry that
+        // hasn't been loaded yet (useStartupCustomCompilePrompts runs
+        // independently and may not have resolved by the time this
+        // validator runs). So we accept any non-empty string here and
+        // let runtime resolution via resolveCompilePromptWithFallback
+        // handle the "unknown at runtime" case. That resolver already
+        // falls back to DEFAULT_PRESET_ID if the custom is missing.
+        //
+        // We still reject the empty string and null/undefined so
+        // garbage data doesn't leak into the store — `isKnownPresetId`
+        // is now used only as an "is non-empty string" gate here, not
+        // as a membership test. A future migration could drop this
+        // validator entirely once we're sure customs always load
+        // before compile runs.
         const rawCompilePresetId = data.values['compilePresetId']
-        let compilePresetIdNeedsDiskClear = false
+        const compilePresetIdNeedsDiskClear = false
         if (typeof rawCompilePresetId === 'string' && rawCompilePresetId !== '') {
-          if (isKnownPresetId(rawCompilePresetId)) {
-            store.setCompilePresetId(rawCompilePresetId)
-          } else {
-            // Unknown preset ID — fall back to default and clean up disk
-            store.setCompilePresetId(DEFAULT_PRESET_ID)
-            compilePresetIdNeedsDiskClear = true
-          }
+          store.setCompilePresetId(rawCompilePresetId)
         }
 
         // Single disk write that bundles any pending updates from this run.
@@ -127,8 +139,12 @@ export function useStartupAutoCompaction(): void {
         if (compileConfigNeedsDiskClear) {
           diskUpdate['compileModelConfig'] = null
         }
+        // compilePresetIdNeedsDiskClear is always false since the
+        // relaxation — kept as a dead branch so a future re-tightening
+        // can restore the cleanup without restructuring the code. The
+        // cast-to-never-fires is cheap and preserves intent.
         if (compilePresetIdNeedsDiskClear) {
-          diskUpdate['compilePresetId'] = DEFAULT_PRESET_ID
+          diskUpdate['compilePresetId'] = 'comprehensive'
         }
         if (Object.keys(diskUpdate).length > 0) {
           await api.configSave({

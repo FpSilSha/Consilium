@@ -5,7 +5,10 @@ import { getModelById } from '@/features/modelSelector/model-registry'
 import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
 import { formatProviderLabel } from '@/features/modelCatalog/format-provider-label'
-import { COMPILE_PRESETS, getPresetById } from '@/features/chat/compile-presets'
+import {
+  getMergedCompilePrompts,
+  resolveCompilePromptWithFallback,
+} from '@/features/compilePrompts/compile-prompts-resolver'
 
 interface CompileSettingsModalProps {
   readonly onClose: () => void
@@ -26,6 +29,7 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
   const compileModelConfig = useStore((s) => s.compileModelConfig)
   const compileMaxTokens = useStore((s) => s.compileMaxTokens)
   const compilePresetId = useStore((s) => s.compilePresetId)
+  const customCompilePrompts = useStore((s) => s.customCompilePrompts)
   const setCompileModelConfig = useStore((s) => s.setCompileModelConfig)
   const setCompileMaxTokens = useStore((s) => s.setCompileMaxTokens)
   const setCompilePresetId = useStore((s) => s.setCompilePresetId)
@@ -47,7 +51,11 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
     setDraftPresetId(compilePresetId)
   }, [compileModelConfig, compileMaxTokens, compilePresetId])
 
-  const draftPreset = getPresetById(draftPresetId)
+  const draftPreset = resolveCompilePromptWithFallback(draftPresetId, customCompilePrompts)
+  const mergedCompilePrompts = useMemo(
+    () => getMergedCompilePrompts(customCompilePrompts),
+    [customCompilePrompts],
+  )
 
   const selectedLabel = draftConfig != null
     ? (getModelById(draftConfig.model, orModels)?.name ?? draftConfig.model.split('/').pop() ?? 'Model')
@@ -161,8 +169,11 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
               onChange={(e) => { setDraftPresetId(e.target.value); setSaved(false) }}
               className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
             >
-              {COMPILE_PRESETS.map((preset) => (
-                <option key={preset.id} value={preset.id}>{preset.label}</option>
+              {mergedCompilePrompts.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                  {!preset.isBuiltIn ? ' · custom' : ''}
+                </option>
               ))}
             </select>
             <p className="mt-1.5 text-[10px] italic text-content-disabled">
