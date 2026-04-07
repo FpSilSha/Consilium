@@ -342,16 +342,33 @@ function CreateForm({
       : trimmedName.length > MAX_NAME_LENGTH
         ? `Name must be ${MAX_NAME_LENGTH} characters or fewer.`
         : null
+  // Content validation is strict because a malformed compact prompt
+  // silently corrupts sessions: the template is sent verbatim to the
+  // summarization model, which then returns a "summary" that REPLACES
+  // the archive. The two failure modes that are functionally
+  // destructive but not otherwise obvious:
+  //
+  //   1. Empty content — resolves to an empty prompt. Model either
+  //      errors or generates garbage unrelated to the conversation,
+  //      and that garbage overwrites the archive.
+  //   2. Non-empty content missing the `{messages}` placeholder — the
+  //      substitution is a no-op, so the model receives the template
+  //      body with ZERO conversation context and confidently
+  //      hallucinates a summary. Same outcome: corrupted archive.
+  //
+  // Both are now save-blocking errors rather than soft warnings.
+  // Users who deliberately want a no-op template should select "Off"
+  // in a future system-prompt-style toggle — which this library
+  // doesn't expose because compaction always needs a real prompt.
   const contentError =
-    content.length > MAX_CONTENT_LENGTH
-      ? `Content must be ${MAX_CONTENT_LENGTH.toLocaleString()} characters or fewer.`
-      : null
+    content.trim().length === 0
+      ? 'Content is required — empty templates silently corrupt the conversation archive.'
+      : !content.includes('{messages}')
+        ? 'Template must include the {messages} placeholder so the conversation is passed to the model.'
+        : content.length > MAX_CONTENT_LENGTH
+          ? `Content must be ${MAX_CONTENT_LENGTH.toLocaleString()} characters or fewer.`
+          : null
   const hasErrors = nameError != null || contentError != null
-
-  // Soft warning: content missing {messages} placeholder. Doesn't
-  // block save, but surfaces the likely mistake so the user can
-  // add it before committing.
-  const missingPlaceholder = content.trim() !== '' && !content.includes('{messages}')
 
   const isDirty = name.length > 0 || content.length > 0
   const registerDirtyGuard = useRegisterDirtyGuard()
@@ -494,12 +511,6 @@ function CreateForm({
           }`}
         />
         {contentError != null && <p className="mt-1 text-[10px] text-error">{contentError}</p>}
-        {contentError == null && missingPlaceholder && (
-          <p className="mt-1 text-[10px] italic text-content-disabled">
-            Tip: include the <code className="rounded bg-surface-hover px-0.5 text-[10px]">{'{messages}'}</code>{' '}
-            placeholder somewhere so the archive actually gets passed to the model.
-          </p>
-        )}
       </div>
 
       {serverError != null && (

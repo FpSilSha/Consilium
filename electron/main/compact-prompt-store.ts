@@ -66,6 +66,14 @@ function atomicWrite(filePath: string, content: string): void {
  * Row-level validation. Rejects missing id/name, empty id/name, or
  * invalid timestamps. Content may be empty (the resolver's fallback
  * keeps compaction working, but the user has chosen a no-op template).
+ *
+ * DUPLICATED IN: src/features/compactPrompts/compact-prompts-resolver.ts
+ *   (isValidStoredCompactPrompt). The two functions must stay in sync
+ *   — they implement the same row contract, one for the main process
+ *   and one for the renderer. TypeScript's renderer/main boundary
+ *   prevents a single shared module. If you change the validation
+ *   rules here, update the other file too, and update the test
+ *   fixtures in compact-prompts-resolver.test.ts.
  */
 export function isValidStoredCompactPrompt(entry: unknown): entry is StoredCompactPrompt {
   if (entry == null || typeof entry !== 'object') return false

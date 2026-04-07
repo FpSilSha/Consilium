@@ -41,6 +41,13 @@ export function getMergedCompactPrompts(
  * Returns the template content string, or null if the id is unknown.
  * Callers should use `resolveCompactPromptTemplateWithFallback` when
  * they need a guaranteed non-null result.
+ *
+ * Does NOT filter by content validity — the raw content is returned
+ * even if it's empty or missing the {messages} placeholder. Callers
+ * that need a runtime-safe template should use the
+ * `WithFallback` variant, which performs the structural safety
+ * check and falls back to the base entry if the found content would
+ * crash or corrupt compaction.
  */
 export function resolveCompactPromptTemplate(
   id: string,
@@ -52,21 +59,58 @@ export function resolveCompactPromptTemplate(
 }
 
 /**
- * Same as `resolveCompactPromptTemplate` but falls back to the
- * built-in base entry if the id is unknown (e.g., a deleted custom).
- * Used by the compaction pipeline where a null template would crash
- * the summarization call.
+ * Runtime-safe compact template resolution. Returns a template that is
+ * structurally sound enough to run through buildSummaryPrompt without
+ * corrupting the archive.
+ *
+ * Safety checks applied in order:
+ *   1. Looks up `id` in the merged list. If missing → fall through.
+ *   2. If the found content is empty OR missing the `{messages}`
+ *      placeholder → treat as broken and fall through. A broken
+ *      template is functionally destructive: empty templates send an
+ *      empty prompt to the model (either errors or hallucinates), and
+ *      placeholder-less templates discard the entire archive and let
+ *      the model confidently hallucinate a "summary". The create form
+ *      blocks both cases at save time, but this resolver-level check
+ *      is the defense-in-depth belt-and-suspenders against a
+ *      tampered/corrupt disk file slipping a broken template past the
+ *      UI validators.
+ *   3. Returns the built-in base entry's content as the ultimate
+ *      fallback. The base is frozen in code and known to be valid.
+ *
+ * Used by the compaction pipeline where a null or broken template
+ * would either crash or silently destroy session context.
  */
 export function resolveCompactPromptTemplateWithFallback(
   id: string,
   customs: readonly CustomCompactPrompt[],
 ): string {
   const found = resolveCompactPromptTemplate(id, customs)
-  if (found != null) return found
+  if (found != null && isStructurallyValidTemplate(found)) {
+    return found
+  }
+  if (found != null && !isStructurallyValidTemplate(found)) {
+    console.warn(
+      `[compact-prompts] template id="${id}" has invalid content (empty or missing {messages} placeholder) — falling back to base`,
+    )
+  }
   const base = resolveCompactPromptTemplate(BUILT_IN_COMPACT_PROMPT_ID, customs)
-  if (base != null) return base
-  // Unreachable — BUILT_IN_COMPACT_PROMPTS is a frozen const with one entry.
-  throw new Error('[compact-prompts] built-in base prompt missing')
+  if (base != null && isStructurallyValidTemplate(base)) return base
+  // Unreachable — BUILT_IN_COMPACT_PROMPTS is a frozen const with one
+  // entry, and its content is known to contain {messages} (verified
+  // by the regression tests in compact-prompts-resolver.test.ts).
+  throw new Error('[compact-prompts] built-in base prompt missing or structurally invalid')
+}
+
+/**
+ * Structural validity check for a compact prompt template. A template
+ * is valid if it has non-empty content AND contains the `{messages}`
+ * placeholder — both necessary to produce a useful summary at runtime.
+ *
+ * Trimmed content check rejects whitespace-only templates too.
+ */
+function isStructurallyValidTemplate(content: string): boolean {
+  return content.trim().length > 0 && content.includes('{messages}')
 }
 
 /**
@@ -89,10 +133,16 @@ export function substituteCompactPlaceholders(
 /**
  * Type guard for a single persisted row from custom-compact-prompts.json.
  * Rejects rows missing required fields, with empty id/name, or with
- * non-positive timestamps. Content MAY be empty — an empty custom
- * compact prompt is allowed (the user can define a no-op template)
- * but will produce poor summaries; we don't block it in the guard
- * because the UI validator enforces non-empty with a clearer message.
+ * non-positive timestamps. Content MAY be empty at the schema layer —
+ * the UI form enforces non-empty with a clearer error; this guard is
+ * the schema floor.
+ *
+ * DUPLICATED IN: electron/main/compact-prompt-store.ts
+ *   (isValidStoredCompactPrompt). The two functions must stay in
+ *   sync — they implement the same row contract, one for the main
+ *   process and one for the renderer. TypeScript's renderer/main
+ *   boundary prevents a single shared module. If you change the
+ *   validation rules here, update the other file too.
  */
 export function isValidStoredCompactPrompt(entry: unknown): entry is {
   id: string

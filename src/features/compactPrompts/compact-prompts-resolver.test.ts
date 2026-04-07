@@ -103,6 +103,66 @@ describe('resolveCompactPromptTemplateWithFallback', () => {
     const template = resolveCompactPromptTemplateWithFallback('', [])
     expect(template).toContain('Summarize')
   })
+
+  it('falls back to base when the found entry has empty content', () => {
+    // A tampered custom-compact-prompts.json could slip an empty
+    // content past the disk validator (content: '' passes
+    // isValidStoredCompactPrompt). The resolver's runtime safety
+    // check should recognize the broken state and fall back to
+    // the known-good base template.
+    const broken: CustomCompactPrompt = {
+      id: 'custom_compactprompt_broken_111111',
+      name: 'Broken',
+      content: '',
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_000_000,
+    }
+    const template = resolveCompactPromptTemplateWithFallback(broken.id, [broken])
+    expect(template).toContain('Summarize the following conversation concisely')
+  })
+
+  it('falls back to base when the found entry is missing the {messages} placeholder', () => {
+    // Non-empty content without the placeholder means the
+    // substitution is a no-op and the model receives the template
+    // body with zero archive context — it would confidently
+    // hallucinate a summary, which would then replace the archive.
+    // The resolver's safety check prevents this from reaching the
+    // API call.
+    const broken: CustomCompactPrompt = {
+      id: 'custom_compactprompt_noplaceholder_222222',
+      name: 'No Placeholder',
+      content: 'Summarize briefly in two sentences.',
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_000_000,
+    }
+    const template = resolveCompactPromptTemplateWithFallback(broken.id, [broken])
+    expect(template).toContain('{messages}')
+    expect(template).not.toBe(broken.content)
+  })
+
+  it('falls back to base when the found entry has whitespace-only content', () => {
+    const broken: CustomCompactPrompt = {
+      id: 'custom_compactprompt_whitespace_333333',
+      name: 'Whitespace Only',
+      content: '   \n\n\t  ',
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_000_000,
+    }
+    const template = resolveCompactPromptTemplateWithFallback(broken.id, [broken])
+    expect(template).toContain('Summarize')
+  })
+
+  it('does NOT fall back when the found entry is structurally valid', () => {
+    const valid: CustomCompactPrompt = {
+      id: 'custom_compactprompt_valid_444444',
+      name: 'Valid',
+      content: 'Terse summary:\n\n{messages}',
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_000_000,
+    }
+    const template = resolveCompactPromptTemplateWithFallback(valid.id, [valid])
+    expect(template).toBe(valid.content)
+  })
 })
 
 describe('substituteCompactPlaceholders', () => {
