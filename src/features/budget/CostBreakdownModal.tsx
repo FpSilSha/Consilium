@@ -66,6 +66,20 @@ export function CostBreakdownModal({
           </button>
         </div>
 
+        {/* Estimate accuracy disclaimer. Every cost number in this
+            modal — and the running totals on the budget bar — comes
+            from OpenRouter's published per-model pricing combined
+            with locally-estimated token counts. The actual provider
+            invoices the user receives WILL differ from these numbers,
+            often by a meaningful margin. Surfacing the disclaimer
+            here so users don't treat these figures as authoritative. */}
+        <p className="mt-3 rounded-md border border-yellow-500/30 bg-yellow-900/20 px-3 py-2 text-[11px] leading-relaxed text-yellow-200">
+          <strong>Estimates only.</strong> All costs shown here are calculated locally from
+          OpenRouter's published per-model pricing and Consilium's token counter. They are NOT
+          guaranteed to match what your actual provider bills you — different providers round,
+          discount, and meter differently. Use these numbers as a rough guide, not as an invoice.
+        </p>
+
         {/* Total */}
         <div className="mt-3 flex items-baseline justify-between border-b border-edge-subtle pb-3">
           <span className="text-xs text-content-muted">Session Total</span>
