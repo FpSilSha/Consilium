@@ -4,6 +4,24 @@ Future feature ideas and enhancements to revisit later.
 
 ---
 
+## Port Adapters and API Keys into ConfigurationModal
+
+The unified `ConfigurationModal` (Edit → Configuration) introduced alongside the persona/prompt library work uses a vertical sidebar with one pane per editable surface (Personas, System Prompts, Compile Prompts, Compact Prompts, Compile settings, Auto-compaction settings, Advanced/raw JSON). For the v1 launch, two existing surfaces were intentionally **left as standalone modals** and exposed as link-out tiles in the sidebar:
+
+- **Adapters** — the custom adapter builder (`AdapterBuilderDialog`) is its own multi-section editor (request templates, response templates, test connection panel). Cramming it into a sidebar pane would either shrink it past usability or force a modal-within-a-modal. Bundling the port into the v1 ConfigurationModal change would have doubled the diff size and the porting risk for a launch-critical change.
+- **API Keys** — the key manager has its own security-sensitive flows (Electron `safeStorage` round-trips, key visibility toggles, provider validation). Same reasoning: deferred to keep the v1 shell change focused.
+
+**Post-launch follow-up:**
+- Port the adapter builder UI into a dedicated `AdaptersPane` component inside `ConfigurationModal`. Preserve the current request/response/test sub-tabs as a nested layout within the pane (or use the same vertical-sidebar pattern recursively if the sub-tabs grow further).
+- Port the key manager into a `KeysPane`. Keep all `safeStorage` IPC calls intact — only the chrome and entry point change.
+- Remove the link-out tiles and the standalone modal entry points once the panes are live.
+- Update the Edit menu to confirm there are no orphaned entries pointing at the old modals.
+- Add tests for the migrated panes to confirm save/delete flows still hit the same IPC handlers.
+
+This is purely a UI consolidation — no behavioral changes to adapter or key persistence — so it should be a clean refactor once the v1 shell pattern has stabilized in production use.
+
+---
+
 ## Voice Mode
 
 Talk instead of type. Either integration with a provider or some other way to allow voice-to-text input, without a service like Aqua Voice.
