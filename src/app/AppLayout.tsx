@@ -9,6 +9,7 @@ import { EditConfigModal } from '@/features/settings/EditConfigModal'
 import { AutoCompactionSettingsModal } from '@/features/settings/AutoCompactionSettingsModal'
 import { CompileSettingsModal } from '@/features/settings/CompileSettingsModal'
 import { AboutModal } from '@/features/settings/AboutModal'
+import { ConfigurationModal, useConfigurationShortcut } from '@/features/configuration'
 import { TitleBar } from './TitleBar'
 import { useStore } from '@/store'
 import { saveCurrentSession, initializeNewSession } from '@/features/sessions/session-manager'
@@ -33,13 +34,40 @@ export function AppLayout(): ReactNode {
   const [showCompileSettings, setShowCompileSettings] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
   const [showWelcomeTour, setShowWelcomeTour] = useState(false)
+  const [showConfiguration, setShowConfiguration] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+
+  // Ctrl+, opens the modal. If already open, the shortcut is a no-op
+  // rather than a toggle — toggling would let the user accidentally
+  // close the modal mid-edit by retriggering the hotkey, and the
+  // explicit Close button + Escape key already cover the close path.
+  // Using the functional setter form so this callback never closes
+  // over a stale `showConfiguration` value (it has no dependency on
+  // state, so it's stable across renders).
+  const openConfiguration = useCallback(() => {
+    setShowConfiguration((prev) => (prev ? prev : true))
+  }, [])
+  // Adapters and API Keys are exposed in the Configuration sidebar as
+  // link-out tiles for v1. Both currently live inside the same
+  // model-catalog ConfigModal (which already handles providers, custom
+  // providers, keys, and the adapter builder), so a single callback is
+  // enough — see OPEN_ADDITIONS for the post-launch port plan that gives
+  // each its own dedicated pane.
+  const openAdaptersAndKeys = useCallback(() => setConfigModalOpen(true), [setConfigModalOpen])
 
   const handleMenuAction = useCallback((action: string) => {
     switch (action) {
       case 'menu:new-consilium':
         handleNewConsilium()
         break
+      case 'menu:configuration':
+        setShowConfiguration(true)
+        break
+      // Legacy menu actions remain wired so the keyboard shortcuts and
+      // existing IPC menu emissions from the Electron main process
+      // continue to function during the rollout. Once all panes are
+      // ported (tasks #23, #25), the IPC menu definitions in the main
+      // process will be collapsed to a single Configuration entry too.
       case 'menu:edit-config':
         setShowEditConfig(true)
         break
@@ -57,6 +85,10 @@ export function AppLayout(): ReactNode {
         break
     }
   }, [])
+
+  // Ctrl+, / Cmd+, opens the unified Configuration modal — same shortcut
+  // as VS Code Settings, intentional muscle-memory match.
+  useConfigurationShortcut(openConfiguration)
 
   const handleNewConsilium = useCallback(async () => {
     // Tear down in-flight streams (advisor turns AND compile) before clearing
@@ -158,6 +190,15 @@ export function AppLayout(): ReactNode {
       )}
       {showWelcomeTour && (
         <WelcomeTourDialog onClose={() => setShowWelcomeTour(false)} />
+      )}
+      {showConfiguration && (
+        <ConfigurationModal
+          onClose={() => setShowConfiguration(false)}
+          onOpenCompileSettings={() => setShowCompileSettings(true)}
+          onOpenAutoCompactSettings={() => setShowAutoCompactSettings(true)}
+          onOpenAdvanced={() => setShowEditConfig(true)}
+          onOpenAdaptersAndKeys={openAdaptersAndKeys}
+        />
       )}
       {commandPaletteOpen && (
         <CommandPalette onClose={() => setCommandPaletteOpen(false)} />
