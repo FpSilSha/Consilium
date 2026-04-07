@@ -386,9 +386,17 @@ export function CompileDocumentButton(): ReactNode {
               </option>
             ))}
           </select>
-          <p className="mb-2 text-xs italic text-content-muted">
-            {selectedPreset.description}
-          </p>
+          {/* Only render the hint paragraph when the selected preset
+              has a non-empty description. Custom prompts are allowed
+              to have an empty description — without this guard, an
+              empty description would still reserve ~8px of mb-2
+              margin, producing a visible gap inconsistent with the
+              base presets. */}
+          {selectedPreset.description !== '' && (
+            <p className="mb-2 text-xs italic text-content-muted">
+              {selectedPreset.description}
+            </p>
+          )}
 
           {/* Optional focus textarea */}
           <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-muted">

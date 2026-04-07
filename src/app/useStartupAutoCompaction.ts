@@ -117,14 +117,12 @@ export function useStartupAutoCompaction(): void {
         // handle the "unknown at runtime" case. That resolver already
         // falls back to DEFAULT_PRESET_ID if the custom is missing.
         //
-        // We still reject the empty string and null/undefined so
-        // garbage data doesn't leak into the store — `isKnownPresetId`
-        // is now used only as an "is non-empty string" gate here, not
-        // as a membership test. A future migration could drop this
-        // validator entirely once we're sure customs always load
-        // before compile runs.
+        // We still reject empty string and null/undefined so garbage
+        // data doesn't leak into the store. The dead disk-clear
+        // branch was removed along with DEFAULT_PRESET_ID import —
+        // any future re-tightening should re-import DEFAULT_PRESET_ID
+        // rather than hardcoding a magic string.
         const rawCompilePresetId = data.values['compilePresetId']
-        const compilePresetIdNeedsDiskClear = false
         if (typeof rawCompilePresetId === 'string' && rawCompilePresetId !== '') {
           store.setCompilePresetId(rawCompilePresetId)
         }
@@ -139,13 +137,14 @@ export function useStartupAutoCompaction(): void {
         if (compileConfigNeedsDiskClear) {
           diskUpdate['compileModelConfig'] = null
         }
-        // compilePresetIdNeedsDiskClear is always false since the
-        // relaxation — kept as a dead branch so a future re-tightening
-        // can restore the cleanup without restructuring the code. The
-        // cast-to-never-fires is cheap and preserves intent.
-        if (compilePresetIdNeedsDiskClear) {
-          diskUpdate['compilePresetId'] = 'comprehensive'
-        }
+        // (Removed: the compilePresetId self-heal on startup. With
+        // custom prompts now layered on top, the startup validator
+        // can't know whether a saved ID is a deleted custom or a
+        // still-loading custom. Runtime resolution handles the
+        // unknown-ID case via resolveCompilePromptWithFallback, and
+        // CompilePromptsPane self-heals the global default when
+        // the user explicitly deletes a custom that's currently
+        // selected. Startup no longer touches compilePresetId.)
         if (Object.keys(diskUpdate).length > 0) {
           await api.configSave({
             ...data.values,

@@ -52,22 +52,63 @@ export function CompilePromptsPane(): ReactNode {
   const customs = useStore((s) => s.customCompilePrompts)
   const addCustom = useStore((s) => s.addCustomCompilePrompt)
   const removeCustom = useStore((s) => s.removeCustomCompilePrompt)
+  const globalCompilePresetId = useStore((s) => s.compilePresetId)
+  const setCompilePresetId = useStore((s) => s.setCompilePresetId)
 
   const [showForm, setShowForm] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const handleDelete = useCallback(
     async (id: string) => {
+      setDeleteError(null)
       const api = getAPI()
-      if (api != null) {
-        try {
-          await api.compilePromptsDelete(id)
-        } catch (err) {
-          console.error('[compile-prompts] failed to delete from disk:', err)
-        }
+      if (api == null) {
+        // Running outside Electron — safe to update store directly
+        // since there's no disk to desync from.
+        removeCustom(id)
+        return
+      }
+      // Disk-first: abort the store mutation if the disk delete fails.
+      // Without this, a transient IPC failure (EACCES, EROFS, disk full
+      // on the tmp path) would leave the entry on disk while the store
+      // removes it — the next app launch would re-load and "resurrect"
+      // the deleted entry with no explanation to the user. Matches the
+      // disk-first save pattern used by the other library panes.
+      try {
+        await api.compilePromptsDelete(id)
+      } catch (err) {
+        console.error('[compile-prompts] failed to delete from disk:', err)
+        const raw = err instanceof Error ? err.message : String(err)
+        const friendly = raw.includes('ENOSPC')
+          ? 'Could not delete: disk is full.'
+          : raw.includes('EACCES') || raw.includes('EROFS')
+            ? 'Could not delete: permission denied or read-only volume.'
+            : `Could not delete prompt. ${raw}`
+        setDeleteError(friendly)
+        return
       }
       removeCustom(id)
+      // Self-heal the global default if the deleted entry was
+      // referenced by compilePresetId in config. Without this, the
+      // global default would point at a missing custom, triggering
+      // silent fallback to 'comprehensive' on every subsequent
+      // compile with no user feedback.
+      if (globalCompilePresetId === id) {
+        const configApi = (
+          window as { consiliumAPI?: { configLoad: () => Promise<{ values: Record<string, unknown>; descriptions: Record<string, string> }>; configSave: (config: Record<string, unknown>) => Promise<void> } }
+        ).consiliumAPI
+        if (configApi != null) {
+          try {
+            const { values } = await configApi.configLoad()
+            await configApi.configSave({ ...values, compilePresetId: 'comprehensive' })
+          } catch (err) {
+            console.error('[compile-prompts] failed to reset global default after delete:', err)
+          }
+        }
+        setCompilePresetId('comprehensive')
+      }
     },
-    [removeCustom],
+    [removeCustom, globalCompilePresetId, setCompilePresetId],
   )
 
   return (
@@ -100,6 +141,11 @@ export function CompilePromptsPane(): ReactNode {
         <p className="mt-2 text-[10px] font-medium uppercase tracking-wider text-content-muted">
           Custom ({customs.length})
         </p>
+        {deleteError != null && (
+          <p className="rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[11px] text-error">
+            {deleteError}
+          </p>
+        )}
         {customs.length === 0 && !showForm && (
           <p className="text-xs italic text-content-disabled">
             No custom compile prompts yet. Click "New compile prompt" to create one — start from

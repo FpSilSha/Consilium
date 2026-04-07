@@ -57,6 +57,22 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
     [customCompilePrompts],
   )
 
+  // Self-heal: if the persisted `compilePresetId` references a custom
+  // that no longer exists, resolveCompilePromptWithFallback silently
+  // falls back to 'comprehensive' — but draftPresetId still holds the
+  // stale id, so Save without touching the dropdown would re-write
+  // the dead id to disk. Align draftPresetId with the resolved id
+  // whenever a fallback occurred so the draft state and display are
+  // consistent and Save persists the healed value.
+  useEffect(() => {
+    if (draftPresetId !== draftPreset.id) {
+      setDraftPresetId(draftPreset.id)
+    }
+    // Only reconcile when the resolved id diverges from the draft —
+    // normal user interactions (picking from the dropdown) already
+    // keep them in sync via the select onChange handler.
+  }, [draftPresetId, draftPreset.id])
+
   const selectedLabel = draftConfig != null
     ? (getModelById(draftConfig.model, orModels)?.name ?? draftConfig.model.split('/').pop() ?? 'Model')
     : 'No default — picker will appear every compile'
