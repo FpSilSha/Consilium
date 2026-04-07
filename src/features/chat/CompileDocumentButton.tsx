@@ -344,12 +344,12 @@ export function CompileDocumentButton(): ReactNode {
           <p className="mb-1 text-[11px] font-medium text-content-primary">
             Compile Document
           </p>
-          <p className="mb-2 text-[10px] text-content-disabled">
+          <p className="mb-2 text-xs text-content-muted">
             The compile model reads the full conversation and produces a markdown document in the selected style. The result lands in the Documents panel on the right — it does not get added to the chat.
           </p>
 
           {/* Style preset dropdown */}
-          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-disabled">
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-muted">
             Style
           </label>
           <select
@@ -361,12 +361,12 @@ export function CompileDocumentButton(): ReactNode {
               <option key={preset.id} value={preset.id}>{preset.label}</option>
             ))}
           </select>
-          <p className="mb-2 text-[10px] italic text-content-disabled">
+          <p className="mb-2 text-xs italic text-content-muted">
             {selectedPreset.description}
           </p>
 
           {/* Optional focus textarea */}
-          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-disabled">
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-muted">
             Focus / Ignore (optional)
           </label>
           <textarea
@@ -389,7 +389,7 @@ export function CompileDocumentButton(): ReactNode {
           />
 
           {/* Replace-default toggle — only meaningful when focus is non-empty */}
-          <label className={`mb-2 flex items-center gap-1.5 text-[10px] ${userFocus.trim() === '' ? 'text-content-disabled' : 'text-content-muted cursor-pointer'}`}>
+          <label className={`mb-2 flex items-center gap-1.5 text-xs ${userFocus.trim() === '' ? 'text-content-muted' : 'text-content-primary cursor-pointer'}`}>
             <input
               type="checkbox"
               checked={replaceDefault}
@@ -399,10 +399,10 @@ export function CompileDocumentButton(): ReactNode {
             />
             <span>
               Replace style with my focus text
-              {userFocus.trim() === '' && <span className="text-content-disabled"> (type a focus prompt first)</span>}
+              {userFocus.trim() === '' && <span className="text-content-muted"> (type a focus prompt first)</span>}
             </span>
           </label>
-          <p className="mb-2 text-[10px] italic text-content-disabled">
+          <p className="mb-2 text-xs italic text-content-muted">
             {userFocus.trim() === '' || !replaceDefault
               ? 'Focus text is appended to the style. The document still follows the selected style.'
               : 'Focus text fully replaces the style instructions. Use this for one-off custom compiles.'}
@@ -426,7 +426,7 @@ export function CompileDocumentButton(): ReactNode {
 
             return (
               <div className="mb-2 rounded-md border border-accent-blue/30 bg-accent-blue/10 p-2">
-                <p className="mb-1 text-[10px] text-content-disabled">Global default</p>
+                <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-content-muted">Global default</p>
                 <button
                   onClick={handleCompileWithDefault}
                   disabled={defaultExceedsContext}
@@ -436,17 +436,17 @@ export function CompileDocumentButton(): ReactNode {
                   <span className="truncate">
                     {defaultModel?.name ?? globalCompileConfig.model}
                   </span>
-                  <span className="ml-auto text-[10px] text-accent-blue">
+                  <span className="ml-auto text-xs text-accent-blue">
                     {defaultExceedsContext ? 'Too large' : 'Use default →'}
                   </span>
                 </button>
                 {defaultContextWindow > 0 && (
-                  <p className={`mt-1 text-[10px] ${
+                  <p className={`mt-1 text-xs ${
                     defaultExceedsContext
                       ? 'text-error'
                       : defaultUsagePercent > 80
                         ? 'text-yellow-400'
-                        : 'text-content-disabled'
+                        : 'text-content-muted'
                   }`}>
                     {defaultExceedsContext
                       ? `Chat exceeds ${defaultContextWindow.toLocaleString()}-token context window. Pick a larger model below.`
@@ -455,7 +455,7 @@ export function CompileDocumentButton(): ReactNode {
                         : `${defaultUsagePercent}% of context window`}
                   </p>
                 )}
-                <p className="mt-1 text-[10px] text-content-disabled">
+                <p className="mt-1 text-xs italic text-content-muted">
                   Set in Edit → Compile Settings.
                 </p>
               </div>
@@ -490,7 +490,7 @@ export function CompileDocumentButton(): ReactNode {
                 // opens (showPicker === false), so it stays in sync
                 // with any changes made in Compile Settings.
               }}
-              className="rounded-md px-2 py-1 text-[10px] text-content-disabled hover:text-content-muted"
+              className="rounded-md px-3 py-1 text-xs text-content-muted transition-colors hover:bg-surface-hover hover:text-content-primary"
             >
               Cancel
             </button>
@@ -532,24 +532,24 @@ function BrowseModels({ estimatedInputTokens, onSelect, onBack }: BrowseModelsPr
   return (
     <div className="rounded-md border border-edge-subtle p-2">
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-[10px] font-medium text-content-disabled">Browse models</p>
+        <p className="text-[10px] font-medium uppercase tracking-wider text-content-muted">Browse models</p>
         <button
           onClick={onBack}
-          className="text-[10px] text-content-muted hover:text-content-primary"
+          className="text-xs text-content-muted hover:text-content-primary"
         >
           ← Back
         </button>
       </div>
 
-      <p className="mb-2 text-[10px] text-content-disabled">
-        Estimated input <span className="text-content-disabled">(conservative)</span>:{' '}
-        <span className="text-content-muted">{estimatedInputTokens.toLocaleString()} tokens</span>
+      <p className="mb-1 text-xs text-content-muted">
+        Estimated input <span className="text-content-muted">(conservative)</span>:{' '}
+        <span className="text-content-primary font-medium">{estimatedInputTokens.toLocaleString()} tokens</span>
       </p>
-      <p className="mb-2 text-[9px] italic text-content-disabled">
+      <p className="mb-2 text-xs italic text-content-muted">
         Padded ~50% above the raw character count to cover code-heavy and Unicode content, plus compile-prompt overhead. Actual usage will be lower for prose-only chats.
       </p>
 
-      <label className="mb-1 block text-[10px] text-content-disabled">Provider</label>
+      <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-muted">Provider</label>
       <select
         value={selectedProvider ?? ''}
         onChange={(e) => setSelectedProvider(e.target.value as Provider)}
@@ -590,7 +590,7 @@ function BrowseModelsList({ provider, keyId, estimatedInputTokens, onSelect }: {
 
   if (models.length === 0) {
     return (
-      <p className="text-[10px] text-content-disabled">
+      <p className="text-xs text-content-muted">
         No models available for this provider. Configure allowed models in Models &amp; Keys.
       </p>
     )
@@ -598,7 +598,7 @@ function BrowseModelsList({ provider, keyId, estimatedInputTokens, onSelect }: {
 
   return (
     <>
-      <label className="mb-1 block text-[10px] text-content-disabled">Model</label>
+      <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-muted">Model</label>
       <SearchableModelSelect
         models={models}
         value={selectedModelId}
@@ -606,10 +606,10 @@ function BrowseModelsList({ provider, keyId, estimatedInputTokens, onSelect }: {
       />
 
       {selectedModel != null && (
-        <div className="mt-2 rounded-md bg-surface-base px-2 py-1.5 text-[10px]">
-          <div className="flex items-center justify-between text-content-disabled">
+        <div className="mt-2 rounded-md bg-surface-base px-2 py-1.5 text-xs">
+          <div className="flex items-center justify-between text-content-muted">
             <span>Context window</span>
-            <span className={exceedsContext ? 'text-error' : usagePercent > 80 ? 'text-yellow-400' : 'text-content-muted'}>
+            <span className={exceedsContext ? 'text-error font-medium' : usagePercent > 80 ? 'text-yellow-400 font-medium' : 'text-content-primary font-medium'}>
               {usagePercent}% used ({selectedModel.contextWindow.toLocaleString()} tokens)
             </span>
           </div>
