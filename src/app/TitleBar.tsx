@@ -33,10 +33,14 @@ const MENUS: readonly { label: string; items: readonly MenuEntry[] }[] = [
   {
     label: 'Edit',
     items: [
-      { label: 'Auto-compaction Settings…', action: 'auto-compaction-settings' },
-      { label: 'Compile Document Settings…', action: 'compile-settings' },
-      { separator: true },
-      { label: 'Edit Configuration', action: 'edit-config' },
+      // Single entry by design — opens the unified Configuration modal
+      // which contains panes for personas, prompt libraries, compile,
+      // auto-compaction, and the raw config editor. Existing IPC menu
+      // actions (auto-compaction-settings, compile-settings, edit-config)
+      // remain wired in AppLayout.handleMenuAction so the Electron main
+      // process menu and any deep links keep working until tasks #23/#25
+      // port the legacy panes inline.
+      { label: 'Configuration…', action: 'configuration' },
     ],
   },
   {
@@ -105,15 +109,13 @@ export function TitleBar({ onMenuAction }: TitleBarProps): ReactNode {
       case 'save-session':
         saveCurrentSession().catch(() => {})
         break
-      case 'edit-config':
-        onMenuAction('menu:edit-config')
+      case 'configuration':
+        onMenuAction('menu:configuration')
         break
-      case 'auto-compaction-settings':
-        onMenuAction('menu:auto-compaction-settings')
-        break
-      case 'compile-settings':
-        onMenuAction('menu:compile-settings')
-        break
+      // All legacy edit/settings cases (edit-config, compile-settings,
+      // auto-compaction-settings) were removed in tasks #23 + #25 when
+      // those panes became native inside ConfigurationModal. The
+      // TitleBar MENUS array never exposed entries for them either.
       case 'fullscreen':
         document.documentElement.requestFullscreen?.().catch(() => {})
         break

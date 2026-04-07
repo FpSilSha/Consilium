@@ -6,6 +6,10 @@ import { join, resolve, normalize, sep, basename, extname } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync, renameSync } from 'fs'
 // env-loader removed — keys use safeStorage exclusively
 import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
+import { loadCustomPersonas, saveCustomPersona, deleteCustomPersona, isValidCustomPersona } from './persona-store'
+import { loadCustomSystemPrompts, saveCustomSystemPrompt, deleteCustomSystemPrompt, isValidStoredSystemPrompt } from './system-prompt-store'
+import { loadCustomCompilePrompts, saveCustomCompilePrompt, deleteCustomCompilePrompt, isValidStoredCompilePrompt } from './compile-prompt-store'
+import { loadCustomCompactPrompts, saveCustomCompactPrompt, deleteCustomCompactPrompt, isValidStoredCompactPrompt } from './compact-prompt-store'
 import { loadCustomProviders, saveCustomProviders, isValidProvider, type CustomProviderDef } from './custom-providers-store'
 import { loadCustomModels, saveCustomModels, addCustomModelId } from './custom-models-store'
 import { loadDocument, saveDocument, deleteDocument, isValidDocument } from './documents-store'
@@ -20,8 +24,6 @@ interface AutoCompactionConfigPersisted {
 
 interface AppConfig {
   readonly maxSessionSizeMB: number
-  readonly autoSaveDebounceMs: number
-  readonly defaultTurnMode: string
   readonly maxFileAttachmentMB: number
   readonly showOnboarding: boolean
   readonly autoCompactionEnabled: boolean
@@ -37,13 +39,36 @@ interface AppConfig {
    * runtime (graceful degradation).
    */
   readonly compilePresetId: string
+  /**
+   * System Prompts library — mode + custom-id pair for each of the two
+   * categories. Modes are 'base' | 'custom' | 'off' (validated as
+   * non-empty strings here; renderer enforces the enum). Custom IDs may
+   * be null when mode is base or off.
+   *
+   * Renderer (useStartupCustomSystemPrompts) reconciles unknown custom
+   * IDs against the loaded library and rewrites this back to disk if a
+   * referenced custom is gone — same self-healing pattern as
+   * compilePresetId.
+   */
+  readonly advisorSystemPromptMode: string
+  readonly advisorSystemPromptCustomId: string | null
+  readonly personaSwitchPromptMode: string
+  readonly personaSwitchPromptCustomId: string | null
+  /**
+   * Currently-selected compact prompt ID (library base or custom).
+   * Consumed by both the manual Compact button and the auto-compaction
+   * pipeline. Defaults to the built-in base entry ID.
+   *
+   * Validated as any non-empty string — runtime resolution via
+   * resolveCompactPromptTemplateWithFallback handles the unknown-ID
+   * case by falling back to the built-in base.
+   */
+  readonly compactPromptId: string
 }
 
 /** Description for each config key — shown in the Edit Configuration modal */
 export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
   maxSessionSizeMB: 'Maximum session file size in megabytes before save is rejected.',
-  autoSaveDebounceMs: 'Delay in milliseconds before auto-saving after a change. Lower = more frequent saves.',
-  defaultTurnMode: 'Default turn mode for new sessions: sequential, parallel, manual, or queue.',
   maxFileAttachmentMB: 'Maximum file size in megabytes for attachments.',
   showOnboarding: 'Show the onboarding wizard on next startup. Automatically set to false after completing the wizard.',
   autoCompactionEnabled: 'When true, new sessions inherit auto-compaction turned on using the configured model.',
@@ -51,12 +76,15 @@ export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
   compileMaxTokens: 'Maximum output tokens for Compile Document calls. Higher values let the document grow longer before being truncated. Default 16384. Provider may cap server-side.',
   compileModelConfig: 'Default model used by Compile Document. Managed via Edit → Compile Settings.',
   compilePresetId: 'Default compile preset (style template). Managed via Edit → Compile Settings.',
+  advisorSystemPromptMode: 'Advisor Layer-1 system prompt mode: base, custom, or off. Managed via Configuration → System Prompts.',
+  advisorSystemPromptCustomId: 'Custom advisor system prompt ID (when mode is custom). Managed via Configuration → System Prompts.',
+  personaSwitchPromptMode: 'Persona-switch summarization prompt mode: base, custom, or off. Managed via Configuration → System Prompts.',
+  personaSwitchPromptCustomId: 'Custom persona-switch prompt ID (when mode is custom). Managed via Configuration → System Prompts.',
+  compactPromptId: 'Currently-selected compact prompt template ID (used by both manual Compact and auto-compaction). Managed via Configuration → Compact Prompts.',
 }
 
 const DEFAULT_CONFIG: AppConfig = {
   maxSessionSizeMB: 100,
-  autoSaveDebounceMs: 2000,
-  defaultTurnMode: 'sequential',
   maxFileAttachmentMB: 10,
   showOnboarding: true,
   autoCompactionEnabled: false,
@@ -67,6 +95,17 @@ const DEFAULT_CONFIG: AppConfig = {
   // src/features/chat/compile-presets.ts. Kept as a string here so the
   // main process doesn't need to import renderer-side modules.
   compilePresetId: 'comprehensive',
+  // System Prompts library defaults — both categories on 'base', no
+  // custom selected. New installs get the prior pre-feature behavior
+  // (built-in advisor prompt + built-in persona-switch prompt).
+  advisorSystemPromptMode: 'base',
+  advisorSystemPromptCustomId: null,
+  personaSwitchPromptMode: 'base',
+  personaSwitchPromptCustomId: null,
+  // Matches BUILT_IN_COMPACT_PROMPT_ID in src/features/compactPrompts/
+  // built-in-compact-prompts.ts. Kept as a literal string here because
+  // the main process doesn't import from the renderer tree.
+  compactPromptId: 'builtin_compact_default',
 }
 
 function isValidAutoCompactionConfig(v: unknown): v is AutoCompactionConfigPersisted {
@@ -77,6 +116,16 @@ function isValidAutoCompactionConfig(v: unknown): v is AutoCompactionConfigPersi
     && typeof o['keyId'] === 'string'
 }
 
+/** Validates a string field that's allowed to be either a non-empty string or null. */
+function isValidNullableString(v: unknown): boolean {
+  return v === null || typeof v === 'string'
+}
+
+/** Valid system prompt mode values: 'base' | 'custom' | 'off'. */
+function isValidPromptMode(v: unknown): boolean {
+  return v === 'base' || v === 'custom' || v === 'off'
+}
+
 function loadAppConfig(): AppConfig {
   const configPath = join(app.getPath('userData'), 'config.json')
   try {
@@ -84,8 +133,6 @@ function loadAppConfig(): AppConfig {
     const parsed = JSON.parse(content) as Record<string, unknown>
     return {
       maxSessionSizeMB: typeof parsed['maxSessionSizeMB'] === 'number' ? parsed['maxSessionSizeMB'] : DEFAULT_CONFIG.maxSessionSizeMB,
-      autoSaveDebounceMs: typeof parsed['autoSaveDebounceMs'] === 'number' ? parsed['autoSaveDebounceMs'] : DEFAULT_CONFIG.autoSaveDebounceMs,
-      defaultTurnMode: typeof parsed['defaultTurnMode'] === 'string' ? parsed['defaultTurnMode'] : DEFAULT_CONFIG.defaultTurnMode,
       maxFileAttachmentMB: typeof parsed['maxFileAttachmentMB'] === 'number' ? parsed['maxFileAttachmentMB'] : DEFAULT_CONFIG.maxFileAttachmentMB,
       showOnboarding: typeof parsed['showOnboarding'] === 'boolean' ? parsed['showOnboarding'] : DEFAULT_CONFIG.showOnboarding,
       autoCompactionEnabled: typeof parsed['autoCompactionEnabled'] === 'boolean' ? parsed['autoCompactionEnabled'] : DEFAULT_CONFIG.autoCompactionEnabled,
@@ -97,6 +144,21 @@ function loadAppConfig(): AppConfig {
       compilePresetId: typeof parsed['compilePresetId'] === 'string' && parsed['compilePresetId'] !== ''
         ? parsed['compilePresetId']
         : DEFAULT_CONFIG.compilePresetId,
+      advisorSystemPromptMode: isValidPromptMode(parsed['advisorSystemPromptMode'])
+        ? (parsed['advisorSystemPromptMode'] as string)
+        : DEFAULT_CONFIG.advisorSystemPromptMode,
+      advisorSystemPromptCustomId: isValidNullableString(parsed['advisorSystemPromptCustomId'])
+        ? (parsed['advisorSystemPromptCustomId'] as string | null)
+        : DEFAULT_CONFIG.advisorSystemPromptCustomId,
+      personaSwitchPromptMode: isValidPromptMode(parsed['personaSwitchPromptMode'])
+        ? (parsed['personaSwitchPromptMode'] as string)
+        : DEFAULT_CONFIG.personaSwitchPromptMode,
+      personaSwitchPromptCustomId: isValidNullableString(parsed['personaSwitchPromptCustomId'])
+        ? (parsed['personaSwitchPromptCustomId'] as string | null)
+        : DEFAULT_CONFIG.personaSwitchPromptCustomId,
+      compactPromptId: typeof parsed['compactPromptId'] === 'string' && parsed['compactPromptId'] !== ''
+        ? parsed['compactPromptId']
+        : DEFAULT_CONFIG.compactPromptId,
     }
   } catch {
     try {
@@ -198,8 +260,14 @@ function createAppMenu(): void {
       label: 'Edit',
       submenu: [
         {
-          label: 'Edit Configuration',
-          click: () => { mainWindow?.webContents.send('menu:edit-config') },
+          // Single entry by design — opens the unified ConfigurationModal
+          // on the renderer side, which contains panes for personas, the
+          // four prompt libraries, compile settings, auto-compaction
+          // settings, and the raw config editor. The Ctrl+, accelerator
+          // matches VS Code's Settings shortcut.
+          label: 'Configuration…',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => { mainWindow?.webContents.send('menu:configuration') },
         },
       ],
     },
@@ -425,8 +493,6 @@ function registerIpcHandlers(): void {
     const raw = newConfig as Record<string, unknown>
     const validated: AppConfig = {
       maxSessionSizeMB: typeof raw['maxSessionSizeMB'] === 'number' ? raw['maxSessionSizeMB'] : appConfig.maxSessionSizeMB,
-      autoSaveDebounceMs: typeof raw['autoSaveDebounceMs'] === 'number' ? raw['autoSaveDebounceMs'] : appConfig.autoSaveDebounceMs,
-      defaultTurnMode: typeof raw['defaultTurnMode'] === 'string' ? raw['defaultTurnMode'] : appConfig.defaultTurnMode,
       maxFileAttachmentMB: typeof raw['maxFileAttachmentMB'] === 'number' ? raw['maxFileAttachmentMB'] : appConfig.maxFileAttachmentMB,
       showOnboarding: typeof raw['showOnboarding'] === 'boolean' ? raw['showOnboarding'] : appConfig.showOnboarding,
       autoCompactionEnabled: typeof raw['autoCompactionEnabled'] === 'boolean' ? raw['autoCompactionEnabled'] : appConfig.autoCompactionEnabled,
@@ -446,6 +512,25 @@ function registerIpcHandlers(): void {
       compilePresetId: typeof raw['compilePresetId'] === 'string' && raw['compilePresetId'] !== ''
         ? raw['compilePresetId']
         : appConfig.compilePresetId,
+      advisorSystemPromptMode: isValidPromptMode(raw['advisorSystemPromptMode'])
+        ? (raw['advisorSystemPromptMode'] as string)
+        : appConfig.advisorSystemPromptMode,
+      advisorSystemPromptCustomId: raw['advisorSystemPromptCustomId'] === null
+        ? null
+        : typeof raw['advisorSystemPromptCustomId'] === 'string'
+          ? raw['advisorSystemPromptCustomId']
+          : appConfig.advisorSystemPromptCustomId,
+      personaSwitchPromptMode: isValidPromptMode(raw['personaSwitchPromptMode'])
+        ? (raw['personaSwitchPromptMode'] as string)
+        : appConfig.personaSwitchPromptMode,
+      personaSwitchPromptCustomId: raw['personaSwitchPromptCustomId'] === null
+        ? null
+        : typeof raw['personaSwitchPromptCustomId'] === 'string'
+          ? raw['personaSwitchPromptCustomId']
+          : appConfig.personaSwitchPromptCustomId,
+      compactPromptId: typeof raw['compactPromptId'] === 'string' && raw['compactPromptId'] !== ''
+        ? raw['compactPromptId']
+        : appConfig.compactPromptId,
     }
     appConfig = validated
     saveAppConfig(validated)
@@ -463,6 +548,70 @@ function registerIpcHandlers(): void {
   ipcMain.handle('adapters:delete', (_event, id: unknown) => {
     if (typeof id !== 'string') throw new Error('Invalid adapter ID')
     deleteAdapterDefinition(id)
+  })
+
+  // ── Custom personas ────────────────────────────────────────
+
+  ipcMain.handle('personas:load', () => loadCustomPersonas())
+
+  ipcMain.handle('personas:save', (_event, persona: unknown) => {
+    if (!isValidCustomPersona(persona)) {
+      throw new Error('Invalid custom persona: must include id, name, content, createdAt, updatedAt')
+    }
+    saveCustomPersona(persona)
+  })
+
+  ipcMain.handle('personas:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid persona ID')
+    return deleteCustomPersona(id)
+  })
+
+  // ── Custom system prompts ──────────────────────────────────
+
+  ipcMain.handle('system-prompts:load', () => loadCustomSystemPrompts())
+
+  ipcMain.handle('system-prompts:save', (_event, entry: unknown) => {
+    if (!isValidStoredSystemPrompt(entry)) {
+      throw new Error('Invalid system prompt: must include id, category, name, content, createdAt, updatedAt')
+    }
+    saveCustomSystemPrompt(entry)
+  })
+
+  ipcMain.handle('system-prompts:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid system prompt ID')
+    return deleteCustomSystemPrompt(id)
+  })
+
+  // ── Custom compile prompts ─────────────────────────────────
+
+  ipcMain.handle('compile-prompts:load', () => loadCustomCompilePrompts())
+
+  ipcMain.handle('compile-prompts:save', (_event, entry: unknown) => {
+    if (!isValidStoredCompilePrompt(entry)) {
+      throw new Error('Invalid compile prompt: must include id, label, description, prompt, createdAt, updatedAt')
+    }
+    saveCustomCompilePrompt(entry)
+  })
+
+  ipcMain.handle('compile-prompts:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid compile prompt ID')
+    return deleteCustomCompilePrompt(id)
+  })
+
+  // ── Custom compact prompts ─────────────────────────────────
+
+  ipcMain.handle('compact-prompts:load', () => loadCustomCompactPrompts())
+
+  ipcMain.handle('compact-prompts:save', (_event, entry: unknown) => {
+    if (!isValidStoredCompactPrompt(entry)) {
+      throw new Error('Invalid compact prompt: must include id, name, content, createdAt, updatedAt')
+    }
+    saveCustomCompactPrompt(entry)
+  })
+
+  ipcMain.handle('compact-prompts:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid compact prompt ID')
+    return deleteCustomCompactPrompt(id)
   })
 
   // ── Custom providers ───────────────────────────────────────

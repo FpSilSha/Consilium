@@ -15,7 +15,15 @@ import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSe
 import { formatProviderLabel } from '@/features/modelCatalog/format-provider-label'
 import type { SessionDocument } from '@/features/documents/types'
 import { registerActiveCompile, clearActiveCompile } from '@/features/documents/compile-controller'
-import { COMPILE_PRESETS, getPresetById } from './compile-presets'
+// COMPILE_PRESETS and getPresetById are no longer imported directly —
+// resolution now goes through the merged base+custom list via the
+// compile-prompts-resolver. The base presets still live in
+// compile-presets.ts; the resolver wraps them with user customs.
+import {
+  getMergedCompilePrompts,
+  resolveCompilePromptWithFallback,
+} from '@/features/compilePrompts/compile-prompts-resolver'
+import type { CustomCompilePrompt } from '@/features/compilePrompts/types'
 import { COMPILE_SYSTEM_PROMPT } from './compile-system-prompt'
 
 /**
@@ -38,9 +46,12 @@ function buildCompilePrompt(
   presetId: string,
   userFocus: string,
   replaceDefault: boolean,
+  customs: readonly CustomCompilePrompt[],
 ): string {
   const trimmedFocus = userFocus.trim()
-  const preset = getPresetById(presetId)
+  // Resolve across both base and custom entries. Falls back to the
+  // default preset if the id is unknown (e.g., a deleted custom).
+  const preset = resolveCompilePromptWithFallback(presetId, customs)
 
   if (trimmedFocus === '') return preset.prompt
 
@@ -90,6 +101,7 @@ export function CompileDocumentButton(): ReactNode {
   const compileMaxTokens = useStore((s) => s.compileMaxTokens)
   const globalCompileConfig = useStore((s) => s.compileModelConfig)
   const globalCompilePresetId = useStore((s) => s.compilePresetId)
+  const customCompilePrompts = useStore((s) => s.customCompilePrompts)
   const addDocument = useStore((s) => s.addDocument)
   const setDraftCompile = useStore((s) => s.setDraftCompile)
   const appendDraftCompileContent = useStore((s) => s.appendDraftCompileContent)
@@ -118,7 +130,16 @@ export function CompileDocumentButton(): ReactNode {
     }
   }, [globalCompilePresetId, showPicker])
 
-  const selectedPreset = getPresetById(selectedPresetId)
+  // Resolve across base + custom merged list so the selected preset
+  // label/description/prompt can come from either source.
+  const selectedPreset = resolveCompilePromptWithFallback(selectedPresetId, customCompilePrompts)
+  // Memoized merged list used for the dropdown and the selectedPreset
+  // lookup. Separating it out so the dropdown re-computes only when
+  // customs actually change, not on every render.
+  const mergedCompilePrompts = useMemo(
+    () => getMergedCompilePrompts(customCompilePrompts),
+    [customCompilePrompts],
+  )
 
   // Conservative estimate of compile input tokens — lean HIGH on purpose.
   // See computeConservativeCompileEstimate() above for the formula.
@@ -179,7 +200,7 @@ export function CompileDocumentButton(): ReactNode {
     const presetIdAtStart = selectedPresetId
     const focusAtStart = userFocus
     const replaceAtStart = replaceDefault && userFocus.trim() !== ''
-    const compilePrompt = buildCompilePrompt(presetIdAtStart, focusAtStart, replaceAtStart)
+    const compilePrompt = buildCompilePrompt(presetIdAtStart, focusAtStart, replaceAtStart, customCompilePrompts)
 
     // Holder for the controller so callbacks can check it. Assigned after
     // streamResponse returns it.
@@ -310,6 +331,7 @@ export function CompileDocumentButton(): ReactNode {
     selectedPresetId,
     replaceDefault,
     compileMaxTokens,
+    customCompilePrompts,
     addDocument,
     accumulateCompileCost,
     setDraftCompile,
@@ -357,13 +379,24 @@ export function CompileDocumentButton(): ReactNode {
             onChange={(e) => setSelectedPresetId(e.target.value)}
             className="mb-1 w-full rounded-md border border-edge-subtle bg-surface-base px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
           >
-            {COMPILE_PRESETS.map((preset) => (
-              <option key={preset.id} value={preset.id}>{preset.label}</option>
+            {mergedCompilePrompts.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.label}
+                {!preset.isBuiltIn ? ' · custom' : ''}
+              </option>
             ))}
           </select>
-          <p className="mb-2 text-xs italic text-content-muted">
-            {selectedPreset.description}
-          </p>
+          {/* Only render the hint paragraph when the selected preset
+              has a non-empty description. Custom prompts are allowed
+              to have an empty description — without this guard, an
+              empty description would still reserve ~8px of mb-2
+              margin, producing a visible gap inconsistent with the
+              base presets. */}
+          {selectedPreset.description !== '' && (
+            <p className="mb-2 text-xs italic text-content-muted">
+              {selectedPreset.description}
+            </p>
+          )}
 
           {/* Optional focus textarea */}
           <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-muted">

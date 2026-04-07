@@ -4,6 +4,7 @@ import { streamResponse, isTransientError } from '@/services/api/stream-orchestr
 import type { StreamCallbacks } from '@/services/api/stream-orchestrator'
 import { createAssistantMessage } from '@/services/context-bus/message-factory'
 import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
+import { resolveAdvisorSystemPrompt } from '@/features/systemPrompts/system-prompt-resolver'
 import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { buildCostMetadata } from '@/services/api/cost-utils'
 import { getRawKey } from '@/features/keys/key-vault'
@@ -214,7 +215,8 @@ function dispatchAgentTurn(card: QueueCard): void {
     personaContent += `\n\nNote: There may be other ${window.personaLabel} advisors in this chat. Provide unique perspectives still based in truth where possible, but don't be contrarian for the sake of it.`
   }
 
-  const systemPrompt = buildSystemPrompt(personaContent, state.sessionInstructions || undefined)
+  const advisorPromptOverride = resolveAdvisorSystemPrompt(state.systemPromptsConfig, state.customSystemPrompts)
+  const systemPrompt = buildSystemPrompt(personaContent, state.sessionInstructions || undefined, advisorPromptOverride)
   const threadMessages = messagesToApiFormat(state.messages, {
     windowId: card.windowId,
     personaLabel: window.personaLabel,

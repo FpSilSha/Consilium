@@ -2,7 +2,7 @@ import { type ReactNode, useState, useCallback } from 'react'
 import { useStore } from '@/store'
 import { Tooltip } from '@/features/ui/Tooltip'
 import { createUserMessage } from '@/services/context-bus/message-factory'
-import { getPresetById, isKnownPresetId } from '@/features/chat/compile-presets'
+import { resolveCompilePrompt } from '@/features/compilePrompts/compile-prompts-resolver'
 import type { SessionDocument } from './types'
 import { DocumentViewerModal } from './DocumentViewerModal'
 
@@ -120,6 +120,13 @@ function DocumentRow({ doc, onView }: {
 }): ReactNode {
   const removeDocumentFromSession = useStore((s) => s.removeDocumentFromSession)
   const appendMessage = useStore((s) => s.appendMessage)
+  const customCompilePrompts = useStore((s) => s.customCompilePrompts)
+  // Resolve the preset label across base + custom. Null when the id
+  // is unknown (e.g., a deleted custom) — hide the label rather than
+  // silently mapping to the default.
+  const presetEntry = doc.presetId != null
+    ? resolveCompilePrompt(doc.presetId, customCompilePrompts)
+    : null
 
   const [showActions, setShowActions] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -177,11 +184,11 @@ function DocumentRow({ doc, onView }: {
           <div className="truncate text-[10px] text-content-disabled">
             {doc.modelName}
             {doc.cost > 0 && <span> · ~${doc.cost.toFixed(4)}</span>}
-            {/* Only show the preset label if it resolves to a current preset.
-                Stale IDs from removed/renamed presets are hidden rather than
-                silently mapped to the default (which would be misleading). */}
-            {doc.presetId != null && isKnownPresetId(doc.presetId) && (
-              <span> · {getPresetById(doc.presetId).label}</span>
+            {/* Only show the preset label if it resolves to a current
+                preset (base or custom). Stale IDs from removed presets
+                are hidden rather than silently mapped to the default. */}
+            {presetEntry != null && (
+              <span> · {presetEntry.label}</span>
             )}
             {doc.focusReplacedDefault === true
               ? <span> · custom</span>

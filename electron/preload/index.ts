@@ -16,6 +16,18 @@ const api: ConsiliumAPI = {
   adaptersLoad: () => ipcRenderer.invoke('adapters:load'),
   adaptersSave: (def) => ipcRenderer.invoke('adapters:save', def),
   adaptersDelete: (id) => ipcRenderer.invoke('adapters:delete', id),
+  personasLoad: () => ipcRenderer.invoke('personas:load'),
+  personasSave: (persona) => ipcRenderer.invoke('personas:save', persona),
+  personasDelete: (id) => ipcRenderer.invoke('personas:delete', id),
+  systemPromptsLoad: () => ipcRenderer.invoke('system-prompts:load'),
+  systemPromptsSave: (entry) => ipcRenderer.invoke('system-prompts:save', entry),
+  systemPromptsDelete: (id) => ipcRenderer.invoke('system-prompts:delete', id),
+  compilePromptsLoad: () => ipcRenderer.invoke('compile-prompts:load'),
+  compilePromptsSave: (entry) => ipcRenderer.invoke('compile-prompts:save', entry),
+  compilePromptsDelete: (id) => ipcRenderer.invoke('compile-prompts:delete', id),
+  compactPromptsLoad: () => ipcRenderer.invoke('compact-prompts:load'),
+  compactPromptsSave: (entry) => ipcRenderer.invoke('compact-prompts:save', entry),
+  compactPromptsDelete: (id) => ipcRenderer.invoke('compact-prompts:delete', id),
   customProvidersLoad: () => ipcRenderer.invoke('custom-providers:load'),
   customProvidersSave: (providers) => ipcRenderer.invoke('custom-providers:save', providers),
   customModelsLoad: () => ipcRenderer.invoke('custom-models:load'),
@@ -30,7 +42,28 @@ const api: ConsiliumAPI = {
   windowIsMaximized: () => ipcRenderer.invoke('window:is-maximized'),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   onMenuAction: (callback) => {
-    const actions = ['menu:new-consilium', 'menu:save-session', 'menu:set-budget', 'menu:edit-config', 'menu:about']
+    // Allowlist of channels the renderer subscribes to from the main
+    // process. Anything emitted on a channel NOT in this list is silently
+    // dropped by ipcRenderer.on, so omissions are invisible failures —
+    // every channel the main-process menu fires must be listed here.
+    //
+    // 'menu:configuration' is the new unified entry point. The legacy
+    // menu:edit-config / compile-settings / auto-compaction-settings
+    // channels remain listed so the in-app TitleBar deep links and any
+    // historical IPC emissions keep working through the rollout.
+    // All legacy settings channels (menu:compile-settings,
+    // menu:auto-compaction-settings, menu:edit-config) were removed
+    // in tasks #23 + #25 when those panes became native inside
+    // ConfigurationModal. The main-process menu only emits the
+    // unified menu:configuration entry plus the long-standing file
+    // and help actions.
+    const actions = [
+      'menu:new-consilium',
+      'menu:save-session',
+      'menu:set-budget',
+      'menu:configuration',
+      'menu:about',
+    ]
     const handlers = actions.map((action) => {
       const handler = () => callback(action)
       ipcRenderer.on(action, handler)

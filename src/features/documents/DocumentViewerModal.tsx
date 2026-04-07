@@ -2,7 +2,7 @@ import { type ReactNode, useCallback } from 'react'
 import { useStore } from '@/store'
 import { MarkdownContent } from '@/features/chat/MarkdownContent'
 import { createUserMessage } from '@/services/context-bus/message-factory'
-import { getPresetById, isKnownPresetId } from '@/features/chat/compile-presets'
+import { resolveCompilePrompt } from '@/features/compilePrompts/compile-prompts-resolver'
 import type { SessionDocument } from './types'
 
 interface DocumentViewerModalProps {
@@ -18,6 +18,10 @@ interface DocumentViewerModalProps {
  */
 export function DocumentViewerModal({ document, onClose }: DocumentViewerModalProps): ReactNode {
   const appendMessage = useStore((s) => s.appendMessage)
+  const customCompilePrompts = useStore((s) => s.customCompilePrompts)
+  const presetEntry = document.presetId != null
+    ? resolveCompilePrompt(document.presetId, customCompilePrompts)
+    : null
 
   const handleAddToChat = useCallback(() => {
     const message = createUserMessage(document.content, '')
@@ -53,10 +57,11 @@ export function DocumentViewerModal({ document, onClose }: DocumentViewerModalPr
             <p className="mt-0.5 text-[10px] text-content-disabled">
               {document.modelName}
               {document.cost > 0 && <span> · ~${document.cost.toFixed(4)}</span>}
-              {/* Only show preset label when ID resolves to a current preset.
-                  Stale IDs (from a renamed/removed preset) are hidden. */}
-              {document.presetId != null && isKnownPresetId(document.presetId) && (
-                <span> · {getPresetById(document.presetId).label}</span>
+              {/* Only show the preset label when the id resolves to a
+                  current preset (base or custom). Stale ids from
+                  deleted customs or renamed presets are hidden. */}
+              {presetEntry != null && (
+                <span> · {presetEntry.label}</span>
               )}
               {document.focusReplacedDefault === true
                 ? <span> · custom</span>

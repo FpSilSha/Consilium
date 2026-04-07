@@ -3,6 +3,7 @@ import { streamResponse } from '@/services/api/stream-orchestrator'
 import type { StreamCallbacks } from '@/services/api/stream-orchestrator'
 import { createAssistantMessage, createUserMessage } from '@/services/context-bus/message-factory'
 import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
+import { resolveAdvisorSystemPrompt } from '@/features/systemPrompts/system-prompt-resolver'
 import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { buildCostMetadata } from '@/services/api/cost-utils'
 import { getRawKey } from '@/features/keys/key-vault'
@@ -103,9 +104,11 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
     }
 
     const persona = state.personas.find((p) => p.id === window.personaId)
+    const advisorPromptOverride = resolveAdvisorSystemPrompt(state.systemPromptsConfig, state.customSystemPrompts)
     const systemPrompt = buildSystemPrompt(
       persona?.content ?? '',
       state.sessionInstructions || undefined,
+      advisorPromptOverride,
     )
 
     const messages = messagesToApiFormat(state.messages, {
