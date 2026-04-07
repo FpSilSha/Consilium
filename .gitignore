@@ -26,6 +26,11 @@ dist/
 build/
 out/
 release/
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Generated images / scratch
+Gemini_Generated_Image_*.png
 
 # Python
 __pycache__/
