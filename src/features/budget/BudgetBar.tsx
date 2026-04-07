@@ -104,7 +104,7 @@ export function BudgetBar(): ReactNode {
       {/* Budget input dialog */}
       {showBudgetInput && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="mx-4 max-w-xs rounded-lg border border-edge-subtle bg-surface-panel p-4">
+          <div className="mx-4 w-full max-w-md rounded-lg border border-edge-subtle bg-surface-panel p-5">
             <h3 className="mb-2 text-sm font-medium text-content-primary">Session Budget</h3>
             <p className="mb-3 text-xs text-content-muted">
               Set a spending cap. Warning at 80%, halt at 100%. Enter 0 for no limit.
@@ -113,7 +113,7 @@ export function BudgetBar(): ReactNode {
                 check uses the same OpenRouter-based estimates that the
                 cost numbers do, so the cap is enforced against figures
                 that will not exactly match the user's actual bill. */}
-            <p className="mb-3 rounded-md border border-yellow-500/30 bg-yellow-900/20 px-2 py-1.5 text-[10px] leading-snug text-yellow-200">
+            <p className="mb-3 rounded-md border border-yellow-500/30 bg-yellow-900/20 px-3 py-2 text-xs leading-relaxed text-yellow-200">
               <strong>Heads up:</strong> the budget halt fires against cost estimates calculated
               from OpenRouter's published pricing, not your actual provider invoice. Real charges
               may differ — use a cap that gives you headroom.
