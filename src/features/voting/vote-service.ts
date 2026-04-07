@@ -3,6 +3,7 @@ import { useStore } from '@/store'
 import { streamResponse } from '@/services/api/stream-orchestrator'
 import { createUserMessage, createAssistantMessage } from '@/services/context-bus/message-factory'
 import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
+import { resolveAdvisorSystemPrompt } from '@/features/systemPrompts/system-prompt-resolver'
 import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { getRawKey } from '@/features/keys/key-vault'
 import type { AdvisorVote, VoteTally } from './vote-types'
@@ -112,9 +113,11 @@ async function collectVoteFromWindow(
   if (apiKey === null) return null
 
   const persona = state.personas.find((p) => p.id === window.personaId)
+  const advisorPromptOverride = resolveAdvisorSystemPrompt(state.systemPromptsConfig, state.customSystemPrompts)
   const systemPrompt = buildSystemPrompt(
     persona?.content ?? '',
     state.sessionInstructions || undefined,
+    advisorPromptOverride,
   )
 
   const messages = messagesToApiFormat(currentMessages, {

@@ -85,7 +85,7 @@ export const PANES: readonly PaneDef[] = [
     id: 'system-prompts',
     label: 'System Prompts',
     group: 'libraries',
-    kind: 'placeholder',
+    kind: 'native',
     blurb: 'Customize the base advisor instructions and the persona-switch handoff prompt. Each can be set to base, custom, or off.',
   },
   {

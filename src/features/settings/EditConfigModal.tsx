@@ -31,6 +31,13 @@ const HIDDEN_KEYS: ReadonlySet<string> = new Set([
   'compileModelConfig',
   'compileMaxTokens',
   'compilePresetId',
+  // System Prompts library — managed via Configuration → System Prompts.
+  // The pane saves disk-first then store-second; raw editing here would
+  // bypass the store mirror and only update on next launch.
+  'advisorSystemPromptMode',
+  'advisorSystemPromptCustomId',
+  'personaSwitchPromptMode',
+  'personaSwitchPromptCustomId',
 ])
 
 interface EditConfigModalProps {

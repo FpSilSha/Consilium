@@ -2,6 +2,7 @@ import { type ReactNode, useState, useCallback, useEffect, useRef } from 'react'
 import { PANES_BY_GROUP, GROUP_LABELS, DEFAULT_PANE, getPane, type PaneId, type PaneDef } from './panes'
 import { DirtyGuardContext, type DirtyGuard, type SetDirtyGuard } from './dirty-guard'
 import { PersonasPane } from '@/features/personas/PersonasPane'
+import { SystemPromptsPane } from '@/features/systemPrompts/SystemPromptsPane'
 
 /**
  * Unified Configuration modal — replaces the per-feature settings modals
@@ -290,6 +291,8 @@ function PaneBody({
     switch (pane.id) {
       case 'personas':
         return <PersonasPane />
+      case 'system-prompts':
+        return <SystemPromptsPane />
       default:
         // Pane is declared as native but no component is wired here yet
         // — surface in dev so the omission doesn't render a blank pane.

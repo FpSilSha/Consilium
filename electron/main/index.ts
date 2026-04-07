@@ -7,6 +7,7 @@ import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSy
 // env-loader removed — keys use safeStorage exclusively
 import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
 import { loadCustomPersonas, saveCustomPersona, deleteCustomPersona, isValidCustomPersona } from './persona-store'
+import { loadCustomSystemPrompts, saveCustomSystemPrompt, deleteCustomSystemPrompt, isValidStoredSystemPrompt } from './system-prompt-store'
 import { loadCustomProviders, saveCustomProviders, isValidProvider, type CustomProviderDef } from './custom-providers-store'
 import { loadCustomModels, saveCustomModels, addCustomModelId } from './custom-models-store'
 import { loadDocument, saveDocument, deleteDocument, isValidDocument } from './documents-store'
@@ -38,6 +39,21 @@ interface AppConfig {
    * runtime (graceful degradation).
    */
   readonly compilePresetId: string
+  /**
+   * System Prompts library — mode + custom-id pair for each of the two
+   * categories. Modes are 'base' | 'custom' | 'off' (validated as
+   * non-empty strings here; renderer enforces the enum). Custom IDs may
+   * be null when mode is base or off.
+   *
+   * Renderer (useStartupCustomSystemPrompts) reconciles unknown custom
+   * IDs against the loaded library and rewrites this back to disk if a
+   * referenced custom is gone — same self-healing pattern as
+   * compilePresetId.
+   */
+  readonly advisorSystemPromptMode: string
+  readonly advisorSystemPromptCustomId: string | null
+  readonly personaSwitchPromptMode: string
+  readonly personaSwitchPromptCustomId: string | null
 }
 
 /** Description for each config key — shown in the Edit Configuration modal */
@@ -52,6 +68,10 @@ export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
   compileMaxTokens: 'Maximum output tokens for Compile Document calls. Higher values let the document grow longer before being truncated. Default 16384. Provider may cap server-side.',
   compileModelConfig: 'Default model used by Compile Document. Managed via Edit → Compile Settings.',
   compilePresetId: 'Default compile preset (style template). Managed via Edit → Compile Settings.',
+  advisorSystemPromptMode: 'Advisor Layer-1 system prompt mode: base, custom, or off. Managed via Configuration → System Prompts.',
+  advisorSystemPromptCustomId: 'Custom advisor system prompt ID (when mode is custom). Managed via Configuration → System Prompts.',
+  personaSwitchPromptMode: 'Persona-switch summarization prompt mode: base, custom, or off. Managed via Configuration → System Prompts.',
+  personaSwitchPromptCustomId: 'Custom persona-switch prompt ID (when mode is custom). Managed via Configuration → System Prompts.',
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -68,6 +88,13 @@ const DEFAULT_CONFIG: AppConfig = {
   // src/features/chat/compile-presets.ts. Kept as a string here so the
   // main process doesn't need to import renderer-side modules.
   compilePresetId: 'comprehensive',
+  // System Prompts library defaults — both categories on 'base', no
+  // custom selected. New installs get the prior pre-feature behavior
+  // (built-in advisor prompt + built-in persona-switch prompt).
+  advisorSystemPromptMode: 'base',
+  advisorSystemPromptCustomId: null,
+  personaSwitchPromptMode: 'base',
+  personaSwitchPromptCustomId: null,
 }
 
 function isValidAutoCompactionConfig(v: unknown): v is AutoCompactionConfigPersisted {
@@ -76,6 +103,16 @@ function isValidAutoCompactionConfig(v: unknown): v is AutoCompactionConfigPersi
   return typeof o['provider'] === 'string'
     && typeof o['model'] === 'string'
     && typeof o['keyId'] === 'string'
+}
+
+/** Validates a string field that's allowed to be either a non-empty string or null. */
+function isValidNullableString(v: unknown): boolean {
+  return v === null || typeof v === 'string'
+}
+
+/** Valid system prompt mode values: 'base' | 'custom' | 'off'. */
+function isValidPromptMode(v: unknown): boolean {
+  return v === 'base' || v === 'custom' || v === 'off'
 }
 
 function loadAppConfig(): AppConfig {
@@ -98,6 +135,18 @@ function loadAppConfig(): AppConfig {
       compilePresetId: typeof parsed['compilePresetId'] === 'string' && parsed['compilePresetId'] !== ''
         ? parsed['compilePresetId']
         : DEFAULT_CONFIG.compilePresetId,
+      advisorSystemPromptMode: isValidPromptMode(parsed['advisorSystemPromptMode'])
+        ? (parsed['advisorSystemPromptMode'] as string)
+        : DEFAULT_CONFIG.advisorSystemPromptMode,
+      advisorSystemPromptCustomId: isValidNullableString(parsed['advisorSystemPromptCustomId'])
+        ? (parsed['advisorSystemPromptCustomId'] as string | null)
+        : DEFAULT_CONFIG.advisorSystemPromptCustomId,
+      personaSwitchPromptMode: isValidPromptMode(parsed['personaSwitchPromptMode'])
+        ? (parsed['personaSwitchPromptMode'] as string)
+        : DEFAULT_CONFIG.personaSwitchPromptMode,
+      personaSwitchPromptCustomId: isValidNullableString(parsed['personaSwitchPromptCustomId'])
+        ? (parsed['personaSwitchPromptCustomId'] as string | null)
+        : DEFAULT_CONFIG.personaSwitchPromptCustomId,
     }
   } catch {
     try {
@@ -453,6 +502,22 @@ function registerIpcHandlers(): void {
       compilePresetId: typeof raw['compilePresetId'] === 'string' && raw['compilePresetId'] !== ''
         ? raw['compilePresetId']
         : appConfig.compilePresetId,
+      advisorSystemPromptMode: isValidPromptMode(raw['advisorSystemPromptMode'])
+        ? (raw['advisorSystemPromptMode'] as string)
+        : appConfig.advisorSystemPromptMode,
+      advisorSystemPromptCustomId: raw['advisorSystemPromptCustomId'] === null
+        ? null
+        : typeof raw['advisorSystemPromptCustomId'] === 'string'
+          ? raw['advisorSystemPromptCustomId']
+          : appConfig.advisorSystemPromptCustomId,
+      personaSwitchPromptMode: isValidPromptMode(raw['personaSwitchPromptMode'])
+        ? (raw['personaSwitchPromptMode'] as string)
+        : appConfig.personaSwitchPromptMode,
+      personaSwitchPromptCustomId: raw['personaSwitchPromptCustomId'] === null
+        ? null
+        : typeof raw['personaSwitchPromptCustomId'] === 'string'
+          ? raw['personaSwitchPromptCustomId']
+          : appConfig.personaSwitchPromptCustomId,
     }
     appConfig = validated
     saveAppConfig(validated)
@@ -486,6 +551,22 @@ function registerIpcHandlers(): void {
   ipcMain.handle('personas:delete', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '') throw new Error('Invalid persona ID')
     return deleteCustomPersona(id)
+  })
+
+  // ── Custom system prompts ──────────────────────────────────
+
+  ipcMain.handle('system-prompts:load', () => loadCustomSystemPrompts())
+
+  ipcMain.handle('system-prompts:save', (_event, entry: unknown) => {
+    if (!isValidStoredSystemPrompt(entry)) {
+      throw new Error('Invalid system prompt: must include id, category, name, content, createdAt, updatedAt')
+    }
+    saveCustomSystemPrompt(entry)
+  })
+
+  ipcMain.handle('system-prompts:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid system prompt ID')
+    return deleteCustomSystemPrompt(id)
   })
 
   // ── Custom providers ───────────────────────────────────────

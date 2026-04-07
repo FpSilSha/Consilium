@@ -1,9 +1,23 @@
 /**
  * The three-layer system prompt architecture from Spec §10.
  *
- * Layer 1: App-level (hardcoded, hidden from user)
- * Layer 2: Persona prompt (from .md file)
+ * Layer 1: App-level advisor instructions (default is
+ *          APP_LEVEL_PROMPT — the historical hardcoded text that is
+ *          now also exposed as the "base" entry in the System Prompts
+ *          library under Configuration → System Prompts).
+ * Layer 2: Persona prompt (from .md file or custom-personas.json)
  * Layer 3: Per-session instructions (user-entered, optional)
+ *
+ * Layer 1 override: callers that have access to the store can resolve
+ * the user's current System Prompts → Advisor selection and pass the
+ * resolved string as `advisorPromptOverride`. If omitted, the default
+ * APP_LEVEL_PROMPT is used. If passed as an empty string, Layer 1 is
+ * skipped entirely — that corresponds to the user selecting 'off' in
+ * the System Prompts pane for the advisor category.
+ *
+ * The override mechanism keeps `buildSystemPrompt` pure (no store
+ * access) so tests can exercise it without spinning up Zustand, while
+ * still letting the runtime callers route through the resolver.
  */
 
 const APP_LEVEL_PROMPT = `You are one of several AI advisors participating in a collaborative session led by a human user.
@@ -26,10 +40,17 @@ HONESTY ABOUT WHAT YOU KNOW
 export function buildSystemPrompt(
   personaContent: string,
   sessionInstructions?: string,
+  advisorPromptOverride?: string,
 ): string {
-  // Filter out empty layers so a "No Persona" advisor doesn't get a trailing
-  // `---` separator with nothing after it.
-  const layers: string[] = [APP_LEVEL_PROMPT]
+  // Filter out empty layers so a "No Persona" advisor or an 'off'
+  // Layer 1 setting doesn't produce a trailing `---` separator with
+  // nothing after it. Undefined override means "use the default";
+  // empty string override means "skip Layer 1 entirely".
+  const layers: string[] = []
+  const layer1 = advisorPromptOverride ?? APP_LEVEL_PROMPT
+  if (layer1.trim() !== '') {
+    layers.push(layer1)
+  }
 
   if (personaContent.trim() !== '') {
     layers.push(personaContent)
