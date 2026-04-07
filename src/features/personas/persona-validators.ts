@@ -135,6 +135,50 @@ export function generateCustomPersonaId(
 }
 
 /**
+ * Dedicated ID generator for non-persona custom library entries —
+ * system prompts, compile prompts, compact prompts. Each library uses
+ * its own `kind` segment so the resulting ID namespace is disjoint
+ * from personas (which keep the legacy `custom_{slug}_{suffix}`
+ * format) and from each other.
+ *
+ * Format: `custom_{kind}_{slug}_{timestampSuffix}` with an extra
+ * 4-char random suffix when the slug fell back to the kind value
+ * (e.g., for all-emoji or all-CJK names).
+ *
+ *   "Tech Lead" + kind="sysprompt"   → custom_sysprompt_tech-lead_123456
+ *   "🤖"        + kind="sysprompt"   → custom_sysprompt_sysprompt_123456_abcd
+ *
+ * Used by:
+ *   - system prompts (kind='sysprompt')
+ *   - compile prompts (kind='compileprompt') — task #19
+ *   - compact prompts (kind='compactprompt') — task #21
+ *
+ * Personas have their own helper (generateCustomPersonaId above) that
+ * preserves the original `custom_{slug}_{suffix}` format for back-
+ * compat with the existing personas pane.
+ */
+export function generateCustomLibraryId(
+  kind: string,
+  name: string,
+  now: number = Date.now(),
+  randomSeed?: string,
+): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 24)
+  const slugIsFallback = slug.length === 0
+  const fallbackSlug = slugIsFallback ? kind : slug
+  const timestampSuffix = String(now).slice(-6)
+  if (slugIsFallback) {
+    const random = randomSeed ?? Math.random().toString(36).slice(2, 6)
+    return `custom_${kind}_${fallbackSlug}_${timestampSuffix}_${random}`
+  }
+  return `custom_${kind}_${fallbackSlug}_${timestampSuffix}`
+}
+
+/**
  * Synthesizes a Persona object from a stored custom-persona row. Custom
  * personas don't have a real .md file on disk, so `filePath` is a
  * synthetic marker (`__custom__/{id}.md`) that the rest of the app can

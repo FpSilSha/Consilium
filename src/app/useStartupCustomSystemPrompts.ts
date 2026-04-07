@@ -66,7 +66,22 @@ export function useStartupCustomSystemPrompts(): void {
       // Load the custom prompts library from disk first — the config
       // reconciliation step below needs the loaded IDs to validate
       // the persisted customId references.
+      //
+      // We track whether the load actually succeeded (vs. threw or was
+      // truncated). If the load failed transiently — file briefly
+      // locked by antivirus, NFS hiccup, permission glitch — the
+      // resulting empty array MUST NOT be used to reconcile config,
+      // because that would silently and PERMANENTLY reset the user's
+      // 'custom' mode selections to 'base/null' on disk. The user
+      // would relaunch and find their custom selection gone with no
+      // explanation.
+      //
+      // When loadSucceeded is false, we still apply an in-memory
+      // fallback (so the resolver doesn't crash this session), but we
+      // do NOT touch config.json. The next launch with a successful
+      // load will reconcile properly.
       let customs: SystemPromptEntry[] = []
+      let loadSucceeded = false
       try {
         const rows = await api.systemPromptsLoad()
         const valid = rows.filter(
@@ -95,6 +110,7 @@ export function useStartupCustomSystemPrompts(): void {
           isBuiltIn: false,
         }))
         setCustomSystemPrompts(customs)
+        loadSucceeded = true
       } catch (err) {
         console.error('[startup] failed to load custom system prompts:', err)
       }
@@ -133,13 +149,18 @@ export function useStartupCustomSystemPrompts(): void {
         const reconciled = reconcile(persisted, customs)
         setSystemPromptsConfig(reconciled)
 
-        // Only write back to disk if something actually changed.
+        // Only persist the reconciled config back to disk if BOTH
+        // the load succeeded AND something actually changed. The
+        // load-succeeded gate is the critical safety: never write a
+        // base/null reset when the customs file might still hold the
+        // user's actual selection — a transient load failure is the
+        // wrong reason to throw away their config.
         const configChanged =
           reconciled.advisorMode !== persisted.advisorMode ||
           reconciled.advisorCustomId !== persisted.advisorCustomId ||
           reconciled.personaSwitchMode !== persisted.personaSwitchMode ||
           reconciled.personaSwitchCustomId !== persisted.personaSwitchCustomId
-        if (configChanged) {
+        if (loadSucceeded && configChanged) {
           const nextValues = {
             ...values,
             advisorSystemPromptMode: reconciled.advisorMode,

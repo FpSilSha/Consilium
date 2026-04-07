@@ -1,7 +1,7 @@
 import { type ReactNode, useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useStore } from '@/store'
 import { useRegisterDirtyGuard } from '@/features/configuration/dirty-guard'
-import { generateCustomPersonaId } from '@/features/personas/persona-validators'
+import { generateCustomLibraryId } from '@/features/personas/persona-validators'
 import { BUILT_IN_SYSTEM_PROMPTS } from './built-in-system-prompts'
 import type { SystemPromptCategory, SystemPromptEntry, SystemPromptMode } from './types'
 
@@ -137,7 +137,28 @@ function CategorySection({ category }: { readonly category: SystemPromptCategory
     category === 'advisor' ? config.advisorCustomId : config.personaSwitchCustomId
 
   // Persist a config change to disk AND store. Disk-first: read current
-  // values via configLoad, merge our change, write back, then update store.
+  // values via configLoad, merge our change, write back, then update
+  // store.
+  //
+  // The store-side merge reads live state via useStore.getState() at
+  // call time rather than capturing it via a useCallback closure. This
+  // matters because two scenarios can produce a stale closure:
+  //
+  //   1. Same-category rapid toggles: Base→Custom→Off. Each click
+  //      enqueues a persistConfigChange. The first one's setConfig
+  //      hasn't resolved into a re-render yet, so the second click's
+  //      callback sees the original (now stale) `config` snapshot.
+  //
+  //   2. Cross-category clobber: user toggles persona-switch mode in
+  //      one tab, immediately switches to the advisor tab and toggles
+  //      its mode. The advisor tab's callback was memoized with a
+  //      `config` snapshot from before the persona-switch update,
+  //      and its spread overwrites the persona-switch mode change.
+  //
+  // Reading from useStore.getState() inside the merge avoids both —
+  // the merge always sees the latest store state. The trade-off is
+  // that this callback is no longer pure relative to its deps array,
+  // but Zustand reads are explicit and stable so this is fine.
   const persistConfigChange = useCallback(
     async (next: { mode: SystemPromptMode; customId: string | null }): Promise<void> => {
       setSaveError(null)
@@ -161,11 +182,11 @@ function CategorySection({ category }: { readonly category: SystemPromptCategory
               }),
         }
         await configApi.configSave(nextValues)
-        // Mirror to store — atomic replacement of the whole
-        // systemPromptsConfig object so React consumers see a single
-        // consistent update.
+        // Read LIVE store state at call time, not the closure snapshot.
+        // See the comment block above for why.
+        const liveConfig = useStore.getState().systemPromptsConfig
         const nextConfig = {
-          ...config,
+          ...liveConfig,
           ...(category === 'advisor'
             ? { advisorMode: next.mode, advisorCustomId: next.customId }
             : { personaSwitchMode: next.mode, personaSwitchCustomId: next.customId }),
@@ -176,7 +197,10 @@ function CategorySection({ category }: { readonly category: SystemPromptCategory
         setSaveError(err instanceof Error ? err.message : 'Failed to save')
       }
     },
-    [category, config, setConfig],
+    // `config` no longer in deps — we read from useStore.getState() at
+    // call time. Keeping it in the deps would re-create the callback
+    // on every config change for no benefit.
+    [category, setConfig],
   )
 
   const handleModeChange = useCallback(
@@ -217,12 +241,19 @@ function CategorySection({ category }: { readonly category: SystemPromptCategory
       }
       removeCustom(id)
       // If the deleted entry was the currently selected custom, fall
-      // back to base + null for this category.
-      if (currentCustomId === id && currentMode === 'custom') {
+      // back to base + null. Read LIVE store state for this decision —
+      // if a parallel mode change just happened, the closure snapshot
+      // (currentCustomId / currentMode) could be stale and lead to a
+      // spurious cascade.
+      const live = useStore.getState().systemPromptsConfig
+      const liveMode = category === 'advisor' ? live.advisorMode : live.personaSwitchMode
+      const liveCustomId =
+        category === 'advisor' ? live.advisorCustomId : live.personaSwitchCustomId
+      if (liveCustomId === id && liveMode === 'custom') {
         void persistConfigChange({ mode: 'base', customId: null })
       }
     },
-    [currentCustomId, currentMode, removeCustom, persistConfigChange],
+    [category, removeCustom, persistConfigChange],
   )
 
   return (
@@ -301,14 +332,24 @@ function CategorySection({ category }: { readonly category: SystemPromptCategory
           No custom {category === 'advisor' ? 'advisor' : 'persona-switch'} prompts yet.
         </p>
       )}
-      {filteredCustoms.map((entry) => (
-        <ExpandableEntry
-          key={entry.id}
-          title={entry.name}
-          content={entry.content}
-          onDelete={() => handleDeleteCustom(entry.id)}
-        />
-      ))}
+      {filteredCustoms.map((entry) => {
+        // Show an inline badge on entries with empty content so the
+        // user is reminded that selecting them is behaviorally
+        // identical to choosing 'off' for this category. Conditionally
+        // omit the badge prop entirely (rather than passing undefined)
+        // so the exactOptionalPropertyTypes contract is satisfied.
+        const badgeProps =
+          entry.content.trim() === '' ? { badge: 'empty' as const } : {}
+        return (
+          <ExpandableEntry
+            key={entry.id}
+            title={entry.name}
+            content={entry.content}
+            onDelete={() => handleDeleteCustom(entry.id)}
+            {...badgeProps}
+          />
+        )
+      })}
 
       {showForm ? (
         <CreateForm
@@ -317,11 +358,14 @@ function CategorySection({ category }: { readonly category: SystemPromptCategory
           onCreated={(entry) => {
             addCustom(entry)
             setShowForm(false)
-            // Auto-select the new entry if the user is currently on
-            // custom mode but had no selection yet, or is on base/off
-            // and just created their first custom (convenient — avoids
-            // a second click to select it).
-            if (currentCustomId == null) {
+            // Auto-select the new entry only when the user is already
+            // in 'custom' mode with no selection yet. Auto-switching
+            // from 'base' or 'off' to 'custom' would silently change
+            // the active behavior in ways the user did not request —
+            // someone who deliberately chose 'off' shouldn't have
+            // their advisor instructions silently re-enabled by
+            // creating a custom for future use.
+            if (currentMode === 'custom' && currentCustomId == null) {
               void persistConfigChange({ mode: 'custom', customId: entry.id })
             }
           }}
@@ -537,8 +581,10 @@ function CreateForm({
     setServerError(null)
     setSubmitting(true)
 
-    const id = generateCustomPersonaId(trimmedName) // reuses the same collision-resistant ID helper
-      .replace(/^custom_persona/, 'custom_sysprompt')
+    // System prompt IDs use the dedicated kind='sysprompt' generator so
+    // they live in a disjoint namespace from personas (whose IDs use
+    // the legacy custom_{slug}_{suffix} format).
+    const id = generateCustomLibraryId('sysprompt', trimmedName)
     const now = Date.now()
     const stored = {
       id,
@@ -659,6 +705,13 @@ function CreateForm({
           }`}
         />
         {contentError != null && <p className="mt-1 text-[10px] text-error">{contentError}</p>}
+        {contentError == null && content.trim() === '' && (
+          <p className="mt-1 text-[10px] italic text-content-disabled">
+            Empty content is allowed, but selecting this entry will behave identically to choosing
+            "Off" — no {category === 'advisor' ? 'advisor instructions' : 'summarization'} will be
+            sent.
+          </p>
+        )}
       </div>
 
       {serverError != null && (

@@ -86,20 +86,27 @@ export function resolvePersonaSwitchPromptTemplate(
  * as literal text — we intentionally do NOT error on unknown tokens
  * because the user may use them as literal content in their prompts.
  *
- * The substitution is plain string.replaceAll with no escape handling
- * — placeholder values are trusted because they come from the app's
- * own state (persona labels and formatted messages). There is no
- * user-input path that could inject a placeholder token into the
- * values.
+ * Single-pass substitution via regex callback — important for
+ * correctness when a placeholder VALUE happens to contain another
+ * placeholder token. For example, if a persona is named literally
+ * "{newLabel}", a sequential .replaceAll('{oldLabel}', ...) followed
+ * by .replaceAll('{newLabel}', ...) would cascade: the second
+ * replaceAll would substitute the literal "{newLabel}" injected by
+ * the first call, silently corrupting the prompt. Persona labels
+ * come from user-typed names, so this is a real (if rare) input
+ * path. The single-pass regex visits each token in the TEMPLATE
+ * exactly once and never re-scans values.
  */
 export function substitutePersonaSwitchPlaceholders(
   template: string,
   values: { readonly oldLabel: string; readonly newLabel: string; readonly messages: string },
 ): string {
-  return template
-    .replaceAll('{oldLabel}', values.oldLabel)
-    .replaceAll('{newLabel}', values.newLabel)
-    .replaceAll('{messages}', values.messages)
+  return template.replace(/\{(oldLabel|newLabel|messages)\}/g, (_match, token: string) => {
+    if (token === 'oldLabel') return values.oldLabel
+    if (token === 'newLabel') return values.newLabel
+    if (token === 'messages') return values.messages
+    return _match
+  })
 }
 
 function getBuiltIn(category: SystemPromptCategory): SystemPromptEntry {

@@ -232,6 +232,33 @@ describe('substitutePersonaSwitchPlaceholders', () => {
     })
     expect(result).toBe('plain text with no tokens')
   })
+
+  it('does NOT cascade when a value contains another placeholder token', () => {
+    // Regression test: a persona named "{newLabel}" used to cause the
+    // sequential .replaceAll() implementation to substitute the literal
+    // "{newLabel}" produced by the first pass during the second pass.
+    // The single-pass regex implementation visits each template token
+    // exactly once and never re-scans values.
+    const template = 'old={oldLabel}, new={newLabel}'
+    const result = substitutePersonaSwitchPlaceholders(template, {
+      oldLabel: '{newLabel}',
+      newLabel: 'ActualNew',
+      messages: 'irrelevant',
+    })
+    // The literal "{newLabel}" injected by the oldLabel substitution
+    // must survive into the output unchanged — NOT be re-substituted.
+    expect(result).toBe('old={newLabel}, new=ActualNew')
+  })
+
+  it('does not cascade for {messages} value containing other placeholder tokens', () => {
+    const template = '{oldLabel}|{messages}|{newLabel}'
+    const result = substitutePersonaSwitchPlaceholders(template, {
+      oldLabel: 'A',
+      newLabel: 'B',
+      messages: '{oldLabel} and {newLabel} both appear',
+    })
+    expect(result).toBe('A|{oldLabel} and {newLabel} both appear|B')
+  })
 })
 
 describe('isValidSystemPromptsState', () => {
