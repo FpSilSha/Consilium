@@ -48,6 +48,11 @@ export function restoreSession(session: SessionFile): void {
     state.setAutoCompaction(false, null)
   }
 
+  // Restore documents. The session holds a list of IDs; we fetch each doc
+  // by ID via the documents:load IPC. Missing files are silently dropped —
+  // no crash, no migration. Fired async so session restore isn't blocked.
+  void restoreDocuments(session.documentIds ?? [])
+
   // Restore windows with graceful degradation
   for (const sw of session.windows) {
     const window = sessionWindowToAdvisor(sw, state)
@@ -103,6 +108,52 @@ function sessionWindowToAdvisor(
   }
 }
 
+/**
+ * Resolves session document IDs to full SessionDocument objects via the
+ * documents:load IPC. Missing documents (deleted or never persisted) are
+ * silently skipped — graceful degradation per the storage design.
+ */
+async function restoreDocuments(ids: readonly string[]): Promise<void> {
+  const state = useStore.getState()
+
+  if (ids.length === 0) {
+    state.setSessionDocuments([])
+    return
+  }
+
+  const api = (window as { consiliumAPI?: { documentsLoad: (id: string) => Promise<Record<string, unknown> | null> } }).consiliumAPI
+  if (api == null) {
+    state.setSessionDocuments([])
+    return
+  }
+
+  const loaded: import('@/features/documents/types').SessionDocument[] = []
+  for (const id of ids) {
+    try {
+      const doc = await api.documentsLoad(id)
+      if (doc != null && isValidSessionDocument(doc)) {
+        loaded.push(doc as unknown as import('@/features/documents/types').SessionDocument)
+      }
+    } catch {
+      // Skip — corrupted or missing doc files don't crash session restore
+    }
+  }
+  state.setSessionDocuments(loaded)
+}
+
+function isValidSessionDocument(d: Record<string, unknown>): boolean {
+  return (
+    typeof d['id'] === 'string' && d['id'] !== '' &&
+    typeof d['title'] === 'string' &&
+    typeof d['content'] === 'string' &&
+    typeof d['provider'] === 'string' &&
+    typeof d['model'] === 'string' &&
+    typeof d['modelName'] === 'string' &&
+    typeof d['cost'] === 'number' &&
+    typeof d['createdAt'] === 'number'
+  )
+}
+
 /** Prevents concurrent initializeNewSession calls from double-creating. */
 let initInProgress = false
 
@@ -127,6 +178,9 @@ export async function initializeNewSession(): Promise<void> {
     if (state.globalAutoCompactionEnabled && state.globalAutoCompactionConfig !== null) {
       state.setAutoCompaction(true, state.globalAutoCompactionConfig)
     }
+
+    // Fresh sessions start with no document references
+    state.setSessionDocuments([])
 
     await saveCurrentSession()
   } finally {
@@ -191,6 +245,7 @@ export function buildSessionFile(): SessionFile {
       enabled: state.autoCompactionEnabled,
       config: state.autoCompactionConfig,
     },
+    documentIds: state.documentIds,
   }
 }
 

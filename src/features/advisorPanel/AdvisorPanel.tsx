@@ -6,6 +6,7 @@ import { AdvisorListItem } from './AdvisorListItem'
 import { QueueList } from './QueueList'
 import { CallForVoteButton } from '@/features/voting'
 import { ExportButton } from '@/features/export'
+import { DocumentsPanel } from '@/features/documents'
 
 export function AdvisorPanel(): ReactNode {
   const windowOrder = useStore((s) => s.windowOrder)
@@ -60,6 +61,9 @@ export function AdvisorPanel(): ReactNode {
           )}
         </div>
       </div>
+
+      {/* ── Documents section (collapsible, hidden when empty) ── */}
+      <DocumentsPanel />
 
       {/* ── Queue section (bottom) ─────────────── */}
       <div className="flex min-h-0 flex-1 flex-col">

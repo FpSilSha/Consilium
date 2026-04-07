@@ -26,6 +26,13 @@ export interface SessionFile {
   readonly outputFiles: readonly SessionFileRef[]
   /** Optional — older session files won't have this. Restored as off/null when absent. */
   readonly autoCompaction?: SessionAutoCompaction
+  /**
+   * IDs of compiled documents this session references. The actual document
+   * content lives in standalone files in the documents directory; sessions
+   * just hold the references. Missing files are silently dropped on load.
+   * Optional for back-compat with older sessions saved before this field.
+   */
+  readonly documentIds?: readonly string[]
 }
 
 export interface SessionWindow {
