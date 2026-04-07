@@ -182,7 +182,7 @@ function DocumentRow({ doc, onView }: {
 
         <button
           onClick={() => setShowActions(!showActions)}
-          className="shrink-0 rounded p-0.5 text-content-disabled opacity-0 transition-opacity hover:text-content-primary group-hover:opacity-100 focus:opacity-100"
+          className="shrink-0 rounded px-1 py-0.5 text-sm leading-none text-content-muted opacity-70 transition-opacity hover:bg-surface-active hover:text-content-primary hover:opacity-100 focus:opacity-100"
           aria-label="Document actions"
         >
           ⋯
