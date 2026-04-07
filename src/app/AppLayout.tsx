@@ -15,6 +15,7 @@ import { useStore } from '@/store'
 import { saveCurrentSession, initializeNewSession } from '@/features/sessions/session-manager'
 import { useStartupCatalogFetch } from './useStartupCatalogFetch'
 import { useStartupAutoCompaction } from './useStartupAutoCompaction'
+import { useStartupCustomPersonas } from './useStartupCustomPersonas'
 import { useSessionAutoSave } from './useSessionAutoSave'
 import { CommandPalette } from '@/features/commandPalette'
 import { WelcomeTourDialog } from '@/features/onboarding/WelcomeTourDialog'
@@ -22,6 +23,7 @@ import { WelcomeTourDialog } from '@/features/onboarding/WelcomeTourDialog'
 export function AppLayout(): ReactNode {
   useStartupCatalogFetch()
   useStartupAutoCompaction()
+  useStartupCustomPersonas()
   useSessionAutoSave()
 
   const configModalOpen = useStore((s) => s.configModalOpen)

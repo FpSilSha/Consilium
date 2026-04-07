@@ -1,5 +1,6 @@
 import { type ReactNode, createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import { PANES_BY_GROUP, GROUP_LABELS, DEFAULT_PANE, getPane, type PaneId, type PaneDef } from './panes'
+import { PersonasPane } from '@/features/personas/PersonasPane'
 
 /**
  * Unified Configuration modal — replaces the per-feature settings modals
@@ -328,9 +329,23 @@ function PaneBody({
   onOpenAdvanced,
   onOpenAdaptersAndKeys,
 }: PaneBodyProps): ReactNode {
-  // Native panes (when they exist) get a dedicated component each. For now
-  // every pane is either 'placeholder' or 'legacy'/'link-out', so the
-  // shell renders the same two helpers for all of them.
+  // Native panes have their own dedicated components living inside the
+  // modal. As more panes graduate from placeholder/legacy to native,
+  // each new pane gets a case here. Personas is the first.
+  if (pane.kind === 'native') {
+    switch (pane.id) {
+      case 'personas':
+        return <PersonasPane />
+      default:
+        // Pane is declared as native but no component is wired here yet
+        // — surface in dev so the omission doesn't render a blank pane.
+        console.error(
+          `[configuration] pane "${pane.id}" is kind:native but has no component case in PaneBody`,
+        )
+        return <PlaceholderPane pane={pane} />
+    }
+  }
+
   if (pane.kind === 'placeholder') {
     return <PlaceholderPane pane={pane} />
   }

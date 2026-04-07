@@ -26,6 +26,9 @@ export interface ConsiliumAPI {
   adaptersLoad(): Promise<readonly Record<string, unknown>[]>
   adaptersSave(def: Record<string, unknown>): Promise<void>
   adaptersDelete(id: string): Promise<void>
+  personasLoad(): Promise<readonly Record<string, unknown>[]>
+  personasSave(persona: Record<string, unknown>): Promise<void>
+  personasDelete(id: string): Promise<boolean>
   customProvidersLoad(): Promise<readonly Record<string, unknown>[]>
   customProvidersSave(providers: readonly Record<string, unknown>[]): Promise<void>
   customModelsLoad(): Promise<Readonly<Record<string, readonly string[]>>>

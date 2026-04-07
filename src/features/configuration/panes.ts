@@ -78,7 +78,7 @@ export const PANES: readonly PaneDef[] = [
     id: 'personas',
     label: 'Personas',
     group: 'libraries',
-    kind: 'placeholder',
+    kind: 'native',
     blurb: 'Create and manage advisor personas. Base personas ship with the app; custom personas are yours to edit and delete.',
   },
   {

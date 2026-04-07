@@ -6,6 +6,7 @@ import { join, resolve, normalize, sep, basename, extname } from 'path'
 import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSync, existsSync, renameSync } from 'fs'
 // env-loader removed — keys use safeStorage exclusively
 import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
+import { loadCustomPersonas, saveCustomPersona, deleteCustomPersona, isValidCustomPersona } from './persona-store'
 import { loadCustomProviders, saveCustomProviders, isValidProvider, type CustomProviderDef } from './custom-providers-store'
 import { loadCustomModels, saveCustomModels, addCustomModelId } from './custom-models-store'
 import { loadDocument, saveDocument, deleteDocument, isValidDocument } from './documents-store'
@@ -469,6 +470,22 @@ function registerIpcHandlers(): void {
   ipcMain.handle('adapters:delete', (_event, id: unknown) => {
     if (typeof id !== 'string') throw new Error('Invalid adapter ID')
     deleteAdapterDefinition(id)
+  })
+
+  // ── Custom personas ────────────────────────────────────────
+
+  ipcMain.handle('personas:load', () => loadCustomPersonas())
+
+  ipcMain.handle('personas:save', (_event, persona: unknown) => {
+    if (!isValidCustomPersona(persona)) {
+      throw new Error('Invalid custom persona: must include id, name, content, createdAt, updatedAt')
+    }
+    saveCustomPersona(persona)
+  })
+
+  ipcMain.handle('personas:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid persona ID')
+    return deleteCustomPersona(id)
   })
 
   // ── Custom providers ───────────────────────────────────────
