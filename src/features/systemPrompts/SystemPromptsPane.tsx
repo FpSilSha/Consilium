@@ -451,7 +451,7 @@ function ExpandableEntry({
           </span>
           <span className="truncate text-xs font-medium text-content-primary">{title}</span>
           {badge != null && (
-            <span className="rounded bg-surface-hover px-1.5 py-0 text-[9px] uppercase tracking-wider text-content-disabled">
+            <span className="rounded bg-surface-hover px-1.5 py-0 text-[9px] font-medium uppercase tracking-wider text-content-muted">
               {badge}
             </span>
           )}
