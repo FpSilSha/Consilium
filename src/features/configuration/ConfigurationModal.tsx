@@ -1,4 +1,4 @@
-import { type ReactNode, useState, useCallback, useEffect, useRef } from 'react'
+import { type ReactNode, createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 import { PANES_BY_GROUP, GROUP_LABELS, DEFAULT_PANE, getPane, type PaneId, type PaneDef } from './panes'
 
 /**
@@ -55,6 +55,53 @@ interface ConfigurationModalProps {
   readonly onOpenAdaptersAndKeys: () => void
 }
 
+/**
+ * Interception hook for pane switching when a future native pane has
+ * unsaved edits. The pane reports its dirty state to the modal via
+ * `setDirtyGuard(check)`; on the next pane-switch attempt, the modal
+ * calls the registered check function and only proceeds if it returns
+ * true. The hook is exported on the React Context so any descendant
+ * pane component can register/unregister without prop-drilling.
+ *
+ * Pre-wired now (in the shell) so panes added in tasks #15-#21 can
+ * adopt the pattern from day one without retrofitting the parent.
+ * Today every pane is placeholder/legacy and never registers a guard,
+ * so the check is a no-op and pane switches happen instantly.
+ */
+type DirtyGuard = () => boolean
+type SetDirtyGuard = (guard: DirtyGuard | null) => void
+
+const DirtyGuardContext = createContext<SetDirtyGuard>(() => {
+  // No-op outside ConfigurationModal — calling this from a stray
+  // descendant should not crash but should not silently appear to work
+  // either, hence the dev warning.
+  if (process.env.NODE_ENV !== 'production') {
+    console.warn('[configuration] useRegisterDirtyGuard called outside ConfigurationModal')
+  }
+})
+
+/**
+ * Hook for native panes to register a dirty-state check. Pass a function
+ * that returns `true` if it is safe to switch panes (e.g., no unsaved
+ * edits, or the user confirmed discard) and `false` to block the switch.
+ *
+ * Call with `null` (or rely on unmount cleanup) to deregister.
+ *
+ * Usage in a future native pane:
+ *
+ *   const register = useRegisterDirtyGuard()
+ *   useEffect(() => {
+ *     register(() => {
+ *       if (!isDirty) return true
+ *       return window.confirm('Discard unsaved changes?')
+ *     })
+ *     return () => register(null)
+ *   }, [isDirty, register])
+ */
+export function useRegisterDirtyGuard(): SetDirtyGuard {
+  return useContext(DirtyGuardContext)
+}
+
 export function ConfigurationModal({
   onClose,
   onOpenCompileSettings,
@@ -64,6 +111,43 @@ export function ConfigurationModal({
 }: ConfigurationModalProps): ReactNode {
   const [activePaneId, setActivePaneId] = useState<PaneId>(DEFAULT_PANE)
   const dialogRef = useRef<HTMLDivElement>(null)
+  // Held in a ref because the guard function is called from event
+  // handlers that should always see the most recent registration without
+  // forcing a parent re-render when a pane registers itself.
+  const dirtyGuardRef = useRef<DirtyGuard | null>(null)
+  const setDirtyGuard = useCallback<SetDirtyGuard>((guard) => {
+    dirtyGuardRef.current = guard
+  }, [])
+
+  // Capture the focused element at mount and restore it on unmount.
+  // Without this, screen reader and keyboard users lose their place in
+  // the UI when the modal closes — focus drops to <body> instead of
+  // returning to the menu button or hotkey-trigger element. Required by
+  // WCAG APG dialog pattern.
+  const triggerElementRef = useRef<HTMLElement | null>(null)
+  useEffect(() => {
+    triggerElementRef.current = document.activeElement as HTMLElement | null
+    return () => {
+      const trigger = triggerElementRef.current
+      // The trigger element may have been unmounted (e.g., a transient
+      // command palette button). Guard against focusing a detached node.
+      if (trigger != null && document.body.contains(trigger)) {
+        trigger.focus()
+      }
+    }
+  }, [])
+
+  // Pane-switch interceptor. Calls the registered dirty guard (if any)
+  // and only commits the new pane id if the guard returns true. The
+  // guard is responsible for showing its own confirmation UI.
+  const handlePaneSwitch = useCallback((nextId: PaneId) => {
+    const guard = dirtyGuardRef.current
+    if (guard != null && !guard()) return
+    // Reset the guard when switching panes — the new pane should
+    // register its own guard if it cares.
+    dirtyGuardRef.current = null
+    setActivePaneId(nextId)
+  }, [])
 
   const activePane = getPane(activePaneId)
 
@@ -108,7 +192,7 @@ export function ConfigurationModal({
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-labelledby="config-modal-title"
+      aria-labelledby="configuration-modal-title"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
@@ -121,11 +205,21 @@ export function ConfigurationModal({
         {/* Header */}
         <div className="flex shrink-0 items-center justify-between border-b border-edge-subtle px-6 py-4">
           <h2
-            id="config-modal-title"
+            id="configuration-modal-title"
             className="text-sm font-semibold text-content-primary"
           >
             Configuration
           </h2>
+          {/*
+            autoFocus on the Close button is intentional: it puts focus
+            inside the dialog immediately so Tab/Shift+Tab can navigate
+            into the modal contents without an initial Tab to enter the
+            focus trap. Pressing Enter immediately closes the modal —
+            this matches VS Code Settings UX. Do NOT remove autoFocus
+            without replacing it with another focus-on-mount target,
+            otherwise screen reader users land on <body> with the modal
+            visible but unfocused.
+          */}
           <button
             onClick={onClose}
             autoFocus
@@ -162,7 +256,7 @@ export function ConfigurationModal({
                   return (
                     <button
                       key={pane.id}
-                      onClick={() => setActivePaneId(pane.id)}
+                      onClick={() => handlePaneSwitch(pane.id)}
                       aria-current={isActive ? 'page' : undefined}
                       aria-label={`${pane.label}${statusSuffix}`}
                       className={`flex w-full items-center justify-between px-4 py-1.5 text-left text-xs transition-colors ${
@@ -192,16 +286,20 @@ export function ConfigurationModal({
             ))}
           </nav>
 
-          {/* Pane body */}
+          {/* Pane body — wrapped in DirtyGuardContext so future native
+              panes can register their dirty-state checks via
+              useRegisterDirtyGuard() without prop-drilling. */}
           <div className="min-w-0 flex-1 overflow-y-auto">
-            <PaneBody
-              pane={activePane}
-              onClose={onClose}
-              onOpenCompileSettings={onOpenCompileSettings}
-              onOpenAutoCompactSettings={onOpenAutoCompactSettings}
-              onOpenAdvanced={onOpenAdvanced}
-              onOpenAdaptersAndKeys={onOpenAdaptersAndKeys}
-            />
+            <DirtyGuardContext.Provider value={setDirtyGuard}>
+              <PaneBody
+                pane={activePane}
+                onClose={onClose}
+                onOpenCompileSettings={onOpenCompileSettings}
+                onOpenAutoCompactSettings={onOpenAutoCompactSettings}
+                onOpenAdvanced={onOpenAdvanced}
+                onOpenAdaptersAndKeys={onOpenAdaptersAndKeys}
+              />
+            </DirtyGuardContext.Provider>
           </div>
         </div>
       </div>

@@ -198,8 +198,14 @@ function createAppMenu(): void {
       label: 'Edit',
       submenu: [
         {
-          label: 'Edit Configuration',
-          click: () => { mainWindow?.webContents.send('menu:edit-config') },
+          // Single entry by design — opens the unified ConfigurationModal
+          // on the renderer side, which contains panes for personas, the
+          // four prompt libraries, compile settings, auto-compaction
+          // settings, and the raw config editor. The Ctrl+, accelerator
+          // matches VS Code's Settings shortcut.
+          label: 'Configuration…',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => { mainWindow?.webContents.send('menu:configuration') },
         },
       ],
     },

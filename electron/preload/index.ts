@@ -30,7 +30,25 @@ const api: ConsiliumAPI = {
   windowIsMaximized: () => ipcRenderer.invoke('window:is-maximized'),
   openExternal: (url) => ipcRenderer.invoke('shell:open-external', url),
   onMenuAction: (callback) => {
-    const actions = ['menu:new-consilium', 'menu:save-session', 'menu:set-budget', 'menu:edit-config', 'menu:about']
+    // Allowlist of channels the renderer subscribes to from the main
+    // process. Anything emitted on a channel NOT in this list is silently
+    // dropped by ipcRenderer.on, so omissions are invisible failures —
+    // every channel the main-process menu fires must be listed here.
+    //
+    // 'menu:configuration' is the new unified entry point. The legacy
+    // menu:edit-config / compile-settings / auto-compaction-settings
+    // channels remain listed so the in-app TitleBar deep links and any
+    // historical IPC emissions keep working through the rollout.
+    const actions = [
+      'menu:new-consilium',
+      'menu:save-session',
+      'menu:set-budget',
+      'menu:configuration',
+      'menu:edit-config',
+      'menu:compile-settings',
+      'menu:auto-compaction-settings',
+      'menu:about',
+    ]
     const handlers = actions.map((action) => {
       const handler = () => callback(action)
       ipcRenderer.on(action, handler)

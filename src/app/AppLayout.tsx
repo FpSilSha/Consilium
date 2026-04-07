@@ -41,10 +41,18 @@ export function AppLayout(): ReactNode {
   // rather than a toggle — toggling would let the user accidentally
   // close the modal mid-edit by retriggering the hotkey, and the
   // explicit Close button + Escape key already cover the close path.
-  // Using the functional setter form so this callback never closes
-  // over a stale `showConfiguration` value (it has no dependency on
-  // state, so it's stable across renders).
+  //
+  // Mutex with legacy modals: when ConfigurationModal opens, any
+  // standalone settings modal that may already be open is closed first.
+  // Without this, both modals render at z-50 and the legacy modal hides
+  // behind the Configuration backdrop, looking like a dead app until
+  // the user dismisses Configuration. Once tasks #23 and #25 port the
+  // legacy panes inline, the standalone state flags will be removed and
+  // this mutex collapses to a single setShowConfiguration call.
   const openConfiguration = useCallback(() => {
+    setShowEditConfig(false)
+    setShowAutoCompactSettings(false)
+    setShowCompileSettings(false)
     setShowConfiguration((prev) => (prev ? prev : true))
   }, [])
   // Adapters and API Keys are exposed in the Configuration sidebar as
@@ -55,19 +63,52 @@ export function AppLayout(): ReactNode {
   // each its own dedicated pane.
   const openAdaptersAndKeys = useCallback(() => setConfigModalOpen(true), [setConfigModalOpen])
 
+  // Defined BEFORE handleMenuAction so handleMenuAction's dependency
+  // array can reference it without a TDZ-style stale-closure trap.
+  // Previously this useCallback lived after handleMenuAction with both
+  // having empty deps; that worked only because both happened to be
+  // stable, and would have silently broken the moment either added a
+  // store dependency.
+  const handleNewConsilium = useCallback(async () => {
+    // Close any open settings modals before starting a fresh session.
+    // Without this, ConfigurationModal (or a legacy settings modal)
+    // would stay open layered on top of an empty session, with stale
+    // model/preset state from the prior session still shown.
+    setShowConfiguration(false)
+    setShowEditConfig(false)
+    setShowAutoCompactSettings(false)
+    setShowCompileSettings(false)
+
+    // Tear down in-flight streams (advisor turns AND compile) before clearing
+    // state. stopAll handles both via its centralized abortActiveCompile call.
+    const { stopAll } = await import('@/features/turnManager')
+    stopAll()
+
+    await saveCurrentSession().catch(() => {})
+    const { clearMessages, clearAllWindows, setCurrentSessionId, setSessionCustomName } = useStore.getState()
+    clearMessages()
+    clearAllWindows()
+    setCurrentSessionId(null)
+    setSessionCustomName(null)
+    await initializeNewSession()
+  }, [])
+
   const handleMenuAction = useCallback((action: string) => {
     switch (action) {
       case 'menu:new-consilium':
         handleNewConsilium()
         break
       case 'menu:configuration':
-        setShowConfiguration(true)
+        // Route through openConfiguration so the legacy-modal mutex
+        // applies whether the modal is opened from the title bar, the
+        // Ctrl+, hotkey, or the Electron main-process menu.
+        openConfiguration()
         break
-      // Legacy menu actions remain wired so the keyboard shortcuts and
-      // existing IPC menu emissions from the Electron main process
-      // continue to function during the rollout. Once all panes are
-      // ported (tasks #23, #25), the IPC menu definitions in the main
-      // process will be collapsed to a single Configuration entry too.
+      // Legacy menu actions remain wired so the existing IPC menu
+      // emissions from the Electron main process continue to function
+      // through the rollout. Once tasks #23 and #25 port the legacy
+      // panes inline, the IPC menu definitions in the main process can
+      // also be collapsed to a single Configuration entry.
       case 'menu:edit-config':
         setShowEditConfig(true)
         break
@@ -84,26 +125,11 @@ export function AppLayout(): ReactNode {
         setShowAbout(true)
         break
     }
-  }, [])
+  }, [handleNewConsilium, openConfiguration])
 
   // Ctrl+, / Cmd+, opens the unified Configuration modal — same shortcut
   // as VS Code Settings, intentional muscle-memory match.
   useConfigurationShortcut(openConfiguration)
-
-  const handleNewConsilium = useCallback(async () => {
-    // Tear down in-flight streams (advisor turns AND compile) before clearing
-    // state. stopAll handles both via its centralized abortActiveCompile call.
-    const { stopAll } = await import('@/features/turnManager')
-    stopAll()
-
-    await saveCurrentSession().catch(() => {})
-    const { clearMessages, clearAllWindows, setCurrentSessionId, setSessionCustomName } = useStore.getState()
-    clearMessages()
-    clearAllWindows()
-    setCurrentSessionId(null)
-    setSessionCustomName(null)
-    await initializeNewSession()
-  }, [])
 
   // Initialize a new session on first load if none exists
   useEffect(() => {
