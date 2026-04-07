@@ -11,5 +11,6 @@ import type { CustomAdaptersSlice } from './slices/customAdaptersSlice'
 import type { DocumentsSlice } from './slices/documentsSlice'
 import type { SystemPromptsSlice } from './slices/systemPromptsSlice'
 import type { CustomCompilePromptsSlice } from './slices/customCompilePromptsSlice'
+import type { CustomCompactPromptsSlice } from './slices/customCompactPromptsSlice'
 
-export type RootState = KeysSlice & PersonasSlice & ThemesSlice & ContextBusSlice & WindowsSlice & UISlice & TurnSlice & BudgetSlice & ModelCatalogSlice & CustomAdaptersSlice & DocumentsSlice & SystemPromptsSlice & CustomCompilePromptsSlice
+export type RootState = KeysSlice & PersonasSlice & ThemesSlice & ContextBusSlice & WindowsSlice & UISlice & TurnSlice & BudgetSlice & ModelCatalogSlice & CustomAdaptersSlice & DocumentsSlice & SystemPromptsSlice & CustomCompilePromptsSlice & CustomCompactPromptsSlice

@@ -35,6 +35,9 @@ export interface ConsiliumAPI {
   compilePromptsLoad(): Promise<readonly Record<string, unknown>[]>
   compilePromptsSave(entry: Record<string, unknown>): Promise<void>
   compilePromptsDelete(id: string): Promise<boolean>
+  compactPromptsLoad(): Promise<readonly Record<string, unknown>[]>
+  compactPromptsSave(entry: Record<string, unknown>): Promise<void>
+  compactPromptsDelete(id: string): Promise<boolean>
   customProvidersLoad(): Promise<readonly Record<string, unknown>[]>
   customProvidersSave(providers: readonly Record<string, unknown>[]): Promise<void>
   customModelsLoad(): Promise<Readonly<Record<string, readonly string[]>>>

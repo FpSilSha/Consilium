@@ -8,6 +8,7 @@ import {
   buildSummaryPrompt,
   shouldCompact,
 } from './compaction-engine'
+import { resolveCompactPromptTemplateWithFallback } from '@/features/compactPrompts/compact-prompts-resolver'
 
 interface CompactionResult {
   readonly archiveSummary: string
@@ -58,7 +59,15 @@ async function executeWindowCompaction(
   const { archive } = splitForCompaction(state.messages, window.bufferSize)
   if (archive.length === 0) return null
 
-  const summaryPrompt = buildSummaryPrompt(archive)
+  // Resolve the user's configured compact prompt template from the
+  // store. Falls back to the built-in base entry if the selected
+  // custom was deleted — same self-healing pattern as the other
+  // library consumers.
+  const autoTemplate = resolveCompactPromptTemplateWithFallback(
+    state.compactPromptId,
+    state.customCompactPrompts,
+  )
+  const summaryPrompt = buildSummaryPrompt(archive, autoTemplate)
 
   let summary: string
   try {
@@ -168,7 +177,14 @@ async function executeMainThreadCompaction(
   const { archive } = splitForCompaction(state.messages, MANUAL_COMPACTION_BUFFER)
   if (archive.length === 0) return null
 
-  const prompt = buildSummaryPrompt(archive)
+  // Manual compact uses the same configured template as auto compact.
+  // Single source of truth — a custom template the user created
+  // applies to both paths without a per-path toggle.
+  const manualTemplate = resolveCompactPromptTemplateWithFallback(
+    state.compactPromptId,
+    state.customCompactPrompts,
+  )
+  const prompt = buildSummaryPrompt(archive, manualTemplate)
   const summary = await runSummarization(provider, model, apiKey, prompt)
 
   // Re-split from live state to avoid dropping messages appended during summarization

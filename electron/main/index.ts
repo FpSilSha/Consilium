@@ -9,6 +9,7 @@ import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition,
 import { loadCustomPersonas, saveCustomPersona, deleteCustomPersona, isValidCustomPersona } from './persona-store'
 import { loadCustomSystemPrompts, saveCustomSystemPrompt, deleteCustomSystemPrompt, isValidStoredSystemPrompt } from './system-prompt-store'
 import { loadCustomCompilePrompts, saveCustomCompilePrompt, deleteCustomCompilePrompt, isValidStoredCompilePrompt } from './compile-prompt-store'
+import { loadCustomCompactPrompts, saveCustomCompactPrompt, deleteCustomCompactPrompt, isValidStoredCompactPrompt } from './compact-prompt-store'
 import { loadCustomProviders, saveCustomProviders, isValidProvider, type CustomProviderDef } from './custom-providers-store'
 import { loadCustomModels, saveCustomModels, addCustomModelId } from './custom-models-store'
 import { loadDocument, saveDocument, deleteDocument, isValidDocument } from './documents-store'
@@ -55,6 +56,16 @@ interface AppConfig {
   readonly advisorSystemPromptCustomId: string | null
   readonly personaSwitchPromptMode: string
   readonly personaSwitchPromptCustomId: string | null
+  /**
+   * Currently-selected compact prompt ID (library base or custom).
+   * Consumed by both the manual Compact button and the auto-compaction
+   * pipeline. Defaults to the built-in base entry ID.
+   *
+   * Validated as any non-empty string — runtime resolution via
+   * resolveCompactPromptTemplateWithFallback handles the unknown-ID
+   * case by falling back to the built-in base.
+   */
+  readonly compactPromptId: string
 }
 
 /** Description for each config key — shown in the Edit Configuration modal */
@@ -73,6 +84,7 @@ export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
   advisorSystemPromptCustomId: 'Custom advisor system prompt ID (when mode is custom). Managed via Configuration → System Prompts.',
   personaSwitchPromptMode: 'Persona-switch summarization prompt mode: base, custom, or off. Managed via Configuration → System Prompts.',
   personaSwitchPromptCustomId: 'Custom persona-switch prompt ID (when mode is custom). Managed via Configuration → System Prompts.',
+  compactPromptId: 'Currently-selected compact prompt template ID (used by both manual Compact and auto-compaction). Managed via Configuration → Compact Prompts.',
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -96,6 +108,10 @@ const DEFAULT_CONFIG: AppConfig = {
   advisorSystemPromptCustomId: null,
   personaSwitchPromptMode: 'base',
   personaSwitchPromptCustomId: null,
+  // Matches BUILT_IN_COMPACT_PROMPT_ID in src/features/compactPrompts/
+  // built-in-compact-prompts.ts. Kept as a literal string here because
+  // the main process doesn't import from the renderer tree.
+  compactPromptId: 'builtin_compact_default',
 }
 
 function isValidAutoCompactionConfig(v: unknown): v is AutoCompactionConfigPersisted {
@@ -148,6 +164,9 @@ function loadAppConfig(): AppConfig {
       personaSwitchPromptCustomId: isValidNullableString(parsed['personaSwitchPromptCustomId'])
         ? (parsed['personaSwitchPromptCustomId'] as string | null)
         : DEFAULT_CONFIG.personaSwitchPromptCustomId,
+      compactPromptId: typeof parsed['compactPromptId'] === 'string' && parsed['compactPromptId'] !== ''
+        ? parsed['compactPromptId']
+        : DEFAULT_CONFIG.compactPromptId,
     }
   } catch {
     try {
@@ -519,6 +538,9 @@ function registerIpcHandlers(): void {
         : typeof raw['personaSwitchPromptCustomId'] === 'string'
           ? raw['personaSwitchPromptCustomId']
           : appConfig.personaSwitchPromptCustomId,
+      compactPromptId: typeof raw['compactPromptId'] === 'string' && raw['compactPromptId'] !== ''
+        ? raw['compactPromptId']
+        : appConfig.compactPromptId,
     }
     appConfig = validated
     saveAppConfig(validated)
@@ -584,6 +606,22 @@ function registerIpcHandlers(): void {
   ipcMain.handle('compile-prompts:delete', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '') throw new Error('Invalid compile prompt ID')
     return deleteCustomCompilePrompt(id)
+  })
+
+  // ── Custom compact prompts ─────────────────────────────────
+
+  ipcMain.handle('compact-prompts:load', () => loadCustomCompactPrompts())
+
+  ipcMain.handle('compact-prompts:save', (_event, entry: unknown) => {
+    if (!isValidStoredCompactPrompt(entry)) {
+      throw new Error('Invalid compact prompt: must include id, name, content, createdAt, updatedAt')
+    }
+    saveCustomCompactPrompt(entry)
+  })
+
+  ipcMain.handle('compact-prompts:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid compact prompt ID')
+    return deleteCustomCompactPrompt(id)
   })
 
   // ── Custom providers ───────────────────────────────────────

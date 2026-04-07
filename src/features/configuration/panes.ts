@@ -99,7 +99,7 @@ export const PANES: readonly PaneDef[] = [
     id: 'compact-prompts',
     label: 'Compact Prompts',
     group: 'libraries',
-    kind: 'placeholder',
+    kind: 'native',
     blurb: 'Customize the prompt used by manual compact and auto-compaction. Both features pick from the same library.',
   },
   {

@@ -4,6 +4,7 @@ import { DirtyGuardContext, type DirtyGuard, type SetDirtyGuard } from './dirty-
 import { PersonasPane } from '@/features/personas/PersonasPane'
 import { SystemPromptsPane } from '@/features/systemPrompts/SystemPromptsPane'
 import { CompilePromptsPane } from '@/features/compilePrompts/CompilePromptsPane'
+import { CompactPromptsPane } from '@/features/compactPrompts/CompactPromptsPane'
 
 /**
  * Unified Configuration modal — replaces the per-feature settings modals
@@ -296,6 +297,8 @@ function PaneBody({
         return <SystemPromptsPane />
       case 'compile-prompts':
         return <CompilePromptsPane />
+      case 'compact-prompts':
+        return <CompactPromptsPane />
       default:
         // Pane is declared as native but no component is wired here yet
         // — surface in dev so the omission doesn't render a blank pane.

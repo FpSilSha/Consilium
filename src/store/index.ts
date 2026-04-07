@@ -13,6 +13,7 @@ import { createCustomAdaptersSlice } from './slices/customAdaptersSlice'
 import { createDocumentsSlice } from './slices/documentsSlice'
 import { createSystemPromptsSlice } from './slices/systemPromptsSlice'
 import { createCustomCompilePromptsSlice } from './slices/customCompilePromptsSlice'
+import { createCustomCompactPromptsSlice } from './slices/customCompactPromptsSlice'
 
 export const useStore = create<RootState>()((...args) => ({
   ...createKeysSlice(...args),
@@ -28,6 +29,7 @@ export const useStore = create<RootState>()((...args) => ({
   ...createDocumentsSlice(...args),
   ...createSystemPromptsSlice(...args),
   ...createCustomCompilePromptsSlice(...args),
+  ...createCustomCompactPromptsSlice(...args),
 }))
 
 export type { RootState } from './types'

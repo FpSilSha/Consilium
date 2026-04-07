@@ -38,6 +38,8 @@ const HIDDEN_KEYS: ReadonlySet<string> = new Set([
   'advisorSystemPromptCustomId',
   'personaSwitchPromptMode',
   'personaSwitchPromptCustomId',
+  // Managed via Configuration → Compact Prompts.
+  'compactPromptId',
 ])
 
 interface EditConfigModalProps {

@@ -18,6 +18,7 @@ import { useStartupAutoCompaction } from './useStartupAutoCompaction'
 import { useStartupCustomPersonas } from './useStartupCustomPersonas'
 import { useStartupCustomSystemPrompts } from './useStartupCustomSystemPrompts'
 import { useStartupCustomCompilePrompts } from './useStartupCustomCompilePrompts'
+import { useStartupCustomCompactPrompts } from './useStartupCustomCompactPrompts'
 import { useSessionAutoSave } from './useSessionAutoSave'
 import { CommandPalette } from '@/features/commandPalette'
 import { WelcomeTourDialog } from '@/features/onboarding/WelcomeTourDialog'
@@ -28,6 +29,7 @@ export function AppLayout(): ReactNode {
   useStartupCustomPersonas()
   useStartupCustomSystemPrompts()
   useStartupCustomCompilePrompts()
+  useStartupCustomCompactPrompts()
   useSessionAutoSave()
 
   const configModalOpen = useStore((s) => s.configModalOpen)
