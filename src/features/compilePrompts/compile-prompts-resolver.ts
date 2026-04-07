@@ -15,7 +15,7 @@ import type { CustomCompilePrompt, MergedCompilePrompt } from './types'
  *              {userData}/custom-compile-prompts.json and loaded into
  *              the Zustand store at startup.
  *
- * Consumers (CompileDocumentButton dropdown, CompileSettingsModal
+ * Consumers (CompileDocumentButton dropdown, CompileSettingsPane
  * dropdown, DocumentsPanel label lookup) call into this resolver
  * rather than reading COMPILE_PRESETS directly. Keeping the resolver
  * pure — taking `customs` as an argument rather than reading from
@@ -68,7 +68,7 @@ export function resolveCompilePrompt(
 /**
  * Same as `resolveCompilePrompt` but never returns null — falls back
  * to the default preset (Comprehensive Report). Used by
- * CompileDocumentButton and CompileSettingsModal where a null
+ * CompileDocumentButton and CompileSettingsPane where a null
  * resolution would crash the UI.
  */
 export function resolveCompilePromptWithFallback(

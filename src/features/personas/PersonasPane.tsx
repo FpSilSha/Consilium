@@ -6,6 +6,7 @@ import { useStore } from '@/store'
 // useRegisterDirtyGuard for non-pane consumers; native panes should
 // always use this direct path.
 import { useRegisterDirtyGuard } from '@/features/configuration/dirty-guard'
+import { withTimeout } from '@/features/configuration/with-timeout'
 import {
   validatePersonaInput,
   generateCustomPersonaId,
@@ -60,24 +61,37 @@ export function PersonasPane(): ReactNode {
   const addCustomPersona = useStore((s) => s.addCustomPersona)
   const removeCustomPersona = useStore((s) => s.removeCustomPersona)
 
-  // Delete handler — disk-first, store-second to mirror the save path.
-  // Without the IPC call, removing a persona only updates the in-memory
-  // store; the entry stays on disk and resurrects on next app launch.
-  // The store mutation runs unconditionally even if the IPC fails so the
-  // user isn't stuck with an undeletable row in the UI; a follow-up
-  // launch will reconcile by re-loading the still-on-disk entry, and
-  // the error is surfaced via console for debugging.
+  // Inline state for delete errors. The original implementation
+  // updated the store unconditionally even on IPC failure, which
+  // produced a "ghost resurrection" on next launch. Now matches
+  // the disk-first abort pattern used by the other library panes:
+  // store mutation runs ONLY if the disk delete succeeds, and the
+  // user sees a friendly error message in-pane on failure.
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
   const handleDelete = useCallback(
     async (id: string) => {
+      setDeleteError(null)
       const api = (
         window as { consiliumAPI?: { personasDelete: (id: string) => Promise<boolean> } }
       ).consiliumAPI
-      if (api != null) {
-        try {
-          await api.personasDelete(id)
-        } catch (err) {
-          console.error('[personas] failed to delete from disk:', err)
-        }
+      if (api == null) {
+        // No Electron — safe to update store directly.
+        removeCustomPersona(id)
+        return
+      }
+      try {
+        await withTimeout(api.personasDelete(id), 10_000, 'Delete timed out')
+      } catch (err) {
+        console.error('[personas] failed to delete from disk:', err)
+        const raw = err instanceof Error ? err.message : String(err)
+        const friendly = raw.includes('ENOSPC')
+          ? 'Could not delete: disk is full.'
+          : raw.includes('EACCES') || raw.includes('EROFS')
+            ? 'Could not delete: permission denied or read-only volume.'
+            : `Could not delete persona. ${raw}`
+        setDeleteError(friendly)
+        return
       }
       removeCustomPersona(id)
     },
@@ -104,6 +118,11 @@ export function PersonasPane(): ReactNode {
 
       {/* Tab body */}
       <div className="flex-1 overflow-y-auto px-6 py-4">
+        {deleteError != null && (
+          <p className="mb-3 rounded-md border border-error/30 bg-error/10 px-3 py-2 text-[11px] text-error">
+            {deleteError}
+          </p>
+        )}
         {tab === 'base' ? (
           <BaseTab />
         ) : (
@@ -383,7 +402,9 @@ function CreateForm({
       }
       // Disk write FIRST. Only on success do we mutate the in-memory
       // store, so a failed write never desyncs the UI from disk.
-      await api.personasSave(stored)
+      // Wrapped in withTimeout so a hung main process doesn't leave
+      // the Save button stuck on "Saving…" forever.
+      await withTimeout(api.personasSave(stored), 10_000, 'Save timed out')
       // Reset submitting BEFORE onCreated. Currently onCreated unmounts
       // the form, so the order is invisible — but the next three panes
       // will copy this pattern and one of them might keep the form

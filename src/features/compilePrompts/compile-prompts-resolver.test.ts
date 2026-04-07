@@ -11,7 +11,7 @@ import type { CustomCompilePrompt } from './types'
 /**
  * Tests for the Compile Prompts resolver — pure functions, no store,
  * no IPC. These cover the contract that CompileDocumentButton,
- * CompileSettingsModal, and DocumentsPanel rely on when looking up
+ * CompileSettingsPane, and DocumentsPanel rely on when looking up
  * a prompt by id across the merged base+custom list.
  */
 

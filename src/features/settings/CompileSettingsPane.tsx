@@ -1,41 +1,13 @@
 import { type ReactNode, useCallback, useState, useMemo, useEffect, useRef } from 'react'
-import type { Provider } from '@/types'
 import { useStore } from '@/store'
 import { getModelById } from '@/features/modelSelector/model-registry'
-import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
-import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
-import { formatProviderLabel } from '@/features/modelCatalog/format-provider-label'
 import { useRegisterDirtyGuard } from '@/features/configuration/dirty-guard'
+import { withTimeout } from '@/features/configuration/with-timeout'
+import { BrowseModels } from './BrowseModels'
 import {
   getMergedCompilePrompts,
   resolveCompilePromptWithFallback,
 } from '@/features/compilePrompts/compile-prompts-resolver'
-
-/**
- * Wraps an IPC promise with a timeout. Used to guard against a hung
- * main process leaving the save button permanently disabled. Rejects
- * with a clear error message that gets surfaced to the user via the
- * pane's error state.
- *
- * Re-implemented in each settings pane (rather than extracted to a
- * shared util) because the two panes are the only callers and the
- * function is small. If a third caller appears, hoist it.
- */
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(label)), timeoutMs)
-    promise.then(
-      (value) => {
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (err) => {
-        clearTimeout(timer)
-        reject(err instanceof Error ? err : new Error(String(err)))
-      },
-    )
-  })
-}
 
 /**
  * Compile Settings pane — global Compile Document settings, ported
@@ -349,105 +321,5 @@ export function CompileSettingsPane(): ReactNode {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Browse all models — unchanged from the original modal
-// ─────────────────────────────────────────────────────────────────────────
-
-interface BrowseModelsProps {
-  readonly onSelect: (provider: string, model: string, keyId: string) => void
-  readonly onBack: () => void
-}
-
-function BrowseModels({ onSelect, onBack }: BrowseModelsProps): ReactNode {
-  const keys = useStore((s) => s.keys)
-
-  const providersWithKeys = useMemo(() => {
-    const map = new Map<Provider, { keyId: string; label: string }>()
-    for (const key of keys) {
-      const provider = key.provider as Provider
-      if (!map.has(provider)) {
-        map.set(provider, { keyId: key.id, label: formatProviderLabel(provider) })
-      }
-    }
-    return Array.from(map.entries()).map(([provider, info]) => ({ provider, ...info }))
-  }, [keys])
-
-  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(
-    providersWithKeys[0]?.provider ?? null,
-  )
-
-  return (
-    <div className="rounded-md border border-edge-subtle p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-[10px] font-medium text-content-muted">Browse models</p>
-        <button
-          onClick={onBack}
-          className="text-[10px] text-content-muted hover:text-content-primary"
-        >
-          ← Back
-        </button>
-      </div>
-
-      <label className="mb-1 block text-[10px] text-content-muted">Provider</label>
-      <select
-        value={selectedProvider ?? ''}
-        onChange={(e) => setSelectedProvider(e.target.value as Provider)}
-        className="mb-2 w-full rounded-md border border-edge-subtle bg-surface-base px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
-      >
-        {providersWithKeys.map((p) => (
-          <option key={p.provider} value={p.provider}>
-            {p.label}
-          </option>
-        ))}
-      </select>
-
-      {selectedProvider != null && (
-        <BrowseModelsList
-          provider={selectedProvider}
-          keyId={providersWithKeys.find((p) => p.provider === selectedProvider)?.keyId ?? ''}
-          onSelect={onSelect}
-        />
-      )}
-    </div>
-  )
-}
-
-function BrowseModelsList({
-  provider,
-  keyId,
-  onSelect,
-}: {
-  readonly provider: Provider
-  readonly keyId: string
-  readonly onSelect: (provider: string, model: string, keyId: string) => void
-}): ReactNode {
-  const models = useFilteredModels(provider)
-  const [selectedModelId, setSelectedModelId] = useState('')
-
-  if (models.length === 0) {
-    return (
-      <p className="text-[10px] text-content-disabled">No models available for this provider.</p>
-    )
-  }
-
-  return (
-    <>
-      <label className="mb-1 block text-[10px] text-content-muted">Model</label>
-      <SearchableModelSelect
-        models={models}
-        value={selectedModelId}
-        onChange={setSelectedModelId}
-      />
-      <button
-        onClick={() => {
-          if (selectedModelId === '') return
-          onSelect(provider, selectedModelId, keyId)
-        }}
-        disabled={selectedModelId === ''}
-        className="mt-2 w-full rounded-md bg-accent-blue px-2 py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-blue/90 disabled:opacity-50"
-      >
-        Use this model
-      </button>
-    </>
-  )
-}
+// (BrowseModels and BrowseModelsList moved to ./BrowseModels.tsx and
+// shared with AutoCompactionSettingsPane.)

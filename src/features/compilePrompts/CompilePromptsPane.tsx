@@ -1,6 +1,7 @@
 import { type ReactNode, useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useStore } from '@/store'
 import { useRegisterDirtyGuard } from '@/features/configuration/dirty-guard'
+import { withTimeout } from '@/features/configuration/with-timeout'
 import { generateCustomLibraryId } from '@/features/personas/persona-validators'
 import { COMPILE_PRESETS } from '@/features/chat/compile-presets'
 import type { CustomCompilePrompt } from './types'
@@ -75,7 +76,7 @@ export function CompilePromptsPane(): ReactNode {
       // the deleted entry with no explanation to the user. Matches the
       // disk-first save pattern used by the other library panes.
       try {
-        await api.compilePromptsDelete(id)
+        await withTimeout(api.compilePromptsDelete(id), 10_000, 'Delete timed out')
       } catch (err) {
         console.error('[compile-prompts] failed to delete from disk:', err)
         const raw = err instanceof Error ? err.message : String(err)
@@ -382,7 +383,7 @@ function CreateForm({
       return
     }
     try {
-      await api.compilePromptsSave(stored)
+      await withTimeout(api.compilePromptsSave(stored), 10_000, 'Save timed out')
       setSubmitting(false)
       const entry: CustomCompilePrompt = { ...stored }
       onCreated(entry)

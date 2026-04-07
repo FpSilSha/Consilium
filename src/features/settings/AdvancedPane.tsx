@@ -1,5 +1,6 @@
 import { type ReactNode, useState, useEffect, useCallback, useRef } from 'react'
 import { useRegisterDirtyGuard } from '@/features/configuration/dirty-guard'
+import { withTimeout } from '@/features/configuration/with-timeout'
 
 /**
  * Advanced (raw JSON) pane — generic key/value editor for AppConfig
@@ -117,28 +118,6 @@ const RESTART_REQUIRED_FIELDS: ReadonlySet<string> = new Set([
   // an in-memory appConfig update doesn't propagate back.
   'showOnboarding',
 ])
-
-/**
- * Wraps an IPC promise with a timeout. Guards against a hung main
- * process leaving the save button permanently disabled. Same pattern
- * as the helper in CompileSettingsPane / AutoCompactionSettingsPane —
- * if a fourth caller appears, hoist this to a shared util.
- */
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(label)), timeoutMs)
-    promise.then(
-      (value) => {
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (err) => {
-        clearTimeout(timer)
-        reject(err instanceof Error ? err : new Error(String(err)))
-      },
-    )
-  })
-}
 
 export function AdvancedPane(): ReactNode {
   const [config, setConfig] = useState<ConfigData | null>(null)

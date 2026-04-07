@@ -203,15 +203,11 @@ export function ConfigurationModal({
                 </p>
                 {PANES_BY_GROUP[group].map((pane) => {
                   const isActive = pane.id === activePaneId
-                  // Status suffix for screen readers: visually shown as a
-                  // small badge or arrow, but those nodes are aria-hidden
-                  // so AT relies on the suffix text on the button label.
-                  const statusSuffix =
-                    pane.kind === 'placeholder'
-                      ? ' (coming soon)'
-                      : pane.kind === 'legacy' || pane.kind === 'link-out'
-                        ? ' (opens external editor)'
-                        : ''
+                  // Status suffix for screen readers: visually shown as
+                  // a small arrow on link-out panes, aria-hidden so AT
+                  // relies on the suffix text on the button label.
+                  const isLinkOut = pane.kind === 'link-out'
+                  const statusSuffix = isLinkOut ? ' (opens external editor)' : ''
                   return (
                     <button
                       key={pane.id}
@@ -225,15 +221,7 @@ export function ConfigurationModal({
                       }`}
                     >
                       <span aria-hidden="true">{pane.label}</span>
-                      {pane.kind === 'placeholder' && (
-                        <span
-                          aria-hidden="true"
-                          className="ml-2 rounded bg-surface-hover px-1.5 py-0 text-[9px] uppercase tracking-wider text-content-disabled"
-                        >
-                          soon
-                        </span>
-                      )}
-                      {(pane.kind === 'legacy' || pane.kind === 'link-out') && (
+                      {isLinkOut && (
                         <span aria-hidden="true" className="ml-2 text-[10px] text-content-disabled">
                           ↗
                         </span>
@@ -278,9 +266,10 @@ function PaneBody({
   onClose,
   onOpenAdaptersAndKeys,
 }: PaneBodyProps): ReactNode {
-  // Native panes have their own dedicated components living inside the
-  // modal. As more panes graduate from placeholder/legacy to native,
-  // each new pane gets a case here.
+  // Native panes are dedicated components living inside the modal.
+  // The rollout's transitional 'placeholder' and 'legacy' kinds are
+  // gone — every settings pane is native now (see panes.ts JSDoc for
+  // the historical context).
   if (pane.kind === 'native') {
     switch (pane.id) {
       case 'personas':
@@ -298,30 +287,25 @@ function PaneBody({
       case 'advanced':
         return <AdvancedPane />
       default:
-        // Pane is declared as native but no component is wired here yet
-        // — surface in dev so the omission doesn't render a blank pane.
+        // A future native pane id without a case here would render
+        // blank — surface the omission loudly in dev.
         console.error(
           `[configuration] pane "${pane.id}" is kind:native but has no component case in PaneBody`,
         )
-        return <PlaceholderPane pane={pane} />
+        return null
     }
   }
 
-  if (pane.kind === 'placeholder') {
-    return <PlaceholderPane pane={pane} />
-  }
-
-  // Legacy and link-out panes both render an "Open …" button that opens
-  // the legacy modal and then closes the configuration modal. The
-  // callbacks are wired in AppLayout, which already owns each legacy
-  // modal's open/close state.
+  // Link-out panes render an "Open …" button that opens the standalone
+  // modal and then closes ConfigurationModal. Used only for Adapters
+  // and API Keys (permanent v1 per OPEN_ADDITIONS).
   //
   // Open-then-close order matters: with React 18 batching, both state
   // updates flush in the same commit, but the open MUST be enqueued
-  // first so the legacy modal's state is true before the unmount path
-  // for ConfigurationModal runs. The reverse order would briefly leave
-  // an effect on the unmount path observing the new modal as still
-  // closed, which is the kind of race we don't want lurking.
+  // first so the standalone modal's state is true before the unmount
+  // path for ConfigurationModal runs. The reverse order would briefly
+  // leave an effect on the unmount path observing the new modal as
+  // still closed.
   const handleOpen = (): void => {
     switch (pane.id) {
       case 'adapters':
@@ -329,12 +313,11 @@ function PaneBody({
         onOpenAdaptersAndKeys()
         break
       default: {
-        // Exhaustiveness guard. Only 'adapters'/'api-keys'
-        // (kind:link-out, permanent v1 per OPEN_ADDITIONS) should
+        // Exhaustiveness guard. Only 'adapters'/'api-keys' should
         // reach this handler. Everything else is native and rendered
-        // by the PaneBody switch above.
+        // by the switch above.
         console.error(
-          `[configuration] LegacyPane handleOpen reached for pane id "${pane.id}" — should be native`,
+          `[configuration] LinkOutPane handleOpen reached for pane id "${pane.id}" — should be native`,
         )
         break
       }
@@ -342,46 +325,18 @@ function PaneBody({
     onClose()
   }
 
-  const buttonLabel = pane.kind === 'legacy' ? `Open ${pane.label} settings` : `Open ${pane.label}`
-
-  return <LegacyPane pane={pane} buttonLabel={buttonLabel} onOpen={handleOpen} />
+  return <LinkOutPane pane={pane} onOpen={handleOpen} />
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Placeholder pane — used while a library is still being built
+// LinkOutPane — explainer + "Open …" button for kind:'link-out' panes
 // ─────────────────────────────────────────────────────────────────────────
 
-function PlaceholderPane({ pane }: { readonly pane: PaneDef }): ReactNode {
-  return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-edge-subtle px-6 py-4">
-        <h3 className="text-sm font-semibold text-content-primary">{pane.label}</h3>
-      </div>
-      <div className="flex flex-1 flex-col items-start gap-3 px-6 py-6">
-        <span className="rounded bg-surface-hover px-2 py-0.5 text-[10px] uppercase tracking-wider text-content-muted">
-          Coming soon
-        </span>
-        <p className="max-w-xl text-xs leading-relaxed text-content-muted">{pane.blurb}</p>
-        <p className="max-w-xl text-xs italic text-content-disabled">
-          This pane is being built. The rest of the application is unaffected — settings
-          and personas continue to work as before until this library lands.
-        </p>
-      </div>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// Legacy / link-out pane — explainer + button that opens an external modal
-// ─────────────────────────────────────────────────────────────────────────
-
-function LegacyPane({
+function LinkOutPane({
   pane,
-  buttonLabel,
   onOpen,
 }: {
   readonly pane: PaneDef
-  readonly buttonLabel: string
   readonly onOpen: () => void
 }): ReactNode {
   return (
@@ -391,23 +346,15 @@ function LegacyPane({
       </div>
       <div className="flex flex-1 flex-col items-start gap-4 px-6 py-6">
         <p className="max-w-xl text-xs leading-relaxed text-content-muted">{pane.blurb}</p>
-        {pane.kind === 'legacy' && (
-          <p className="max-w-xl text-xs italic text-content-disabled">
-            Opens in its current dedicated window for now. This pane will be ported into the
-            Configuration modal in a follow-up change.
-          </p>
-        )}
-        {pane.kind === 'link-out' && (
-          <p className="max-w-xl text-xs italic text-content-disabled">
-            Opens the dedicated editor. See OPEN_ADDITIONS for the post-launch plan to bring
-            this pane inline with the others.
-          </p>
-        )}
+        <p className="max-w-xl text-xs italic text-content-disabled">
+          Opens the dedicated editor. See OPEN_ADDITIONS for the post-launch plan to bring this
+          pane inline with the others.
+        </p>
         <button
           onClick={onOpen}
           className="rounded-md bg-accent-blue px-4 py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-blue/90"
         >
-          {buttonLabel}
+          Open {pane.label}
         </button>
       </div>
     </div>

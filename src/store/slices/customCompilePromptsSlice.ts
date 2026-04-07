@@ -22,7 +22,7 @@ function isReservedId(id: string): boolean {
  * startup.
  *
  * Unlike personas, there's no "merged list" field on the store.
- * Consumers (CompileDocumentButton dropdown, CompileSettingsModal
+ * Consumers (CompileDocumentButton dropdown, CompileSettingsPane
  * dropdown, DocumentsPanel label lookup) go through the resolver in
  * `src/features/compilePrompts/compile-prompts-resolver.ts` which
  * combines the base COMPILE_PRESETS with this slice's

@@ -1,35 +1,9 @@
-import { type ReactNode, useCallback, useState, useMemo, useEffect, useRef } from 'react'
-import type { Provider } from '@/types'
+import { type ReactNode, useCallback, useState, useEffect, useRef } from 'react'
 import { useStore } from '@/store'
 import { getModelById } from '@/features/modelSelector/model-registry'
-import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
-import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
-import { formatProviderLabel } from '@/features/modelCatalog/format-provider-label'
 import { useRegisterDirtyGuard } from '@/features/configuration/dirty-guard'
-
-/**
- * Wraps an IPC promise with a timeout. Guards against a hung main
- * process leaving the save button permanently disabled.
- *
- * Duplicated from CompileSettingsPane — both panes are the only
- * callers and the function is small. If a third caller appears,
- * hoist this to a shared util.
- */
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(label)), timeoutMs)
-    promise.then(
-      (value) => {
-        clearTimeout(timer)
-        resolve(value)
-      },
-      (err) => {
-        clearTimeout(timer)
-        reject(err instanceof Error ? err : new Error(String(err)))
-      },
-    )
-  })
-}
+import { withTimeout } from '@/features/configuration/with-timeout'
+import { BrowseModels } from './BrowseModels'
 
 /**
  * Auto-compaction Settings pane — global default for new sessions,
@@ -271,7 +245,11 @@ export function AutoCompactionSettingsPane(): ReactNode {
             )}
           </div>
         ) : (
-          <BrowseModels onSelect={handleSelectAdvisor} onBack={() => setBrowseMode(false)} />
+          <BrowseModels
+            onSelect={handleSelectAdvisor}
+            onBack={() => setBrowseMode(false)}
+            commitStyle="immediate"
+          />
         )}
 
         {/* Footer — per-pane save */}
@@ -295,113 +273,5 @@ export function AutoCompactionSettingsPane(): ReactNode {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// Browse All Models — provider + searchable model list (same UX as
-// AutoCompactButton, unchanged from the original modal)
-// ─────────────────────────────────────────────────────────────────────────
-
-interface BrowseModelsProps {
-  readonly onSelect: (provider: string, model: string, keyId: string) => void
-  readonly onBack: () => void
-}
-
-function BrowseModels({ onSelect, onBack }: BrowseModelsProps): ReactNode {
-  const keys = useStore((s) => s.keys)
-
-  const providersWithKeys = useMemo(() => {
-    const map = new Map<Provider, { keyId: string; label: string }>()
-    for (const key of keys) {
-      const provider = key.provider as Provider
-      if (!map.has(provider)) {
-        map.set(provider, { keyId: key.id, label: formatProviderLabel(provider) })
-      }
-    }
-    return Array.from(map.entries()).map(([provider, info]) => ({ provider, ...info }))
-  }, [keys])
-
-  const [selectedProvider, setSelectedProvider] = useState<Provider | null>(
-    providersWithKeys[0]?.provider ?? null,
-  )
-
-  if (providersWithKeys.length === 0) {
-    return (
-      <div className="rounded-md border border-edge-subtle p-3">
-        <p className="text-xs text-content-disabled">
-          No API keys configured. Add a key in Models &amp; Keys first.
-        </p>
-        <button
-          onClick={onBack}
-          className="mt-2 text-xs text-accent-blue underline hover:text-accent-blue/80"
-        >
-          Back
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-md border border-edge-subtle p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-[10px] font-medium text-content-muted">Browse models</p>
-        <button
-          onClick={onBack}
-          className="text-[10px] text-content-muted hover:text-content-primary"
-        >
-          ← Back
-        </button>
-      </div>
-
-      <label className="mb-1 block text-[10px] text-content-muted">Provider</label>
-      <select
-        value={selectedProvider ?? ''}
-        onChange={(e) => setSelectedProvider(e.target.value as Provider)}
-        className="mb-3 w-full rounded-md border border-edge-subtle bg-surface-base px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
-      >
-        {providersWithKeys.map((p) => (
-          <option key={p.provider} value={p.provider}>
-            {p.label}
-          </option>
-        ))}
-      </select>
-
-      {selectedProvider != null && (
-        <BrowseModelsList
-          provider={selectedProvider}
-          keyId={providersWithKeys.find((p) => p.provider === selectedProvider)?.keyId ?? ''}
-          onSelect={onSelect}
-        />
-      )}
-    </div>
-  )
-}
-
-function BrowseModelsList({
-  provider,
-  keyId,
-  onSelect,
-}: {
-  readonly provider: Provider
-  readonly keyId: string
-  readonly onSelect: (provider: string, model: string, keyId: string) => void
-}): ReactNode {
-  const models = useFilteredModels(provider)
-
-  if (models.length === 0) {
-    return (
-      <p className="text-[10px] text-content-disabled">
-        No models available for this provider. Configure allowed models in Models &amp; Keys.
-      </p>
-    )
-  }
-
-  return (
-    <>
-      <label className="mb-1 block text-[10px] text-content-muted">Model</label>
-      <SearchableModelSelect
-        models={models}
-        value=""
-        onChange={(modelId) => onSelect(provider, modelId, keyId)}
-      />
-    </>
-  )
-}
+// (BrowseModels and BrowseModelsList moved to ./BrowseModels.tsx and
+// shared with CompileSettingsPane.)

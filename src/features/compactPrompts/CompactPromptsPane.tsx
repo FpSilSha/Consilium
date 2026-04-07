@@ -1,6 +1,7 @@
 import { type ReactNode, useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useStore } from '@/store'
 import { useRegisterDirtyGuard } from '@/features/configuration/dirty-guard'
+import { withTimeout } from '@/features/configuration/with-timeout'
 import { generateCustomLibraryId } from '@/features/personas/persona-validators'
 import { BUILT_IN_COMPACT_PROMPTS, BUILT_IN_COMPACT_PROMPT_ID } from './built-in-compact-prompts'
 import { getMergedCompactPrompts } from './compact-prompts-resolver'
@@ -102,7 +103,7 @@ export function CompactPromptsPane(): ReactNode {
       }
       // Disk-first: abort store mutation on IPC failure.
       try {
-        await api.compactPromptsDelete(id)
+        await withTimeout(api.compactPromptsDelete(id), 10_000, 'Delete timed out')
       } catch (err) {
         console.error('[compact-prompts] failed to delete from disk:', err)
         const raw = err instanceof Error ? err.message : String(err)
@@ -424,7 +425,7 @@ function CreateForm({
       return
     }
     try {
-      await api.compactPromptsSave(stored)
+      await withTimeout(api.compactPromptsSave(stored), 10_000, 'Save timed out')
       setSubmitting(false)
       const entry: CustomCompactPrompt = { ...stored }
       onCreated(entry)

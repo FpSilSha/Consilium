@@ -18,26 +18,30 @@
  *
  * The `kind` field drives how `ConfigurationModal` renders the pane body:
  *
- *  - 'placeholder': pane is not yet built. Renders a "coming soon" notice.
- *    Used during the multi-task rollout while individual library panes are
- *    being constructed in dependency order.
+ *  - 'native':   pane is a dedicated React component living inside the
+ *                modal. ConfigurationModal's PaneBody switch routes the
+ *                pane id to its component (PersonasPane, SystemPromptsPane,
+ *                etc.). All 7 settings/library panes are native.
  *
- *  - 'legacy': pane is built but not yet ported into the modal. Renders a
- *    short explainer plus a button that closes the modal and opens the
- *    existing standalone modal. Used for Compile / Auto-compact / Advanced
- *    panes until tasks #23 and #25 port them in.
+ *  - 'link-out': pane is a tile in the sidebar but its content lives in
+ *                a separate standalone modal that AppLayout owns. Used
+ *                for Adapters and API Keys, which intentionally stay as
+ *                standalone modals for v1 — see OPEN_ADDITIONS.md for
+ *                the post-launch port plan that brings them into the
+ *                same sidebar pattern.
  *
- *  - 'link-out': permanent v1 link-out (Adapters, API Keys). Functionally
- *    identical to 'legacy' for now — the distinction is purely intent: a
- *    'legacy' pane will be replaced with a real implementation, a
- *    'link-out' pane will not (until OPEN_ADDITIONS work).
+ * Historical note: the rollout used 'placeholder' (pane not yet built —
+ * shows a "coming soon" notice) and 'legacy' (pane built but living in
+ * a standalone modal until ported) as transitional kinds. Both kinds
+ * are gone as of the final coherency review — 'placeholder' was used
+ * during the library-pane rollout (tasks #15-21) and 'legacy' during
+ * the settings-modal port (tasks #23-25). The PaneKind union no longer
+ * includes them, and the supporting render branches in
+ * ConfigurationModal have been removed.
  *
- *  - 'native' (future): pane has been built out as a real component
- *    living inside the modal. Not used yet — every pane starts as
- *    'placeholder' or 'legacy' and graduates to 'native' as tasks land.
- *
- * Adding a new pane: append to PANES, give it a stable id, and add a
- * matching case in ConfigurationModal's pane-body switch.
+ * Adding a new pane: append to PANES, give it a stable id, set
+ * kind:'native', add a matching case in ConfigurationModal's PaneBody
+ * switch, and create the pane component in its feature folder.
  */
 
 export type PaneId =
@@ -51,7 +55,7 @@ export type PaneId =
   | 'adapters'
   | 'api-keys'
 
-export type PaneKind = 'placeholder' | 'legacy' | 'link-out' | 'native'
+export type PaneKind = 'native' | 'link-out'
 
 export type PaneGroup = 'libraries' | 'settings' | 'integrations'
 

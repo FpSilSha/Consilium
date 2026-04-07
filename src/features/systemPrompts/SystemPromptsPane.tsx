@@ -1,6 +1,7 @@
 import { type ReactNode, useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useStore } from '@/store'
 import { useRegisterDirtyGuard } from '@/features/configuration/dirty-guard'
+import { withTimeout } from '@/features/configuration/with-timeout'
 import { generateCustomLibraryId } from '@/features/personas/persona-validators'
 import { BUILT_IN_SYSTEM_PROMPTS } from './built-in-system-prompts'
 import type { SystemPromptCategory, SystemPromptEntry, SystemPromptMode } from './types'
@@ -234,7 +235,7 @@ function CategorySection({ category }: { readonly category: SystemPromptCategory
       const api = getPromptsAPI()
       if (api != null) {
         try {
-          await api.systemPromptsDelete(id)
+          await withTimeout(api.systemPromptsDelete(id), 10_000, 'Delete timed out')
         } catch (err) {
           console.error('[system-prompts] failed to delete from disk:', err)
         }
@@ -602,7 +603,7 @@ function CreateForm({
       return
     }
     try {
-      await api.systemPromptsSave(stored)
+      await withTimeout(api.systemPromptsSave(stored), 10_000, 'Save timed out')
       setSubmitting(false)
       const entry: SystemPromptEntry = {
         id,
