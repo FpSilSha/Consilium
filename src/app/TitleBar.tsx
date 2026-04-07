@@ -112,15 +112,10 @@ export function TitleBar({ onMenuAction }: TitleBarProps): ReactNode {
       case 'configuration':
         onMenuAction('menu:configuration')
         break
-      // 'edit-config' remains wired for the legacy raw JSON editor
-      // modal pending task #25. The compile-settings and
-      // auto-compaction-settings cases were removed in task #23
-      // when those panes became native — TitleBar's MENUS array
-      // never exposed entries for them anyway, the cases were dead
-      // before this commit.
-      case 'edit-config':
-        onMenuAction('menu:edit-config')
-        break
+      // All legacy edit/settings cases (edit-config, compile-settings,
+      // auto-compaction-settings) were removed in tasks #23 + #25 when
+      // those panes became native inside ConfigurationModal. The
+      // TitleBar MENUS array never exposed entries for them either.
       case 'fullscreen':
         document.documentElement.requestFullscreen?.().catch(() => {})
         break

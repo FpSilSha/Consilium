@@ -120,7 +120,7 @@ export const PANES: readonly PaneDef[] = [
     id: 'advanced',
     label: 'Advanced',
     group: 'settings',
-    kind: 'legacy',
+    kind: 'native',
     blurb: 'Raw JSON config editor for fields without dedicated UI. Power-user only — fields mirrored in the store are hidden to prevent desync.',
   },
   {

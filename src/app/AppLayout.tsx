@@ -5,7 +5,6 @@ import { SharedInputBar } from '@/features/input'
 import { AdvisorPanel } from '@/features/advisorPanel'
 import { ConfigModal } from '@/features/modelCatalog/ConfigModal'
 import { ModelMismatchModal } from '@/features/sessions/ModelMismatchModal'
-import { EditConfigModal } from '@/features/settings/EditConfigModal'
 import { AboutModal } from '@/features/settings/AboutModal'
 import { ConfigurationModal, useConfigurationShortcut } from '@/features/configuration'
 import { TitleBar } from './TitleBar'
@@ -35,11 +34,10 @@ export function AppLayout(): ReactNode {
   const pendingMismatches = useStore((s) => s.pendingMismatches)
   const setPendingMismatches = useStore((s) => s.setPendingMismatches)
 
-  // EditConfigModal is the last remaining legacy modal — will be
-  // ported into the Advanced pane in task #25. showCompileSettings
-  // and showAutoCompactSettings are gone as of task #23; their panes
-  // are now native inside ConfigurationModal.
-  const [showEditConfig, setShowEditConfig] = useState(false)
+  // All settings modals have been ported into native ConfigurationModal
+  // panes (tasks #23 + #25). The only modals AppLayout owns now are
+  // standalone overlays (About, Welcome Tour, ConfigModal for
+  // model-catalog/adapters/keys, ModelMismatchModal, CommandPalette).
   const [showAbout, setShowAbout] = useState(false)
   const [showWelcomeTour, setShowWelcomeTour] = useState(false)
   const [showConfiguration, setShowConfiguration] = useState(false)
@@ -49,14 +47,9 @@ export function AppLayout(): ReactNode {
   // rather than a toggle — toggling would let the user accidentally
   // close the modal mid-edit by retriggering the hotkey, and the
   // explicit Close button + Escape key already cover the close path.
-  //
-  // Mutex with the remaining legacy modal (EditConfigModal, pending
-  // task #25): when ConfigurationModal opens, EditConfigModal is
-  // closed first so the two don't stack at z-50. Once task #25 ports
-  // the raw JSON editor into the Advanced pane, this mutex collapses
-  // to a single setShowConfiguration call.
+  // No legacy-modal mutex needed anymore — every settings modal is a
+  // native pane inside ConfigurationModal as of task #25.
   const openConfiguration = useCallback(() => {
-    setShowEditConfig(false)
     setShowConfiguration((prev) => (prev ? prev : true))
   }, [])
   // Adapters and API Keys are exposed in the Configuration sidebar as
@@ -74,12 +67,11 @@ export function AppLayout(): ReactNode {
   // stable, and would have silently broken the moment either added a
   // store dependency.
   const handleNewConsilium = useCallback(async () => {
-    // Close any open settings modals before starting a fresh session.
-    // Without this, ConfigurationModal (or the legacy raw JSON editor
-    // modal, pending task #25) would stay open layered on top of an
-    // empty session, with stale state from the prior session shown.
+    // Close ConfigurationModal before starting a fresh session.
+    // Without this, the modal would stay open layered on top of an
+    // empty session, with stale draft state from the prior session
+    // still typed into any open pane forms.
     setShowConfiguration(false)
-    setShowEditConfig(false)
 
     // Tear down in-flight streams (advisor turns AND compile) before clearing
     // state. stopAll handles both via its centralized abortActiveCompile call.
@@ -106,16 +98,12 @@ export function AppLayout(): ReactNode {
         // Ctrl+, hotkey, or the Electron main-process menu.
         openConfiguration()
         break
-      // 'menu:edit-config' remains wired for the legacy raw JSON
-      // editor modal until task #25 ports it into the Advanced pane.
-      // 'menu:compile-settings' and 'menu:auto-compaction-settings'
-      // were removed in task #23 when those panes became native
-      // inside ConfigurationModal — both the renderer-side switch
-      // case AND the preload allowlist entry are gone now. Nothing
-      // in the main process emits those channels anymore.
-      case 'menu:edit-config':
-        setShowEditConfig(true)
-        break
+      // All legacy settings menu actions ('menu:compile-settings',
+      // 'menu:auto-compaction-settings', 'menu:edit-config') were
+      // removed in tasks #23 and #25 when their panes became native
+      // inside ConfigurationModal. Both the renderer-side switch
+      // cases AND the preload allowlist entries are gone now. The
+      // only Edit menu entry that remains is 'menu:configuration'.
       case 'menu:welcome-tour':
         setShowWelcomeTour(true)
         break
@@ -200,9 +188,6 @@ export function AppLayout(): ReactNode {
           onResolved={() => setPendingMismatches([])}
         />
       )}
-      {showEditConfig && (
-        <EditConfigModal onClose={() => setShowEditConfig(false)} />
-      )}
       {showAbout && (
         <AboutModal onClose={() => setShowAbout(false)} />
       )}
@@ -212,7 +197,6 @@ export function AppLayout(): ReactNode {
       {showConfiguration && (
         <ConfigurationModal
           onClose={() => setShowConfiguration(false)}
-          onOpenAdvanced={() => setShowEditConfig(true)}
           onOpenAdaptersAndKeys={openAdaptersAndKeys}
         />
       )}

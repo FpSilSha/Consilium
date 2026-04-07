@@ -51,17 +51,17 @@ const api: ConsiliumAPI = {
     // menu:edit-config / compile-settings / auto-compaction-settings
     // channels remain listed so the in-app TitleBar deep links and any
     // historical IPC emissions keep working through the rollout.
-    // compile-settings and auto-compaction-settings channels were
-    // removed in task #23 when those panes became native inside
-    // ConfigurationModal. The main-process menu no longer emits
-    // them. 'menu:edit-config' remains until task #25 ports the raw
-    // JSON editor into the Advanced pane.
+    // All legacy settings channels (menu:compile-settings,
+    // menu:auto-compaction-settings, menu:edit-config) were removed
+    // in tasks #23 + #25 when those panes became native inside
+    // ConfigurationModal. The main-process menu only emits the
+    // unified menu:configuration entry plus the long-standing file
+    // and help actions.
     const actions = [
       'menu:new-consilium',
       'menu:save-session',
       'menu:set-budget',
       'menu:configuration',
-      'menu:edit-config',
       'menu:about',
     ]
     const handlers = actions.map((action) => {

@@ -7,6 +7,7 @@ import { CompilePromptsPane } from '@/features/compilePrompts/CompilePromptsPane
 import { CompactPromptsPane } from '@/features/compactPrompts/CompactPromptsPane'
 import { CompileSettingsPane } from '@/features/settings/CompileSettingsPane'
 import { AutoCompactionSettingsPane } from '@/features/settings/AutoCompactionSettingsPane'
+import { AdvancedPane } from '@/features/settings/AdvancedPane'
 
 /**
  * Unified Configuration modal — replaces the per-feature settings modals
@@ -56,17 +57,15 @@ import { AutoCompactionSettingsPane } from '@/features/settings/AutoCompactionSe
 
 interface ConfigurationModalProps {
   readonly onClose: () => void
-  // Compile and Auto-compaction are now native panes hosted inline
-  // (task #23). onOpenAdvanced remains until task #25 ports the raw
-  // JSON editor in. onOpenAdaptersAndKeys stays as a permanent v1
+  // Compile, Auto-compaction, and Advanced are all native panes
+  // hosted inline now (tasks #23 + #25). onOpenAdaptersAndKeys is the
+  // only remaining link-out callback — it stays as a permanent v1
   // link-out per OPEN_ADDITIONS.
-  readonly onOpenAdvanced: () => void
   readonly onOpenAdaptersAndKeys: () => void
 }
 
 export function ConfigurationModal({
   onClose,
-  onOpenAdvanced,
   onOpenAdaptersAndKeys,
 }: ConfigurationModalProps): ReactNode {
   const [activePaneId, setActivePaneId] = useState<PaneId>(DEFAULT_PANE)
@@ -254,7 +253,6 @@ export function ConfigurationModal({
               <PaneBody
                 pane={activePane}
                 onClose={onClose}
-                onOpenAdvanced={onOpenAdvanced}
                 onOpenAdaptersAndKeys={onOpenAdaptersAndKeys}
               />
             </DirtyGuardContext.Provider>
@@ -272,14 +270,12 @@ export function ConfigurationModal({
 interface PaneBodyProps {
   readonly pane: PaneDef
   readonly onClose: () => void
-  readonly onOpenAdvanced: () => void
   readonly onOpenAdaptersAndKeys: () => void
 }
 
 function PaneBody({
   pane,
   onClose,
-  onOpenAdvanced,
   onOpenAdaptersAndKeys,
 }: PaneBodyProps): ReactNode {
   // Native panes have their own dedicated components living inside the
@@ -299,6 +295,8 @@ function PaneBody({
         return <CompileSettingsPane />
       case 'auto-compact-settings':
         return <AutoCompactionSettingsPane />
+      case 'advanced':
+        return <AdvancedPane />
       default:
         // Pane is declared as native but no component is wired here yet
         // — surface in dev so the omission doesn't render a blank pane.
@@ -326,18 +324,15 @@ function PaneBody({
   // closed, which is the kind of race we don't want lurking.
   const handleOpen = (): void => {
     switch (pane.id) {
-      case 'advanced':
-        onOpenAdvanced()
-        break
       case 'adapters':
       case 'api-keys':
         onOpenAdaptersAndKeys()
         break
       default: {
-        // Exhaustiveness guard. Only 'advanced' (kind:legacy, pending
-        // task #25) and 'adapters'/'api-keys' (kind:link-out, permanent
-        // v1 per OPEN_ADDITIONS) should reach this handler. Everything
-        // else is native and rendered by the PaneBody switch above.
+        // Exhaustiveness guard. Only 'adapters'/'api-keys'
+        // (kind:link-out, permanent v1 per OPEN_ADDITIONS) should
+        // reach this handler. Everything else is native and rendered
+        // by the PaneBody switch above.
         console.error(
           `[configuration] LegacyPane handleOpen reached for pane id "${pane.id}" — should be native`,
         )
