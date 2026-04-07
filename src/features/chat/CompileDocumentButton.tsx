@@ -7,6 +7,8 @@ import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { buildCostMetadata } from '@/services/api/cost-utils'
 import { getRawKey } from '@/features/keys/key-vault'
 import { estimateThreadTokens } from '@/features/compaction/compaction-engine'
+import { estimateTokens } from '@/services/tokenizer/char-estimator'
+import { computeConservativeCompileEstimate } from './compile-estimate'
 import { resolveModelById } from '@/features/modelSelector/model-resolve'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
 import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
@@ -24,6 +26,7 @@ Include:
 - Areas of disagreement or open questions
 
 Use proper markdown formatting: headings, lists, tables where appropriate, and code blocks for any technical content. Attribute key points to the advisor who raised them.`
+
 
 /**
  * Builds the final compile prompt. The default is always sent — user focus
@@ -81,11 +84,20 @@ export function CompileDocumentButton(): ReactNode {
   const [userFocus, setUserFocus] = useState('')
   const [compiling, setCompiling] = useState(false)
 
-  // Estimated input tokens for the chat — used to flag context overruns.
-  const estimatedInputTokens = useMemo(
+  // Conservative estimate of compile input tokens — lean HIGH on purpose.
+  // See computeConservativeCompileEstimate() above for the formula.
+  //
+  // Split into two memos so typing in the focus textarea doesn't re-iterate
+  // the entire message thread on every keystroke. Thread token counting is
+  // O(n) over all messages and only needs to recompute when `messages` changes.
+  const threadTokens = useMemo(
     () => estimateThreadTokens(messages),
     [messages],
   )
+  const estimatedInputTokens = useMemo(() => {
+    const focusTokens = userFocus.trim() !== '' ? estimateTokens(userFocus) : 0
+    return computeConservativeCompileEstimate(threadTokens, focusTokens)
+  }, [threadTokens, userFocus])
 
   /**
    * Fires the actual compile call. Fully isolated — does NOT touch any
@@ -304,25 +316,54 @@ export function CompileDocumentButton(): ReactNode {
             Sends the full chat to the selected model. Compile is an isolated API call — it does not run as one of the advisors. Cost is added to the session ledger.
           </p>
 
-          {/* Default model quick-fire */}
-          {globalCompileConfig != null && !browseMode && (
-            <div className="mb-2 rounded-md border border-accent-blue/30 bg-accent-blue/10 p-2">
-              <p className="mb-1 text-[10px] text-content-disabled">Global default</p>
-              <button
-                onClick={handleCompileWithDefault}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-content-primary transition-colors hover:bg-surface-hover"
-              >
-                <div className="h-2 w-2 rounded-full bg-accent-blue" />
-                <span className="truncate">
-                  {resolveModelById(globalCompileConfig.model)?.name ?? globalCompileConfig.model}
-                </span>
-                <span className="ml-auto text-[10px] text-accent-blue">Use default →</span>
-              </button>
-              <p className="mt-1 text-[10px] text-content-disabled">
-                Set in Edit → Compile Settings.
-              </p>
-            </div>
-          )}
+          {/* Default model quick-fire — also gated by context-window check
+              using the same conservative estimate as the browser. */}
+          {globalCompileConfig != null && !browseMode && (() => {
+            const defaultModel = resolveModelById(globalCompileConfig.model)
+            const defaultContextWindow = defaultModel?.contextWindow ?? 0
+            const defaultUsagePercent = defaultContextWindow > 0
+              ? Math.round((estimatedInputTokens / defaultContextWindow) * 100)
+              : 0
+            const defaultExceedsContext =
+              defaultContextWindow > 0 && estimatedInputTokens > defaultContextWindow
+
+            return (
+              <div className="mb-2 rounded-md border border-accent-blue/30 bg-accent-blue/10 p-2">
+                <p className="mb-1 text-[10px] text-content-disabled">Global default</p>
+                <button
+                  onClick={handleCompileWithDefault}
+                  disabled={defaultExceedsContext}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-content-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <div className="h-2 w-2 rounded-full bg-accent-blue" />
+                  <span className="truncate">
+                    {defaultModel?.name ?? globalCompileConfig.model}
+                  </span>
+                  <span className="ml-auto text-[10px] text-accent-blue">
+                    {defaultExceedsContext ? 'Too large' : 'Use default →'}
+                  </span>
+                </button>
+                {defaultContextWindow > 0 && (
+                  <p className={`mt-1 text-[10px] ${
+                    defaultExceedsContext
+                      ? 'text-error'
+                      : defaultUsagePercent > 80
+                        ? 'text-yellow-400'
+                        : 'text-content-disabled'
+                  }`}>
+                    {defaultExceedsContext
+                      ? `Chat exceeds ${defaultContextWindow.toLocaleString()}-token context window. Pick a larger model below.`
+                      : defaultUsagePercent > 80
+                        ? `${defaultUsagePercent}% of context window — compile may truncate.`
+                        : `${defaultUsagePercent}% of context window`}
+                  </p>
+                )}
+                <p className="mt-1 text-[10px] text-content-disabled">
+                  Set in Edit → Compile Settings.
+                </p>
+              </div>
+            )
+          })()}
 
           {!browseMode ? (
             <button
@@ -399,7 +440,11 @@ function BrowseModels({ estimatedInputTokens, onSelect, onBack }: BrowseModelsPr
       </div>
 
       <p className="mb-2 text-[10px] text-content-disabled">
-        Estimated input: <span className="text-content-muted">{estimatedInputTokens.toLocaleString()} tokens</span>
+        Estimated input <span className="text-content-disabled">(conservative)</span>:{' '}
+        <span className="text-content-muted">{estimatedInputTokens.toLocaleString()} tokens</span>
+      </p>
+      <p className="mb-2 text-[9px] italic text-content-disabled">
+        Padded ~50% above the raw character count to cover code-heavy and Unicode content, plus compile-prompt overhead. Actual usage will be lower for prose-only chats.
       </p>
 
       <label className="mb-1 block text-[10px] text-content-disabled">Provider</label>
