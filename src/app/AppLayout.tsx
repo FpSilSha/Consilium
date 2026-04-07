@@ -110,9 +110,9 @@ export function AppLayout(): ReactNode {
       // editor modal until task #25 ports it into the Advanced pane.
       // 'menu:compile-settings' and 'menu:auto-compaction-settings'
       // were removed in task #23 when those panes became native
-      // inside ConfigurationModal — nothing in the main process
-      // emits those channels anymore, but the preload allowlist
-      // keeps them as a no-op safety net during the rollout.
+      // inside ConfigurationModal — both the renderer-side switch
+      // case AND the preload allowlist entry are gone now. Nothing
+      // in the main process emits those channels anymore.
       case 'menu:edit-config':
         setShowEditConfig(true)
         break

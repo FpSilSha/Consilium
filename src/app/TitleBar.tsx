@@ -112,17 +112,14 @@ export function TitleBar({ onMenuAction }: TitleBarProps): ReactNode {
       case 'configuration':
         onMenuAction('menu:configuration')
         break
-      // Legacy actions kept reachable for the Electron main-process menu
-      // and any external deep links during the rollout. Not exposed in
-      // the title-bar menu itself anymore.
+      // 'edit-config' remains wired for the legacy raw JSON editor
+      // modal pending task #25. The compile-settings and
+      // auto-compaction-settings cases were removed in task #23
+      // when those panes became native — TitleBar's MENUS array
+      // never exposed entries for them anyway, the cases were dead
+      // before this commit.
       case 'edit-config':
         onMenuAction('menu:edit-config')
-        break
-      case 'auto-compaction-settings':
-        onMenuAction('menu:auto-compaction-settings')
-        break
-      case 'compile-settings':
-        onMenuAction('menu:compile-settings')
         break
       case 'fullscreen':
         document.documentElement.requestFullscreen?.().catch(() => {})

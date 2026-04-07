@@ -12,6 +12,32 @@ import {
 } from '@/features/compilePrompts/compile-prompts-resolver'
 
 /**
+ * Wraps an IPC promise with a timeout. Used to guard against a hung
+ * main process leaving the save button permanently disabled. Rejects
+ * with a clear error message that gets surfaced to the user via the
+ * pane's error state.
+ *
+ * Re-implemented in each settings pane (rather than extracted to a
+ * shared util) because the two panes are the only callers and the
+ * function is small. If a third caller appears, hoist it.
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(label)), timeoutMs)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err instanceof Error ? err : new Error(String(err)))
+      },
+    )
+  })
+}
+
+/**
  * Compile Settings pane — global Compile Document settings, ported
  * from the standalone CompileSettingsModal into the unified
  * ConfigurationModal as a native pane.
@@ -51,14 +77,9 @@ export function CompileSettingsPane(): ReactNode {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Re-seed draft when store values change (e.g., another pane or the
-  // startup loader updated them while the modal was closed). Triggered
-  // only on store change, not on draft change.
-  useEffect(() => {
-    setDraftConfig(compileModelConfig)
-    setDraftMaxTokens(String(compileMaxTokens))
-    setDraftPresetId(compilePresetId)
-  }, [compileModelConfig, compileMaxTokens, compilePresetId])
+  // Re-seed effect lives below the isDirty calc so it can consult
+  // isDirtyRef before clobbering. See the gated re-seed useEffect
+  // further down in this function.
 
   const draftPreset = resolveCompilePromptWithFallback(draftPresetId, customCompilePrompts)
   const mergedCompilePrompts = useMemo(
@@ -97,6 +118,27 @@ export function CompileSettingsPane(): ReactNode {
     return () => registerDirtyGuard(null)
   }, [registerDirtyGuard])
 
+  // Re-seed draft when store values change (e.g., another pane, the
+  // startup loader, or a future "reset to defaults" feature updated
+  // the persisted settings while the user wasn't in this pane).
+  //
+  // GATED on isDirtyRef.current — if the user has unsaved edits, the
+  // re-seed is skipped to avoid silently discarding their typing.
+  // The dirty guard remains true and the user gets the standard
+  // discard prompt on pane switch. Without this gate, an unrelated
+  // store update mid-edit would overwrite the draft AND collapse
+  // isDirty to false, allowing a free pane switch with the work
+  // already lost.
+  //
+  // The ref read happens at effect-fire time, so it always reflects
+  // the latest isDirty value computed in the most recent render.
+  useEffect(() => {
+    if (isDirtyRef.current) return
+    setDraftConfig(compileModelConfig)
+    setDraftMaxTokens(String(compileMaxTokens))
+    setDraftPresetId(compilePresetId)
+  }, [compileModelConfig, compileMaxTokens, compilePresetId])
+
   const selectedLabel = draftConfig != null
     ? (getModelById(draftConfig.model, orModels)?.name ?? draftConfig.model.split('/').pop() ?? 'Model')
     : 'No default — picker will appear every compile'
@@ -124,6 +166,19 @@ export function CompileSettingsPane(): ReactNode {
       setSaving(false)
       return
     }
+    // Upper bound: 2,000,000 tokens covers every current provider's
+    // max output cap with comfortable headroom (Claude 4.5 caps at
+    // 64k, GPT-4 caps at 16k, Gemini 2.0 Flash at 8k). A value
+    // larger than this is almost certainly a typo (e.g., "1e10"
+    // entered into the number input passes Number.isFinite). Without
+    // this guard, the inflated value would be saved to disk and
+    // every compile call would send it to the provider, which would
+    // either reject with a confusing error or silently cap.
+    if (parsedMax > 2_000_000) {
+      setError('Max output tokens must be 2,000,000 or fewer (current models cap far below this).')
+      setSaving(false)
+      return
+    }
     const validatedMax = Math.round(parsedMax)
 
     const api = (window as { consiliumAPI?: {
@@ -138,13 +193,23 @@ export function CompileSettingsPane(): ReactNode {
     }
 
     try {
-      const current = await api.configLoad()
-      await api.configSave({
-        ...current.values,
-        compileModelConfig: draftConfig,
-        compileMaxTokens: validatedMax,
-        compilePresetId: draftPresetId,
-      })
+      // Wrap each IPC in a 10s timeout. Without it, a hung main
+      // process (broken contextBridge, blocked event loop, etc.)
+      // would leave saving=true forever and the Save button would be
+      // permanently disabled with no recovery short of re-opening
+      // the modal. The timeout rejects with a clear error message
+      // so the user can retry.
+      const current = await withTimeout(api.configLoad(), 10_000, 'Load timed out')
+      await withTimeout(
+        api.configSave({
+          ...current.values,
+          compileModelConfig: draftConfig,
+          compileMaxTokens: validatedMax,
+          compilePresetId: draftPresetId,
+        }),
+        10_000,
+        'Save timed out',
+      )
       setCompileModelConfig(draftConfig)
       setCompileMaxTokens(validatedMax)
       setCompilePresetId(draftPresetId)

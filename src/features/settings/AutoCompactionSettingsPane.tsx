@@ -8,6 +8,30 @@ import { formatProviderLabel } from '@/features/modelCatalog/format-provider-lab
 import { useRegisterDirtyGuard } from '@/features/configuration/dirty-guard'
 
 /**
+ * Wraps an IPC promise with a timeout. Guards against a hung main
+ * process leaving the save button permanently disabled.
+ *
+ * Duplicated from CompileSettingsPane — both panes are the only
+ * callers and the function is small. If a third caller appears,
+ * hoist this to a shared util.
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(label)), timeoutMs)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err instanceof Error ? err : new Error(String(err)))
+      },
+    )
+  })
+}
+
+/**
  * Auto-compaction Settings pane — global default for new sessions,
  * ported from the standalone AutoCompactionSettingsModal into the
  * unified ConfigurationModal as a native pane.
@@ -42,11 +66,9 @@ export function AutoCompactionSettingsPane(): ReactNode {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Re-sync draft when the underlying store values change.
-  useEffect(() => {
-    setDraftEnabled(globalEnabled)
-    setDraftConfig(globalConfig)
-  }, [globalEnabled, globalConfig])
+  // Re-seed effect lives below the isDirty / isDirtyRef declarations
+  // so it can consult the ref before clobbering. See the gated
+  // re-seed useEffect further down in this function.
 
   // Dirty detection: draft differs from committed store values.
   const isDirty =
@@ -66,6 +88,17 @@ export function AutoCompactionSettingsPane(): ReactNode {
     })
     return () => registerDirtyGuard(null)
   }, [registerDirtyGuard])
+
+  // Re-seed draft when store values change. Gated on isDirtyRef so
+  // an unrelated store update mid-edit doesn't silently overwrite
+  // the user's typing. See the corresponding comment in
+  // CompileSettingsPane for the full reasoning — both panes follow
+  // the same pattern.
+  useEffect(() => {
+    if (isDirtyRef.current) return
+    setDraftEnabled(globalEnabled)
+    setDraftConfig(globalConfig)
+  }, [globalEnabled, globalConfig])
 
   const selectedLabel = draftEnabled && draftConfig != null
     ? (getModelById(draftConfig.model, orModels)?.name ?? draftConfig.model.split('/').pop() ?? 'Model')
@@ -87,14 +120,8 @@ export function AutoCompactionSettingsPane(): ReactNode {
 
   const handleSave = useCallback(async () => {
     setSaving(true)
+    setSaved(false)
     setError(null)
-
-    // Commit to store immediately so open sessions see the new global.
-    // If the disk write fails below, the store is ahead of disk until
-    // the user retries — a deliberate trade-off from the original
-    // modal, preserved on the port for behavioral parity.
-    setGlobalAutoCompaction(draftEnabled, draftConfig)
-    setAutoCompactionWarning(null)
 
     const api = (window as { consiliumAPI?: {
       configLoad(): Promise<{ values: Record<string, unknown> }>
@@ -107,13 +134,32 @@ export function AutoCompactionSettingsPane(): ReactNode {
       return
     }
 
+    // Disk-first, store-second. Originally this pane committed to the
+    // store BEFORE the disk write ("commit to store immediately so
+    // open sessions see the new global") — a deliberate trade-off in
+    // the pre-port modal. The trade-off broke the dirty guard: on
+    // disk failure, isDirty would collapse to false (drafts matched
+    // the optimistically-committed store) and the user could navigate
+    // away with no warning that disk was out of sync, then find the
+    // setting silently reverted on next launch via startup hydration.
+    //
+    // Now matches CompileSettingsPane's pattern: commit only after
+    // disk persistence succeeds. The brief delay (~10ms IPC round
+    // trip) is invisible to the user, and open sessions still see
+    // the new global on the next render after store update.
     try {
-      const current = await api.configLoad()
-      await api.configSave({
-        ...current.values,
-        autoCompactionEnabled: draftEnabled,
-        autoCompactionConfig: draftConfig,
-      })
+      const current = await withTimeout(api.configLoad(), 10_000, 'Load timed out')
+      await withTimeout(
+        api.configSave({
+          ...current.values,
+          autoCompactionEnabled: draftEnabled,
+          autoCompactionConfig: draftConfig,
+        }),
+        10_000,
+        'Save timed out',
+      )
+      setGlobalAutoCompaction(draftEnabled, draftConfig)
+      setAutoCompactionWarning(null)
       setSaved(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save')
