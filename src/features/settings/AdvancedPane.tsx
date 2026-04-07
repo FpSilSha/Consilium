@@ -62,6 +62,63 @@ const HIDDEN_KEYS: ReadonlySet<string> = new Set([
 ])
 
 /**
+ * Per-field validation limits for number inputs. Each entry is a
+ * (min, max) pair the validator enforces in addition to
+ * `Number.isFinite`. Fields not listed here use the conservative
+ * default of `(1, Number.MAX_SAFE_INTEGER)` — i.e., positive, finite,
+ * any reasonable size.
+ *
+ * Why per-field caps:
+ *   - maxSessionSizeMB = 0 silently breaks ALL session saves (the
+ *     main process check rejects every save as exceeding 0 MB).
+ *     Capping at 1 (min) and 10000 (max, 10 GB) leaves headroom for
+ *     unusual users without allowing the silent-brick footgun.
+ *   - autoSaveDebounceMs = 0 means "save on every keystroke" which
+ *     is theoretically valid but pathological — and the renderer
+ *     currently hard-codes 2000ms anyway (see OPEN_ADDITIONS for
+ *     the dead-config-field cleanup task). Cap at 60000 (1 minute)
+ *     so a typo can't effectively disable auto-save.
+ *   - maxFileAttachmentMB = 0 blocks all attachments. Cap at 1 / 1000
+ *     for the same reason as maxSessionSizeMB.
+ *
+ * The default min of 1 catches the empty-input case (which JavaScript
+ * coerces to 0 via `Number('')`).
+ */
+const NUMBER_FIELD_LIMITS: Readonly<Record<string, { readonly min: number; readonly max: number }>> = {
+  maxSessionSizeMB: { min: 1, max: 10_000 },
+  autoSaveDebounceMs: { min: 1, max: 60_000 },
+  maxFileAttachmentMB: { min: 1, max: 1_000 },
+}
+
+/**
+ * Description override for fields whose runtime behavior differs
+ * from what the main-process CONFIG_DESCRIPTIONS string promises.
+ * The fields are still persisted (so existing config.json files
+ * round-trip cleanly) but the renderer flags them with a clearer
+ * note in the pane until they're either wired or removed.
+ *
+ * Tracked in OPEN_ADDITIONS as "Dead AppConfig field cleanup".
+ */
+const DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = {
+  autoSaveDebounceMs:
+    'Currently unused — useSessionAutoSave hard-codes 2000ms. Field persists for forward compatibility. (Tracked in OPEN_ADDITIONS.)',
+  defaultTurnMode:
+    'Currently unused — turnSlice initial state is hard-coded to "sequential". Field persists for forward compatibility. (Tracked in OPEN_ADDITIONS.)',
+}
+
+/**
+ * Fields whose changes take effect on the NEXT app launch rather
+ * than immediately. Surfaces as a more accurate "restart" hint in
+ * the saved indicator instead of the blanket "some changes require
+ * a restart" the original modal showed.
+ */
+const RESTART_REQUIRED_FIELDS: ReadonlySet<string> = new Set([
+  // App.tsx reads showOnboarding into local React state at mount;
+  // an in-memory appConfig update doesn't propagate back.
+  'showOnboarding',
+])
+
+/**
  * Wraps an IPC promise with a timeout. Guards against a hung main
  * process leaving the save button permanently disabled. Same pattern
  * as the helper in CompileSettingsPane / AutoCompactionSettingsPane —
@@ -88,6 +145,7 @@ export function AdvancedPane(): ReactNode {
   const [draft, setDraft] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [savedNeedsRestart, setSavedNeedsRestart] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Dirty if any draft differs from the loaded config string
@@ -115,8 +173,12 @@ export function AdvancedPane(): ReactNode {
   useEffect(() => {
     const api = getAPI()
     if (api == null) return
-    api
-      .configLoad()
+    // Symmetric with the save path: wrap configLoad in a timeout
+    // so a hung main process can't leave the pane stuck on the
+    // "Loading configuration..." text forever. The error surfaces
+    // in the loading branch and the user can re-mount the pane
+    // (switch tabs and back) to retry.
+    withTimeout(api.configLoad(), 10_000, 'Load timed out')
       .then((data) => {
         setConfig(data)
         const initial: Record<string, string> = {}
@@ -147,6 +209,17 @@ export function AdvancedPane(): ReactNode {
 
     setError(null)
     setSaved(false)
+    setSavedNeedsRestart(false)
+
+    // Track which fields actually changed in this save so the
+    // success message can flag whether a restart is required.
+    const changedFields = new Set<string>()
+    for (const [key, value] of Object.entries(draft)) {
+      if (value !== String(config.values[key] ?? '')) {
+        changedFields.add(key)
+      }
+    }
+    const needsRestart = Array.from(changedFields).some((k) => RESTART_REQUIRED_FIELDS.has(k))
 
     // Convert string values back to their original types. The main
     // process config:save handler is forgiving — it falls back to the
@@ -157,8 +230,18 @@ export function AdvancedPane(): ReactNode {
       const original = config.values[key]
       if (typeof original === 'number') {
         const num = Number(value)
-        if (!Number.isFinite(num) || num < 0) {
-          setError(`Invalid value for ${key}: "${value}" (must be a non-negative number)`)
+        if (!Number.isFinite(num)) {
+          setError(`Invalid value for ${key}: "${value}" (must be a finite number)`)
+          return
+        }
+        // Apply per-field limits with a sane default. The default of
+        // (1, MAX_SAFE_INTEGER) catches the empty-string-to-zero
+        // case (Number('') === 0) for any unlisted field.
+        const limits = NUMBER_FIELD_LIMITS[key] ?? { min: 1, max: Number.MAX_SAFE_INTEGER }
+        if (num < limits.min || num > limits.max) {
+          setError(
+            `Invalid value for ${key}: "${value}" (must be between ${limits.min} and ${limits.max.toLocaleString()}).`,
+          )
           return
         }
         newConfig[key] = Math.round(num)
@@ -184,7 +267,22 @@ export function AdvancedPane(): ReactNode {
 
     try {
       await withTimeout(api.configSave(newConfig), 10_000, 'Save timed out')
+      // Re-seed config + draft from the canonical types we just
+      // wrote. Without this, a value like "1.5" stays in the input
+      // after Save (where the typed string differs from the rounded
+      // integer that actually persisted) — silent semantic drift.
+      // Updating both `config.values` and `draft` to the rounded
+      // integer means the input visibly snaps to the saved value.
+      const nextValues: Record<string, unknown> = { ...config.values, ...newConfig }
+      setConfig({ ...config, values: nextValues })
+      const nextDraft: Record<string, string> = {}
+      for (const [key, value] of Object.entries(nextValues)) {
+        if (HIDDEN_KEYS.has(key)) continue
+        nextDraft[key] = String(value)
+      }
+      setDraft(nextDraft)
       setSaved(true)
+      setSavedNeedsRestart(needsRestart)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save')
     } finally {
@@ -225,7 +323,7 @@ export function AdvancedPane(): ReactNode {
                       {key}
                     </label>
                     <p className="mb-1.5 text-[10px] text-content-disabled">
-                      {config.descriptions[key] ?? ''}
+                      {DESCRIPTION_OVERRIDES[key] ?? config.descriptions[key] ?? ''}
                     </p>
                     {typeof originalValue === 'number' ? (
                       <input
@@ -248,19 +346,23 @@ export function AdvancedPane(): ReactNode {
                 ))}
             </div>
 
-            {/* Footer — per-pane save */}
+            {/* Footer — per-pane save. Save is disabled when there
+                are no draft changes so the user can't accidentally
+                round-trip an identical config to disk. */}
             <div className="mt-6 flex items-center justify-between border-t border-edge-subtle pt-3">
               <div className="text-[10px]">
                 {error != null && <span className="text-error">{error}</span>}
                 {saved && error == null && (
                   <span className="text-accent-green">
-                    Saved. Some changes require a restart.
+                    {savedNeedsRestart
+                      ? 'Saved. Restart the app to apply the changes you made.'
+                      : 'Saved. Changes take effect immediately.'}
                   </span>
                 )}
               </div>
               <button
                 onClick={handleSave}
-                disabled={saving}
+                disabled={saving || !isDirty}
                 className="rounded-md bg-accent-blue px-4 py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-blue/90 disabled:opacity-50"
               >
                 {saving ? 'Saving…' : 'Save'}

@@ -4,6 +4,24 @@ Future feature ideas and enhancements to revisit later.
 
 ---
 
+## Dead AppConfig field cleanup
+
+Two fields in `AppConfig` (electron/main/index.ts) are persisted to `config.json` and surfaced in the Advanced pane but are not actually consumed at runtime:
+
+- **`autoSaveDebounceMs`** — `useSessionAutoSave.ts` hard-codes `DEBOUNCE_MS = 2000`. The config field is never read; user edits have no effect.
+- **`defaultTurnMode`** — `turnSlice.ts` hard-codes the initial turn mode to `'sequential'`. `initializeNewSession` doesn't consult config.
+
+The Advanced pane (added in task #25) overrides each field's description with a "currently unused — tracked in OPEN_ADDITIONS" note so users aren't misled, but the underlying issue is that the runtime should either:
+
+1. **Wire them up** — `useSessionAutoSave` reads `s.autoSaveDebounceMs` from config (or store-mirror), and `initializeNewSession` reads `s.defaultTurnMode`. This makes the persisted fields actually behave per their descriptions.
+2. **Remove them entirely** — drop from `AppConfig`, `DEFAULT_CONFIG`, `CONFIG_DESCRIPTIONS`, the load/save validators, and the Advanced pane override map. Existing config.json files will silently lose the fields on next save (the load handler tolerates missing fields).
+
+Option 1 is the user-aligned fix (lets users actually customize these). Option 2 is the cleaner cleanup if neither setting is wanted as a feature. Either way, this should be resolved before launch — the current state is "we lie to the user about what they can configure".
+
+Both issues predate the ConfigurationModal refactor; the description override is a stopgap.
+
+---
+
 ## Port Adapters and API Keys into ConfigurationModal
 
 The unified `ConfigurationModal` (Edit → Configuration) introduced alongside the persona/prompt library work uses a vertical sidebar with one pane per editable surface (Personas, System Prompts, Compile Prompts, Compact Prompts, Compile settings, Auto-compaction settings, Advanced/raw JSON). For the v1 launch, two existing surfaces were intentionally **left as standalone modals** and exposed as link-out tiles in the sidebar:
