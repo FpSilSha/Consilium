@@ -8,7 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSy
 import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
 import { loadCustomProviders, saveCustomProviders, isValidProvider, type CustomProviderDef } from './custom-providers-store'
 import { loadCustomModels, saveCustomModels, addCustomModelId } from './custom-models-store'
-import { listDocuments, loadDocument, saveDocument, deleteDocument, isValidDocument } from './documents-store'
+import { loadDocument, saveDocument, deleteDocument, isValidDocument } from './documents-store'
 
 // ── App Configuration ─────────────────────────────────────────
 
@@ -479,8 +479,6 @@ function registerIpcHandlers(): void {
   })
 
   // ── Compiled documents ─────────────────────────────────────
-
-  ipcMain.handle('documents:list', () => listDocuments())
 
   ipcMain.handle('documents:load', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '') throw new Error('Invalid document id')

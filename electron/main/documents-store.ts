@@ -4,11 +4,10 @@ import {
   renameSync,
   existsSync,
   mkdirSync,
-  readdirSync,
   unlinkSync,
   statSync,
 } from 'fs'
-import { join, resolve, sep } from 'path'
+import { resolve, sep } from 'path'
 import { app } from 'electron'
 
 /**
@@ -83,36 +82,6 @@ function getFilePath(id: string): string {
 function ensureDir(): void {
   const dir = getDocumentsDir()
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-}
-
-export function listDocuments(): readonly { readonly id: string; readonly title: string; readonly createdAt: number; readonly modelName: string }[] {
-  ensureDir()
-  const dir = getDocumentsDir()
-  let entries: string[]
-  try {
-    entries = readdirSync(dir)
-  } catch {
-    return []
-  }
-
-  const results: { id: string; title: string; createdAt: number; modelName: string }[] = []
-  for (const filename of entries) {
-    if (!filename.endsWith('.json')) continue
-    try {
-      const content = readFileSync(join(dir, filename), 'utf-8')
-      const parsed: unknown = JSON.parse(content)
-      if (!isValidDocument(parsed)) continue
-      results.push({
-        id: parsed.id,
-        title: parsed.title,
-        createdAt: parsed.createdAt,
-        modelName: parsed.modelName,
-      })
-    } catch {
-      // Skip corrupted file — don't crash listing
-    }
-  }
-  return results
 }
 
 export function loadDocument(id: string): PersistedDocument | null {

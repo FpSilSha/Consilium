@@ -16,14 +16,3 @@ export interface SessionDocument {
   /** The user's optional focus prompt, if any was provided. */
   readonly focusPrompt?: string
 }
-
-/**
- * Lightweight metadata returned by `documents:list` — does not include
- * the document body, so listing is fast.
- */
-export interface DocumentSummary {
-  readonly id: string
-  readonly title: string
-  readonly createdAt: number
-  readonly modelName: string
-}

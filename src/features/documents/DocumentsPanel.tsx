@@ -118,7 +118,6 @@ function DocumentRow({ doc, onView }: {
   readonly onView: () => void
 }): ReactNode {
   const removeDocumentFromSession = useStore((s) => s.removeDocumentFromSession)
-  const forgetDocument = useStore((s) => s.forgetDocument)
   const appendMessage = useStore((s) => s.appendMessage)
 
   const [showActions, setShowActions] = useState(false)
@@ -148,7 +147,10 @@ function DocumentRow({ doc, onView }: {
   }, [doc.id, removeDocumentFromSession])
 
   const handleDeleteForever = useCallback(async () => {
-    forgetDocument(doc.id)
+    // Same store mutation as Remove from Session — the only difference is
+    // that this path also fires the documents:delete IPC to remove the
+    // file from disk.
+    removeDocumentFromSession(doc.id)
     const api = (window as { consiliumAPI?: { documentsDelete: (id: string) => Promise<boolean> } }).consiliumAPI
     if (api != null) {
       try {
@@ -159,7 +161,7 @@ function DocumentRow({ doc, onView }: {
     }
     setConfirmDelete(false)
     setShowActions(false)
-  }, [doc.id, forgetDocument])
+  }, [doc.id, removeDocumentFromSession])
 
   return (
     <div className="group mx-1 my-0.5 rounded-md px-2 py-1.5 transition-colors hover:bg-surface-hover">

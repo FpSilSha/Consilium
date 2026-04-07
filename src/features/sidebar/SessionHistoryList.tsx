@@ -43,16 +43,14 @@ export function SessionHistoryList(): ReactNode {
     e.stopPropagation()
     await deleteSession(id)
     setSessions((prev) => prev.filter((s) => s.id !== id))
-    // If we deleted the CURRENT session, clear all per-session state — not
-    // just the ID. Otherwise stale documents/draftCompile/sessionCompileCost
-    // from the deleted session would persist in the store and continue to
-    // render in the sidebar + budget bar until the user navigates somewhere
-    // that triggers a fresh setSessionDocuments / resetCompileCost.
-    // Also abort any in-flight compile so its callback doesn't try to
-    // commit against the now-deleted session.
+    // If we deleted the CURRENT session, tear down all in-flight streams
+    // (advisor turns + compile via stopAll) and clear all per-session state.
+    // Otherwise stale documents/draftCompile/sessionCompileCost from the
+    // deleted session would persist in the store and continue to render
+    // in the sidebar + budget bar.
     if (id === currentSessionId) {
-      const { abortActiveCompile } = await import('@/features/documents/compile-controller')
-      abortActiveCompile()
+      const { stopAll } = await import('@/features/turnManager')
+      stopAll()
       const state = useStore.getState()
       state.setCurrentSessionId(null)
       state.setSessionCustomName(null)

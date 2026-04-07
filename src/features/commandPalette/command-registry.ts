@@ -3,7 +3,6 @@ import { startRun, stopAll, dispatchNextTurn } from '@/features/turnManager'
 import { saveCurrentSession, initializeNewSession } from '@/features/sessions/session-manager'
 import { buildInitialQueue } from '@/features/turnManager/queue-builder'
 import { createDefaultAdvisorWindow } from '@/features/windows/advisor-factory'
-import { abortActiveCompile } from '@/features/documents/compile-controller'
 import type { TurnMode } from '@/types'
 
 export interface Command {
@@ -103,13 +102,9 @@ export function getCommands(): readonly Command[] {
       label: 'New Consilium',
       keywords: ['new', 'session', 'consilium', 'clear', 'reset'],
       execute: () => {
-        // Tear down all in-flight streams. stopAll() handles advisor turns;
-        // abortActiveCompile() handles the isolated compile stream which is
-        // not in activeControllers. Without this, an in-flight compile would
-        // continue consuming API quota until completion (its sessionId guard
-        // discards the result, but the spend is real).
+        // stopAll tears down advisor turns AND the compile stream
+        // (centralized via abortActiveCompile inside stopAll).
         stopAll()
-        abortActiveCompile()
         saveCurrentSession().catch(() => {})
         const s = useStore.getState()
         s.clearMessages()

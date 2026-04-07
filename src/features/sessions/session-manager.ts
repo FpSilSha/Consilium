@@ -348,17 +348,12 @@ export async function loadSession(id: string): Promise<void> {
   const api = getSessionAPI()
   if (api == null) return
 
-  // Stop all active streams before switching sessions — covers turn dispatcher,
-  // votes, @mentions, and compile document (any path that sets isStreaming: true)
+  // Stop all active streams before switching sessions — covers advisor turns,
+  // compile document (via stopAll → abortActiveCompile), and votes.
   const { stopAll } = await import('@/features/turnManager')
   stopAll()
   const { cancelActiveVotes } = await import('@/features/voting/vote-service')
   cancelActiveVotes()
-  // Compile streams are NOT in activeControllers — they have their own
-  // module-scoped registry that we abort explicitly. Without this, an
-  // in-flight compile would race against the new session.
-  const { abortActiveCompile } = await import('@/features/documents/compile-controller')
-  abortActiveCompile()
 
   const content = await api.sessionLoad(id)
   if (content == null) return

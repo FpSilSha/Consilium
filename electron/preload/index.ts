@@ -21,7 +21,6 @@ const api: ConsiliumAPI = {
   customModelsLoad: () => ipcRenderer.invoke('custom-models:load'),
   customModelsSave: (models) => ipcRenderer.invoke('custom-models:save', models),
   customModelsAdd: (provider, modelId) => ipcRenderer.invoke('custom-models:add', provider, modelId),
-  documentsList: () => ipcRenderer.invoke('documents:list'),
   documentsLoad: (id) => ipcRenderer.invoke('documents:load', id),
   documentsSave: (doc) => ipcRenderer.invoke('documents:save', doc),
   documentsDelete: (id) => ipcRenderer.invoke('documents:delete', id),

@@ -64,11 +64,15 @@ export interface DocumentsSlice {
   /** Adds a freshly compiled document to the current session. */
   addDocument: (doc: SessionDocument) => void
 
-  /** Removes the document from this session's reference list (file untouched). */
+  /**
+   * Removes the document from this session's reference list. Does NOT
+   * delete the underlying file from disk — the UI layer that calls this
+   * is responsible for firing `documents:delete` IPC if a hard delete is
+   * intended. Both "Remove from session" and "Delete forever" UX flows
+   * call this same action; only "Delete forever" additionally fires the
+   * IPC delete.
+   */
   removeDocumentFromSession: (id: string) => void
-
-  /** Removes from this session AND deletes the underlying file. */
-  forgetDocument: (id: string) => void
 
   /** Toggles the sidebar section. */
   setDocumentsPanelOpen: (open: boolean) => void
@@ -115,17 +119,6 @@ export const createDocumentsSlice: StateCreator<DocumentsSlice> = (set) => ({
 
   removeDocumentFromSession: (id) =>
     set((state) => {
-      const next = state.documents.filter((d) => d.id !== id)
-      return {
-        documents: next,
-        documentIds: next.map((d) => d.id),
-      }
-    }),
-
-  forgetDocument: (id) =>
-    set((state) => {
-      // The actual file delete is fired-and-forgotten in the UI layer
-      // (via the documents:delete IPC). The store only updates state.
       const next = state.documents.filter((d) => d.id !== id)
       return {
         documents: next,

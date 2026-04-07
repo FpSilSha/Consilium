@@ -10,6 +10,7 @@ import { getRawKey } from '@/features/keys/key-vault'
 import { isBudgetExceeded } from '@/features/budget/budget-engine'
 import { computeDisplayLabels } from '@/features/windows/display-labels'
 import { checkAutoCompaction } from '@/features/compaction'
+import { abortActiveCompile } from '@/features/documents/compile-controller'
 import {
   getNextCard,
   getAllParallelCards,
@@ -76,9 +77,25 @@ export function startRun(): void {
 }
 
 /**
- * Stops all active agent streams and pauses the queue.
+ * Stops all active streams and pauses the queue.
+ *
+ * Aborts:
+ *   - Every advisor turn in `activeControllers` (managed locally)
+ *   - The in-flight compile, if any (lives in compile-controller's
+ *     module-scoped registry — separate from activeControllers because
+ *     compile is not a turn)
+ *
+ * This is the single "stop everything spending money" entry point. The
+ * budget-exceeded paths in dispatchNextTurn and onTurnComplete call this,
+ * so the budget cap correctly halts BOTH advisor turns and compile.
  */
 export function stopAll(): void {
+  // Abort the compile stream first — it's a one-shot, no per-window cleanup
+  // needed, so doing it before the advisor loop minimizes the window where
+  // a still-running compile could fire callbacks against state we're about
+  // to mutate.
+  abortActiveCompile()
+
   const entries = [...activeControllers.entries()]
   activeControllers.clear()
   const state = useStore.getState()
