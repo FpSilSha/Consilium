@@ -61,6 +61,38 @@ export function useStartupAutoCompaction(): void {
           store.setAutoCompactionWarning(plan.warning)
         }
 
+        // Compile settings — load compileMaxTokens and compileModelConfig.
+        // Validate the compile model's key still exists; if not, clear it
+        // (no warning surfaced for compile — the user can re-pick on next
+        // compile click without prior selection blocking them).
+        const rawCompileMaxTokens = data.values['compileMaxTokens']
+        if (typeof rawCompileMaxTokens === 'number' && rawCompileMaxTokens > 0) {
+          store.setCompileMaxTokens(rawCompileMaxTokens)
+        }
+
+        const rawCompileConfig = data.values['compileModelConfig']
+        if (
+          rawCompileConfig != null &&
+          typeof rawCompileConfig === 'object' &&
+          !Array.isArray(rawCompileConfig)
+        ) {
+          const cfg = rawCompileConfig as Record<string, unknown>
+          if (
+            typeof cfg['provider'] === 'string' &&
+            typeof cfg['model'] === 'string' &&
+            typeof cfg['keyId'] === 'string' &&
+            store.keys.some((k) => k.id === cfg['keyId'])
+          ) {
+            store.setCompileModelConfig({
+              provider: cfg['provider'],
+              model: cfg['model'],
+              keyId: cfg['keyId'],
+            })
+          } else {
+            store.setCompileModelConfig(null)
+          }
+        }
+
         if (plan.persistedUpdate !== null) {
           await api.configSave({
             ...data.values,

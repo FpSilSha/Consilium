@@ -34,6 +34,7 @@ const MENUS: readonly { label: string; items: readonly MenuEntry[] }[] = [
     label: 'Edit',
     items: [
       { label: 'Auto-compaction Settings…', action: 'auto-compaction-settings' },
+      { label: 'Compile Document Settings…', action: 'compile-settings' },
       { separator: true },
       { label: 'Edit Configuration', action: 'edit-config' },
     ],
@@ -109,6 +110,9 @@ export function TitleBar({ onMenuAction }: TitleBarProps): ReactNode {
         break
       case 'auto-compaction-settings':
         onMenuAction('menu:auto-compaction-settings')
+        break
+      case 'compile-settings':
+        onMenuAction('menu:compile-settings')
         break
       case 'fullscreen':
         document.documentElement.requestFullscreen?.().catch(() => {})
