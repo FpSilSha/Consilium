@@ -48,10 +48,19 @@ export function restoreSession(session: SessionFile): void {
     state.setAutoCompaction(false, null)
   }
 
+  // Clear any in-flight compile draft + previous compile cost ledger from
+  // the prior session. The compile controller is aborted explicitly in
+  // loadSession before this point, so any callback that fires after will
+  // be discarded by its sessionId guard.
+  state.setDraftCompile(null)
+  state.resetCompileCost()
+
   // Restore documents. The session holds a list of IDs; we fetch each doc
   // by ID via the documents:load IPC. Missing files are silently dropped —
   // no crash, no migration. Fired async so session restore isn't blocked.
-  void restoreDocuments(session.documentIds ?? [])
+  // restoreDocuments captures the current sessionId at start and bails if
+  // the session has changed underneath it before all loads complete.
+  void restoreDocuments(session.documentIds ?? [], session.id)
 
   // Restore windows with graceful degradation
   for (const sw of session.windows) {
@@ -112,8 +121,13 @@ function sessionWindowToAdvisor(
  * Resolves session document IDs to full SessionDocument objects via the
  * documents:load IPC. Missing documents (deleted or never persisted) are
  * silently skipped — graceful degradation per the storage design.
+ *
+ * `expectedSessionId` is captured at the call site (restoreSession) and
+ * used to bail out if the user switches sessions while async loads are
+ * in flight. Without this guard, a slow restore could overwrite the
+ * newer session's document list with stale data.
  */
-async function restoreDocuments(ids: readonly string[]): Promise<void> {
+async function restoreDocuments(ids: readonly string[], expectedSessionId: string): Promise<void> {
   const state = useStore.getState()
 
   if (ids.length === 0) {
@@ -129,6 +143,10 @@ async function restoreDocuments(ids: readonly string[]): Promise<void> {
 
   const loaded: import('@/features/documents/types').SessionDocument[] = []
   for (const id of ids) {
+    // Bail mid-loop if session changed — don't waste IPC calls on a
+    // session the user has already abandoned.
+    if (useStore.getState().currentSessionId !== expectedSessionId) return
+
     try {
       const doc = await api.documentsLoad(id)
       if (doc != null && isValidSessionDocument(doc)) {
@@ -138,6 +156,9 @@ async function restoreDocuments(ids: readonly string[]): Promise<void> {
       // Skip — corrupted or missing doc files don't crash session restore
     }
   }
+
+  // Final check before commit — the awaits above may have spanned a session switch.
+  if (useStore.getState().currentSessionId !== expectedSessionId) return
   state.setSessionDocuments(loaded)
 }
 
@@ -179,8 +200,10 @@ export async function initializeNewSession(): Promise<void> {
       state.setAutoCompaction(true, state.globalAutoCompactionConfig)
     }
 
-    // Fresh sessions start with no document references
+    // Fresh sessions start with no document references and a zero compile-cost ledger
     state.setSessionDocuments([])
+    state.resetCompileCost()
+    state.setDraftCompile(null)
 
     await saveCurrentSession()
   } finally {
@@ -317,6 +340,11 @@ export async function loadSession(id: string): Promise<void> {
   stopAll()
   const { cancelActiveVotes } = await import('@/features/voting/vote-service')
   cancelActiveVotes()
+  // Compile streams are NOT in activeControllers — they have their own
+  // module-scoped registry that we abort explicitly. Without this, an
+  // in-flight compile would race against the new session.
+  const { abortActiveCompile } = await import('@/features/documents/compile-controller')
+  abortActiveCompile()
 
   const content = await api.sessionLoad(id)
   if (content == null) return

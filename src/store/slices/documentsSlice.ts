@@ -48,6 +48,14 @@ export interface DocumentsSlice {
   /** Hardcoded default 16384 — overridable via Edit Configuration. */
   readonly compileMaxTokens: number
 
+  /**
+   * Total cost spent on compile calls for the current session, in dollars.
+   * Compile is not an advisor turn, so its cost doesn't roll into any
+   * window's runningCost — this slice owns it. Counted by the budget
+   * engine via getSessionTotalCost(), so it respects the session budget cap.
+   */
+  readonly sessionCompileCost: number
+
   // ── Actions ─────────────────────────────────────────────────
 
   /** Replaces the in-memory documents + IDs (used on session load). */
@@ -72,6 +80,11 @@ export interface DocumentsSlice {
   /** Global compile defaults — set by startup loader and Compile Settings modal. */
   setCompileModelConfig: (config: CompileModelConfig | null) => void
   setCompileMaxTokens: (max: number) => void
+
+  /** Adds to the compile-cost ledger. Called when a compile finishes. */
+  accumulateCompileCost: (cost: number) => void
+  /** Resets the compile-cost ledger. Called on session switch. */
+  resetCompileCost: () => void
 }
 
 export const createDocumentsSlice: StateCreator<DocumentsSlice> = (set) => ({
@@ -81,6 +94,7 @@ export const createDocumentsSlice: StateCreator<DocumentsSlice> = (set) => ({
   draftCompile: null,
   compileModelConfig: null,
   compileMaxTokens: 16384,
+  sessionCompileCost: 0,
 
   setSessionDocuments: (docs) =>
     set({
@@ -136,4 +150,8 @@ export const createDocumentsSlice: StateCreator<DocumentsSlice> = (set) => ({
 
   setCompileModelConfig: (config) => set({ compileModelConfig: config }),
   setCompileMaxTokens: (max) => set({ compileMaxTokens: max }),
+
+  accumulateCompileCost: (cost) =>
+    set((state) => ({ sessionCompileCost: state.sessionCompileCost + cost })),
+  resetCompileCost: () => set({ sessionCompileCost: 0 }),
 })

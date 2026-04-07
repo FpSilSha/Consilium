@@ -4,6 +4,7 @@ import { useStore } from '@/store'
 import { getModelById } from '@/features/modelSelector/model-registry'
 import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
+import { formatProviderLabel } from '@/features/modelCatalog/format-provider-label'
 
 interface CompileSettingsModalProps {
   readonly onClose: () => void
@@ -60,6 +61,7 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
   const handleSave = useCallback(async () => {
     setSaving(true)
     setError(null)
+    setSaved(false)
 
     // Validate maxTokens
     const parsedMax = Number(draftMaxTokens)
@@ -69,10 +71,6 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
       return
     }
     const validatedMax = Math.round(parsedMax)
-
-    // Commit to store
-    setCompileModelConfig(draftConfig)
-    setCompileMaxTokens(validatedMax)
 
     const api = (window as { consiliumAPI?: {
       configLoad(): Promise<{ values: Record<string, unknown> }>
@@ -85,6 +83,8 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
       return
     }
 
+    // Disk write FIRST. Only commit to the in-memory store if persistence
+    // succeeds, so a failed save doesn't leave the store and disk out of sync.
     try {
       const current = await api.configLoad()
       await api.configSave({
@@ -92,6 +92,8 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
         compileModelConfig: draftConfig,
         compileMaxTokens: validatedMax,
       })
+      setCompileModelConfig(draftConfig)
+      setCompileMaxTokens(validatedMax)
       setSaved(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save')
@@ -278,6 +280,7 @@ function BrowseModelsList({ provider, keyId, onSelect }: {
   readonly onSelect: (provider: string, model: string, keyId: string) => void
 }): ReactNode {
   const models = useFilteredModels(provider)
+  const [selectedModelId, setSelectedModelId] = useState('')
 
   if (models.length === 0) {
     return <p className="text-[10px] text-content-disabled">No models available for this provider.</p>
@@ -288,22 +291,20 @@ function BrowseModelsList({ provider, keyId, onSelect }: {
       <label className="mb-1 block text-[10px] text-content-disabled">Model</label>
       <SearchableModelSelect
         models={models}
-        value=""
-        onChange={(modelId) => onSelect(provider, modelId, keyId)}
+        value={selectedModelId}
+        onChange={setSelectedModelId}
       />
+      <button
+        onClick={() => {
+          if (selectedModelId === '') return
+          onSelect(provider, selectedModelId, keyId)
+        }}
+        disabled={selectedModelId === ''}
+        className="mt-2 w-full rounded-md bg-accent-blue px-2 py-1.5 text-xs font-medium text-content-inverse transition-colors hover:bg-accent-blue/90 disabled:opacity-50"
+      >
+        Use this model
+      </button>
     </>
   )
 }
 
-function formatProviderLabel(provider: Provider): string {
-  switch (provider) {
-    case 'anthropic': return 'Anthropic'
-    case 'openai': return 'OpenAI'
-    case 'google': return 'Google'
-    case 'xai': return 'xAI'
-    case 'deepseek': return 'DeepSeek'
-    case 'openrouter': return 'OpenRouter'
-    case 'custom': return 'Custom'
-    default: return provider
-  }
-}

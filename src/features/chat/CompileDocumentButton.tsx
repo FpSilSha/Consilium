@@ -10,7 +10,9 @@ import { estimateThreadTokens } from '@/features/compaction/compaction-engine'
 import { resolveModelById } from '@/features/modelSelector/model-resolve'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
 import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
+import { formatProviderLabel } from '@/features/modelCatalog/format-provider-label'
 import type { SessionDocument } from '@/features/documents/types'
+import { registerActiveCompile, clearActiveCompile } from '@/features/documents/compile-controller'
 
 const DEFAULT_COMPILE_PROMPT = `Based on the entire conversation above, produce a single comprehensive document in markdown format.
 
@@ -72,6 +74,7 @@ export function CompileDocumentButton(): ReactNode {
   const setDraftCompile = useStore((s) => s.setDraftCompile)
   const appendDraftCompileContent = useStore((s) => s.appendDraftCompileContent)
   const setDocumentsPanelOpen = useStore((s) => s.setDocumentsPanelOpen)
+  const accumulateCompileCost = useStore((s) => s.accumulateCompileCost)
 
   const [showPicker, setShowPicker] = useState(false)
   const [browseMode, setBrowseMode] = useState(false)
@@ -89,6 +92,13 @@ export function CompileDocumentButton(): ReactNode {
    * advisor's stream slot. The result lands as a draft in the documents
    * sidebar while streaming, then becomes a saved SessionDocument on
    * completion.
+   *
+   * Session-switch safety: captures the current sessionId at compile-start
+   * and verifies it still matches before committing. If the user switches
+   * sessions mid-compile, the compile controller is aborted by loadSession
+   * via abortActiveCompile(); even if a callback still lands somehow, the
+   * sessionId guard discards the result so it can't land in the wrong
+   * session.
    */
   const handleCompile = useCallback((provider: string, model: string, keyId: string) => {
     const apiKey = getRawKey(keyId)
@@ -96,6 +106,10 @@ export function CompileDocumentButton(): ReactNode {
 
     const modelInfo = resolveModelById(model)
     const modelName = modelInfo?.name ?? model
+
+    // Capture session identity at compile-start — used to discard results
+    // that arrive after a session switch.
+    const startSessionId = useStore.getState().currentSessionId
 
     setShowPicker(false)
     setBrowseMode(false)
@@ -113,12 +127,34 @@ export function CompileDocumentButton(): ReactNode {
     const threadMessages = messagesToApiFormat(messages)
     const compilePrompt = buildCompilePrompt(userFocus)
 
+    // Holder for the controller so callbacks can check it. Assigned after
+    // streamResponse returns it.
+    let controller: AbortController | null = null
+
+    const isStillCurrentSession = (): boolean =>
+      useStore.getState().currentSessionId === startSessionId
+
     const callbacks: StreamCallbacks = {
       onChunk: (chunk) => {
+        if (controller?.signal.aborted) return
+        if (!isStillCurrentSession()) return
         appendDraftCompileContent(chunk)
       },
 
       onDone: async (fullContent, tokenUsage) => {
+        if (controller != null) clearActiveCompile(controller)
+
+        // Discard if this compile was superseded or the session changed.
+        if (controller?.signal.aborted) {
+          setCompiling(false)
+          return
+        }
+        if (!isStillCurrentSession()) {
+          // Don't touch state belonging to the new session
+          setCompiling(false)
+          return
+        }
+
         const costMeta = buildCostMetadata(tokenUsage, model)
         const cost = costMeta?.estimatedCost ?? 0
 
@@ -134,26 +170,50 @@ export function CompileDocumentButton(): ReactNode {
           ...(userFocus.trim() !== '' ? { focusPrompt: userFocus.trim() } : {}),
         }
 
-        // Persist to disk first — if the IPC save fails we still want the
-        // document visible in the session for the current run. The IPC
-        // bridge types this as Record<string, unknown>; the readonly
-        // SessionDocument shape is structurally compatible at runtime.
+        // Try disk first. If save fails, surface as an error draft and
+        // do NOT add the doc to the session — keeping the on-disk and
+        // in-memory state in sync.
         const api = (window as { consiliumAPI?: { documentsSave(doc: Record<string, unknown>): Promise<void> } }).consiliumAPI
         if (api != null) {
           try {
             await api.documentsSave(doc as unknown as Record<string, unknown>)
-          } catch {
-            // Non-fatal — doc still appears in session for this run
+          } catch (e) {
+            setDraftCompile({
+              title: 'Compile saved-to-disk failed',
+              content: '',
+              modelName,
+              status: 'error',
+              error: e instanceof Error ? e.message : 'Failed to save document',
+            })
+            setCompiling(false)
+            setTimeout(() => {
+              const current = useStore.getState().draftCompile
+              if (current?.status === 'error') setDraftCompile(null)
+            }, 5000)
+            return
           }
         }
 
+        // Re-check session ID one more time after the await — the user
+        // could have switched sessions while documentsSave was in flight.
+        if (!isStillCurrentSession()) {
+          setCompiling(false)
+          return
+        }
+
         addDocument(doc)
+        accumulateCompileCost(cost)
         setDraftCompile(null)
         setCompiling(false)
         setUserFocus('')
       },
 
       onError: (error) => {
+        if (controller != null) clearActiveCompile(controller)
+        if (!isStillCurrentSession()) {
+          setCompiling(false)
+          return
+        }
         setDraftCompile({
           title: 'Compile failed',
           content: '',
@@ -170,7 +230,7 @@ export function CompileDocumentButton(): ReactNode {
       },
     }
 
-    streamResponse(
+    controller = streamResponse(
       {
         provider: provider as Provider,
         model,
@@ -181,11 +241,13 @@ export function CompileDocumentButton(): ReactNode {
       },
       callbacks,
     )
+    registerActiveCompile(controller)
   }, [
     messages,
     userFocus,
     compileMaxTokens,
     addDocument,
+    accumulateCompileCost,
     setDraftCompile,
     appendDraftCompileContent,
     setDocumentsPanelOpen,
@@ -431,15 +493,3 @@ function BrowseModelsList({ provider, keyId, estimatedInputTokens, onSelect }: {
   )
 }
 
-function formatProviderLabel(provider: Provider): string {
-  switch (provider) {
-    case 'anthropic': return 'Anthropic'
-    case 'openai': return 'OpenAI'
-    case 'google': return 'Google'
-    case 'xai': return 'xAI'
-    case 'deepseek': return 'DeepSeek'
-    case 'openrouter': return 'OpenRouter'
-    case 'custom': return 'Custom'
-    default: return provider
-  }
-}

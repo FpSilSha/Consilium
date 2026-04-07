@@ -8,7 +8,7 @@ import {
   unlinkSync,
   statSync,
 } from 'fs'
-import { join, dirname } from 'path'
+import { join, resolve, sep } from 'path'
 import { app } from 'electron'
 
 /**
@@ -33,14 +33,51 @@ export interface PersistedDocument {
   readonly focusPrompt?: string
 }
 
+/**
+ * Cached because `app.getPath('userData')` is idempotent but non-trivial,
+ * and we need a stable resolved path for the containment check.
+ */
+let cachedDocumentsDir: string | null = null
 function getDocumentsDir(): string {
-  return join(app.getPath('userData'), 'documents')
+  if (cachedDocumentsDir === null) {
+    cachedDocumentsDir = resolve(app.getPath('userData'), 'documents')
+  }
+  return cachedDocumentsDir
 }
 
+/**
+ * Validates an incoming document ID. IDs come from the renderer over IPC and
+ * may be arbitrary strings — we accept only the shape produced by
+ * `crypto.randomUUID()` (36 chars, hyphenated hex). This eliminates path
+ * traversal, weird filename, and accidental collision concerns at the source
+ * rather than relying on per-call sanitization.
+ */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+function isValidId(id: unknown): id is string {
+  return typeof id === 'string' && UUID_PATTERN.test(id)
+}
+
+/**
+ * Builds the on-disk path for a document by ID. Throws if the ID is not a
+ * valid UUID, AND defensively re-checks that the resolved path is still
+ * inside the documents directory (belt-and-suspenders against any future
+ * change that loosens the UUID check).
+ */
 function getFilePath(id: string): string {
-  // Defensive: id should be a UUID. Strip path separators just in case.
-  const safeId = id.replace(/[/\\]/g, '_')
-  return join(getDocumentsDir(), `${safeId}.json`)
+  if (!isValidId(id)) {
+    throw new Error('Invalid document id — must be a UUID')
+  }
+  const dir = getDocumentsDir()
+  const filePath = resolve(dir, `${id}.json`)
+  // Containment check: resolved path must start with the documents dir
+  // followed by a separator. Defends against any future loosening of the
+  // UUID validation that might let traversal sequences through.
+  const dirWithSep = dir.endsWith(sep) ? dir : dir + sep
+  if (!filePath.startsWith(dirWithSep)) {
+    throw new Error('Document path escapes documents directory')
+  }
+  return filePath
 }
 
 function ensureDir(): void {
@@ -79,7 +116,12 @@ export function listDocuments(): readonly { readonly id: string; readonly title:
 }
 
 export function loadDocument(id: string): PersistedDocument | null {
-  const filePath = getFilePath(id)
+  let filePath: string
+  try {
+    filePath = getFilePath(id)
+  } catch {
+    return null
+  }
   if (!existsSync(filePath)) return null
 
   try {
@@ -98,6 +140,8 @@ export function saveDocument(doc: PersistedDocument): void {
   }
 
   ensureDir()
+  // getFilePath validates the ID and rejects anything not a UUID, so we
+  // don't need a separate sanity check here.
   const filePath = getFilePath(doc.id)
 
   // Atomic write: write to .tmp then rename
@@ -107,15 +151,17 @@ export function saveDocument(doc: PersistedDocument): void {
 }
 
 export function deleteDocument(id: string): boolean {
-  const filePath = getFilePath(id)
+  let filePath: string
+  try {
+    filePath = getFilePath(id)
+  } catch {
+    return false
+  }
   if (!existsSync(filePath)) return false
 
   try {
-    // Sanity check — only delete if it's actually a file in our documents dir
     const stat = statSync(filePath)
     if (!stat.isFile()) return false
-    if (dirname(filePath) !== getDocumentsDir()) return false
-
     unlinkSync(filePath)
     return true
   } catch {

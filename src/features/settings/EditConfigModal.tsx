@@ -7,13 +7,13 @@ interface ConfigData {
 
 /**
  * Config keys that have dedicated UI elsewhere and shouldn't be raw-edited
- * via the generic configuration editor. They're persisted in config.json but
- * not surfaced here.
+ * via the generic configuration editor. They're persisted in config.json
+ * but not surfaced here.
  *
- * compileMaxTokens stays in this list — it has a dedicated UI in the
- * Compile Settings modal, but it's a plain number so editing the raw value
- * here would also be safe. Two paths to the same setting; users find
- * whichever first.
+ * Note: `compileMaxTokens` is intentionally NOT in this list. It has a
+ * dedicated UI in the Compile Settings modal, but it's a plain number so
+ * editing the raw value here is also safe. Two paths to the same setting;
+ * users find whichever first.
  */
 const HIDDEN_KEYS: ReadonlySet<string> = new Set([
   'autoCompactionEnabled',
