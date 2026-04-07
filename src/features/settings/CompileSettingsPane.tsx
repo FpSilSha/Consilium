@@ -1,31 +1,37 @@
-import { type ReactNode, useCallback, useState, useMemo, useEffect } from 'react'
+import { type ReactNode, useCallback, useState, useMemo, useEffect, useRef } from 'react'
 import type { Provider } from '@/types'
 import { useStore } from '@/store'
 import { getModelById } from '@/features/modelSelector/model-registry'
 import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
 import { formatProviderLabel } from '@/features/modelCatalog/format-provider-label'
+import { useRegisterDirtyGuard } from '@/features/configuration/dirty-guard'
 import {
   getMergedCompilePrompts,
   resolveCompilePromptWithFallback,
 } from '@/features/compilePrompts/compile-prompts-resolver'
 
-interface CompileSettingsModalProps {
-  readonly onClose: () => void
-}
-
 /**
- * Global Compile Document settings.
+ * Compile Settings pane — global Compile Document settings, ported
+ * from the standalone CompileSettingsModal into the unified
+ * ConfigurationModal as a native pane.
  *
- * Manages two things, both persisted to config.json:
- *   1. compileModelConfig — default model used by Compile Document. Set
- *      once here and every compile uses it unless the user picks a
- *      different model in the per-call popover.
- *   2. compileMaxTokens — output token cap for compile calls. Defaults
- *      to 16384 (16x the previous silent 4096 default). User can lower
- *      to save cost or raise if their model supports it.
+ * Manages three persisted fields:
+ *   - compileModelConfig — default model for Compile Document
+ *   - compileMaxTokens   — output token cap
+ *   - compilePresetId    — default style preset (base or custom)
+ *
+ * Save flow is disk-first, store-second — mirrors the per-pane
+ * save semantics used by every other native pane. Dirty state is
+ * registered with the ConfigurationModal via useRegisterDirtyGuard
+ * so the user is warned if they try to switch panes with unsaved
+ * draft changes.
+ *
+ * Structurally identical to the pre-port CompileSettingsModal body
+ * minus the outer fixed-position chrome (the ConfigurationModal
+ * provides the dialog wrapper, header, and close affordance).
  */
-export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): ReactNode {
+export function CompileSettingsPane(): ReactNode {
   const compileModelConfig = useStore((s) => s.compileModelConfig)
   const compileMaxTokens = useStore((s) => s.compileMaxTokens)
   const compilePresetId = useStore((s) => s.compilePresetId)
@@ -45,6 +51,9 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Re-seed draft when store values change (e.g., another pane or the
+  // startup loader updated them while the modal was closed). Triggered
+  // only on store change, not on draft change.
   useEffect(() => {
     setDraftConfig(compileModelConfig)
     setDraftMaxTokens(String(compileMaxTokens))
@@ -58,20 +67,35 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
   )
 
   // Self-heal: if the persisted `compilePresetId` references a custom
-  // that no longer exists, resolveCompilePromptWithFallback silently
-  // falls back to 'comprehensive' — but draftPresetId still holds the
-  // stale id, so Save without touching the dropdown would re-write
-  // the dead id to disk. Align draftPresetId with the resolved id
-  // whenever a fallback occurred so the draft state and display are
-  // consistent and Save persists the healed value.
+  // that no longer exists, resolveCompilePromptWithFallback falls back
+  // to 'comprehensive' — but draftPresetId still holds the stale id.
+  // Align the draft with the resolved id so Save persists the healed
+  // value.
   useEffect(() => {
     if (draftPresetId !== draftPreset.id) {
       setDraftPresetId(draftPreset.id)
     }
-    // Only reconcile when the resolved id diverges from the draft —
-    // normal user interactions (picking from the dropdown) already
-    // keep them in sync via the select onChange handler.
   }, [draftPresetId, draftPreset.id])
+
+  // Dirty detection: any draft differs from its committed store value.
+  // String-comparing the parsed max-tokens avoids false-positives on
+  // the initial "16384" vs 16384 mismatch.
+  const isDirty =
+    draftConfig !== compileModelConfig ||
+    Number(draftMaxTokens) !== compileMaxTokens ||
+    draftPresetId !== compilePresetId
+
+  const registerDirtyGuard = useRegisterDirtyGuard()
+  const isDirtyRef = useRef(isDirty)
+  isDirtyRef.current = isDirty
+  useEffect(() => {
+    registerDirtyGuard(() => {
+      if (!isDirtyRef.current) return true
+      // eslint-disable-next-line no-alert
+      return window.confirm('Discard unsaved compile settings?')
+    })
+    return () => registerDirtyGuard(null)
+  }, [registerDirtyGuard])
 
   const selectedLabel = draftConfig != null
     ? (getModelById(draftConfig.model, orModels)?.name ?? draftConfig.model.split('/').pop() ?? 'Model')
@@ -94,7 +118,6 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
     setError(null)
     setSaved(false)
 
-    // Validate maxTokens
     const parsedMax = Number(draftMaxTokens)
     if (!Number.isFinite(parsedMax) || parsedMax <= 0) {
       setError('Max output tokens must be a positive number')
@@ -114,8 +137,6 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
       return
     }
 
-    // Disk write FIRST. Only commit to the in-memory store if persistence
-    // succeeds, so a failed save doesn't leave the store and disk out of sync.
     try {
       const current = await api.configLoad()
       await api.configSave({
@@ -136,130 +157,119 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
   }, [draftConfig, draftMaxTokens, draftPresetId, setCompileModelConfig, setCompileMaxTokens, setCompilePresetId])
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="compile-settings-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
-    >
-      <div
-        className="mx-4 w-full max-w-lg rounded-xl border border-edge-subtle bg-surface-panel"
-        onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-edge-subtle px-6 py-4">
-          <div>
-            <h2 id="compile-settings-title" className="text-sm font-semibold text-content-primary">
-              Compile Document Settings
-            </h2>
-            <p className="mt-0.5 text-[10px] text-content-disabled">
-              Default style, model, and output limits for the Compile Document button
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            autoFocus
-            className="rounded-md px-2 py-1 text-xs text-content-muted transition-colors hover:bg-surface-hover"
-          >
-            Close
-          </button>
-        </div>
+    <div className="flex h-full flex-col">
+      <div className="border-b border-edge-subtle px-6 py-4">
+        <h3 className="text-sm font-semibold text-content-primary">Compile</h3>
+        <p className="mt-1 text-xs text-content-muted">
+          Default style, model, and output limits for the Compile Document button.
+        </p>
+      </div>
 
-        {/* Body */}
-        <div className="max-h-[60vh] overflow-y-auto px-6 py-4">
-          <p className="mb-3 text-xs text-content-muted">
-            Compile Document is an isolated API call — it does not run as one of the advisors. The compiled result lands in the Documents panel on the right, not in the chat thread.
+      <div className="flex-1 overflow-y-auto px-6 py-4">
+        <p className="mb-4 text-xs text-content-muted">
+          Compile Document is an isolated API call — it does not run as one of the advisors. The
+          compiled result lands in the Documents panel on the right, not in the chat thread.
+        </p>
+
+        {/* Default preset */}
+        <div className="mb-4">
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-muted">
+            Default Style
+          </label>
+          <p className="mb-2 text-[10px] text-content-disabled">
+            Each style is a different prompt template that shapes the output. Users can override
+            per-compile in the picker.
           </p>
-
-          {/* Default preset */}
-          <div className="mb-4">
-            <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-disabled">
-              Default Style
-            </label>
-            <p className="mb-2 text-[10px] text-content-disabled">
-              Each style is a different prompt template that shapes the output. Users can override per-compile in the picker.
-            </p>
-            <select
-              value={draftPresetId}
-              onChange={(e) => { setDraftPresetId(e.target.value); setSaved(false) }}
-              className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
-            >
-              {mergedCompilePrompts.map((preset) => (
-                <option key={preset.id} value={preset.id}>
-                  {preset.label}
-                  {!preset.isBuiltIn ? ' · custom' : ''}
-                </option>
-              ))}
-            </select>
+          <select
+            value={draftPresetId}
+            onChange={(e) => {
+              setDraftPresetId(e.target.value)
+              setSaved(false)
+            }}
+            className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
+          >
+            {mergedCompilePrompts.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.label}
+                {!preset.isBuiltIn ? ' · custom' : ''}
+              </option>
+            ))}
+          </select>
+          {draftPreset.description !== '' && (
             <p className="mt-1.5 text-[10px] italic text-content-disabled">
               {draftPreset.description}
             </p>
-          </div>
-
-          {/* Default model */}
-          <div className="mb-4">
-            <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-disabled">
-              Default Compile Model
-            </label>
-            <p className="mb-2 text-[10px] text-content-disabled">
-              The model used when you click Compile Document without overriding. Choose any model you have a key for. You can still pick a different model per-compile.
-            </p>
-
-            <div className="mb-2 flex items-center gap-2 rounded-md border border-edge-subtle bg-surface-base px-3 py-2">
-              <span className={`text-xs ${draftConfig != null ? 'text-content-primary' : 'text-content-disabled italic'}`}>
-                {selectedLabel}
-              </span>
-            </div>
-
-            {!browseMode ? (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setBrowseMode(true)}
-                  disabled={keys.length === 0}
-                  className="flex-1 rounded-md border border-dashed border-edge-subtle px-3 py-1.5 text-xs text-content-muted transition-colors hover:border-edge-focus hover:text-content-primary disabled:opacity-50"
-                >
-                  {keys.length === 0 ? 'No API keys configured' : 'Pick a model…'}
-                </button>
-                {draftConfig != null && (
-                  <button
-                    onClick={handleClearDefault}
-                    className="rounded-md border border-edge-subtle px-3 py-1.5 text-xs text-content-muted hover:bg-surface-hover hover:text-content-primary"
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            ) : (
-              <BrowseModels onSelect={handleSelectModel} onBack={() => setBrowseMode(false)} />
-            )}
-          </div>
-
-          {/* Max tokens */}
-          <div>
-            <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-disabled">
-              Max Output Tokens
-            </label>
-            <p className="mb-2 text-[10px] text-content-disabled">
-              Output cap for compile calls. Higher values let the document grow longer before being truncated. Default 16384. The provider may cap server-side. Lower this to save cost on long compiles; raise it if your model supports more.
-            </p>
-            <input
-              type="number"
-              min={1}
-              value={draftMaxTokens}
-              onChange={(e) => { setDraftMaxTokens(e.target.value); setSaved(false) }}
-              className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
-            />
-          </div>
+          )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t border-edge-subtle px-6 py-3">
+        {/* Default model */}
+        <div className="mb-4">
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-muted">
+            Default Compile Model
+          </label>
+          <p className="mb-2 text-[10px] text-content-disabled">
+            The model used when you click Compile Document without overriding. You can still pick a
+            different model per-compile.
+          </p>
+
+          <div className="mb-2 flex items-center gap-2 rounded-md border border-edge-subtle bg-surface-base px-3 py-2">
+            <span
+              className={`text-xs ${draftConfig != null ? 'text-content-primary' : 'italic text-content-disabled'}`}
+            >
+              {selectedLabel}
+            </span>
+          </div>
+
+          {!browseMode ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setBrowseMode(true)}
+                disabled={keys.length === 0}
+                className="flex-1 rounded-md border border-dashed border-edge-subtle px-3 py-1.5 text-xs text-content-muted transition-colors hover:border-edge-focus hover:text-content-primary disabled:opacity-50"
+              >
+                {keys.length === 0 ? 'No API keys configured' : 'Pick a model…'}
+              </button>
+              {draftConfig != null && (
+                <button
+                  onClick={handleClearDefault}
+                  className="rounded-md border border-edge-subtle px-3 py-1.5 text-xs text-content-muted hover:bg-surface-hover hover:text-content-primary"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          ) : (
+            <BrowseModels onSelect={handleSelectModel} onBack={() => setBrowseMode(false)} />
+          )}
+        </div>
+
+        {/* Max tokens */}
+        <div className="mb-4">
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-muted">
+            Max Output Tokens
+          </label>
+          <p className="mb-2 text-[10px] text-content-disabled">
+            Output cap for compile calls. Higher values let the document grow longer before being
+            truncated. Default 16384. The provider may cap server-side. Lower this to save cost on
+            long compiles; raise it if your model supports more.
+          </p>
+          <input
+            type="number"
+            min={1}
+            value={draftMaxTokens}
+            onChange={(e) => {
+              setDraftMaxTokens(e.target.value)
+              setSaved(false)
+            }}
+            className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
+          />
+        </div>
+
+        {/* Footer — per-pane save */}
+        <div className="mt-6 flex items-center justify-between border-t border-edge-subtle pt-3">
           <div className="text-[10px]">
             {error != null && <span className="text-error">{error}</span>}
-            {saved && error == null && (
-              <span className="text-accent-green">Saved.</span>
-            )}
+            {saved && error == null && <span className="text-accent-green">Saved.</span>}
           </div>
           <button
             onClick={handleSave}
@@ -275,7 +285,7 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Browse all models (same UX as the per-compile picker)
+// Browse all models — unchanged from the original modal
 // ─────────────────────────────────────────────────────────────────────────
 
 interface BrowseModelsProps {
@@ -304,20 +314,25 @@ function BrowseModels({ onSelect, onBack }: BrowseModelsProps): ReactNode {
   return (
     <div className="rounded-md border border-edge-subtle p-3">
       <div className="mb-2 flex items-center justify-between">
-        <p className="text-[10px] font-medium text-content-disabled">Browse models</p>
-        <button onClick={onBack} className="text-[10px] text-content-muted hover:text-content-primary">
+        <p className="text-[10px] font-medium text-content-muted">Browse models</p>
+        <button
+          onClick={onBack}
+          className="text-[10px] text-content-muted hover:text-content-primary"
+        >
           ← Back
         </button>
       </div>
 
-      <label className="mb-1 block text-[10px] text-content-disabled">Provider</label>
+      <label className="mb-1 block text-[10px] text-content-muted">Provider</label>
       <select
         value={selectedProvider ?? ''}
         onChange={(e) => setSelectedProvider(e.target.value as Provider)}
         className="mb-2 w-full rounded-md border border-edge-subtle bg-surface-base px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
       >
         {providersWithKeys.map((p) => (
-          <option key={p.provider} value={p.provider}>{p.label}</option>
+          <option key={p.provider} value={p.provider}>
+            {p.label}
+          </option>
         ))}
       </select>
 
@@ -332,7 +347,11 @@ function BrowseModels({ onSelect, onBack }: BrowseModelsProps): ReactNode {
   )
 }
 
-function BrowseModelsList({ provider, keyId, onSelect }: {
+function BrowseModelsList({
+  provider,
+  keyId,
+  onSelect,
+}: {
   readonly provider: Provider
   readonly keyId: string
   readonly onSelect: (provider: string, model: string, keyId: string) => void
@@ -341,12 +360,14 @@ function BrowseModelsList({ provider, keyId, onSelect }: {
   const [selectedModelId, setSelectedModelId] = useState('')
 
   if (models.length === 0) {
-    return <p className="text-[10px] text-content-disabled">No models available for this provider.</p>
+    return (
+      <p className="text-[10px] text-content-disabled">No models available for this provider.</p>
+    )
   }
 
   return (
     <>
-      <label className="mb-1 block text-[10px] text-content-disabled">Model</label>
+      <label className="mb-1 block text-[10px] text-content-muted">Model</label>
       <SearchableModelSelect
         models={models}
         value={selectedModelId}
@@ -365,4 +386,3 @@ function BrowseModelsList({ provider, keyId, onSelect }: {
     </>
   )
 }
-

@@ -5,6 +5,8 @@ import { PersonasPane } from '@/features/personas/PersonasPane'
 import { SystemPromptsPane } from '@/features/systemPrompts/SystemPromptsPane'
 import { CompilePromptsPane } from '@/features/compilePrompts/CompilePromptsPane'
 import { CompactPromptsPane } from '@/features/compactPrompts/CompactPromptsPane'
+import { CompileSettingsPane } from '@/features/settings/CompileSettingsPane'
+import { AutoCompactionSettingsPane } from '@/features/settings/AutoCompactionSettingsPane'
 
 /**
  * Unified Configuration modal — replaces the per-feature settings modals
@@ -54,16 +56,16 @@ import { CompactPromptsPane } from '@/features/compactPrompts/CompactPromptsPane
 
 interface ConfigurationModalProps {
   readonly onClose: () => void
-  readonly onOpenCompileSettings: () => void
-  readonly onOpenAutoCompactSettings: () => void
+  // Compile and Auto-compaction are now native panes hosted inline
+  // (task #23). onOpenAdvanced remains until task #25 ports the raw
+  // JSON editor in. onOpenAdaptersAndKeys stays as a permanent v1
+  // link-out per OPEN_ADDITIONS.
   readonly onOpenAdvanced: () => void
   readonly onOpenAdaptersAndKeys: () => void
 }
 
 export function ConfigurationModal({
   onClose,
-  onOpenCompileSettings,
-  onOpenAutoCompactSettings,
   onOpenAdvanced,
   onOpenAdaptersAndKeys,
 }: ConfigurationModalProps): ReactNode {
@@ -252,8 +254,6 @@ export function ConfigurationModal({
               <PaneBody
                 pane={activePane}
                 onClose={onClose}
-                onOpenCompileSettings={onOpenCompileSettings}
-                onOpenAutoCompactSettings={onOpenAutoCompactSettings}
                 onOpenAdvanced={onOpenAdvanced}
                 onOpenAdaptersAndKeys={onOpenAdaptersAndKeys}
               />
@@ -272,8 +272,6 @@ export function ConfigurationModal({
 interface PaneBodyProps {
   readonly pane: PaneDef
   readonly onClose: () => void
-  readonly onOpenCompileSettings: () => void
-  readonly onOpenAutoCompactSettings: () => void
   readonly onOpenAdvanced: () => void
   readonly onOpenAdaptersAndKeys: () => void
 }
@@ -281,14 +279,12 @@ interface PaneBodyProps {
 function PaneBody({
   pane,
   onClose,
-  onOpenCompileSettings,
-  onOpenAutoCompactSettings,
   onOpenAdvanced,
   onOpenAdaptersAndKeys,
 }: PaneBodyProps): ReactNode {
   // Native panes have their own dedicated components living inside the
   // modal. As more panes graduate from placeholder/legacy to native,
-  // each new pane gets a case here. Personas is the first.
+  // each new pane gets a case here.
   if (pane.kind === 'native') {
     switch (pane.id) {
       case 'personas':
@@ -299,6 +295,10 @@ function PaneBody({
         return <CompilePromptsPane />
       case 'compact-prompts':
         return <CompactPromptsPane />
+      case 'compile-settings':
+        return <CompileSettingsPane />
+      case 'auto-compact-settings':
+        return <AutoCompactionSettingsPane />
       default:
         // Pane is declared as native but no component is wired here yet
         // — surface in dev so the omission doesn't render a blank pane.
@@ -326,12 +326,6 @@ function PaneBody({
   // closed, which is the kind of race we don't want lurking.
   const handleOpen = (): void => {
     switch (pane.id) {
-      case 'compile-settings':
-        onOpenCompileSettings()
-        break
-      case 'auto-compact-settings':
-        onOpenAutoCompactSettings()
-        break
       case 'advanced':
         onOpenAdvanced()
         break
@@ -340,12 +334,13 @@ function PaneBody({
         onOpenAdaptersAndKeys()
         break
       default: {
-        // Exhaustiveness guard. If a future pane id slips through with
-        // kind 'legacy' or 'link-out' but is not handled in the switch,
-        // surface it loudly in dev rather than silently no-op'ing.
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const _exhaustive: never = pane.id as never
-        console.error(`[configuration] LegacyPane handleOpen has no case for pane id "${pane.id}"`)
+        // Exhaustiveness guard. Only 'advanced' (kind:legacy, pending
+        // task #25) and 'adapters'/'api-keys' (kind:link-out, permanent
+        // v1 per OPEN_ADDITIONS) should reach this handler. Everything
+        // else is native and rendered by the PaneBody switch above.
+        console.error(
+          `[configuration] LegacyPane handleOpen reached for pane id "${pane.id}" — should be native`,
+        )
         break
       }
     }

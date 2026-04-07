@@ -106,14 +106,14 @@ export const PANES: readonly PaneDef[] = [
     id: 'compile-settings',
     label: 'Compile',
     group: 'settings',
-    kind: 'legacy',
+    kind: 'native',
     blurb: 'Default model, max tokens, and default style for compile document.',
   },
   {
     id: 'auto-compact-settings',
     label: 'Auto-compaction',
     group: 'settings',
-    kind: 'legacy',
+    kind: 'native',
     blurb: 'Toggle auto-compaction, set the threshold, and pick the model used to summarize archived messages.',
   },
   {

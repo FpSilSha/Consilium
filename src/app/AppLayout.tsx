@@ -6,8 +6,6 @@ import { AdvisorPanel } from '@/features/advisorPanel'
 import { ConfigModal } from '@/features/modelCatalog/ConfigModal'
 import { ModelMismatchModal } from '@/features/sessions/ModelMismatchModal'
 import { EditConfigModal } from '@/features/settings/EditConfigModal'
-import { AutoCompactionSettingsModal } from '@/features/settings/AutoCompactionSettingsModal'
-import { CompileSettingsModal } from '@/features/settings/CompileSettingsModal'
 import { AboutModal } from '@/features/settings/AboutModal'
 import { ConfigurationModal, useConfigurationShortcut } from '@/features/configuration'
 import { TitleBar } from './TitleBar'
@@ -37,9 +35,11 @@ export function AppLayout(): ReactNode {
   const pendingMismatches = useStore((s) => s.pendingMismatches)
   const setPendingMismatches = useStore((s) => s.setPendingMismatches)
 
+  // EditConfigModal is the last remaining legacy modal — will be
+  // ported into the Advanced pane in task #25. showCompileSettings
+  // and showAutoCompactSettings are gone as of task #23; their panes
+  // are now native inside ConfigurationModal.
   const [showEditConfig, setShowEditConfig] = useState(false)
-  const [showAutoCompactSettings, setShowAutoCompactSettings] = useState(false)
-  const [showCompileSettings, setShowCompileSettings] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
   const [showWelcomeTour, setShowWelcomeTour] = useState(false)
   const [showConfiguration, setShowConfiguration] = useState(false)
@@ -50,17 +50,13 @@ export function AppLayout(): ReactNode {
   // close the modal mid-edit by retriggering the hotkey, and the
   // explicit Close button + Escape key already cover the close path.
   //
-  // Mutex with legacy modals: when ConfigurationModal opens, any
-  // standalone settings modal that may already be open is closed first.
-  // Without this, both modals render at z-50 and the legacy modal hides
-  // behind the Configuration backdrop, looking like a dead app until
-  // the user dismisses Configuration. Once tasks #23 and #25 port the
-  // legacy panes inline, the standalone state flags will be removed and
-  // this mutex collapses to a single setShowConfiguration call.
+  // Mutex with the remaining legacy modal (EditConfigModal, pending
+  // task #25): when ConfigurationModal opens, EditConfigModal is
+  // closed first so the two don't stack at z-50. Once task #25 ports
+  // the raw JSON editor into the Advanced pane, this mutex collapses
+  // to a single setShowConfiguration call.
   const openConfiguration = useCallback(() => {
     setShowEditConfig(false)
-    setShowAutoCompactSettings(false)
-    setShowCompileSettings(false)
     setShowConfiguration((prev) => (prev ? prev : true))
   }, [])
   // Adapters and API Keys are exposed in the Configuration sidebar as
@@ -79,13 +75,11 @@ export function AppLayout(): ReactNode {
   // store dependency.
   const handleNewConsilium = useCallback(async () => {
     // Close any open settings modals before starting a fresh session.
-    // Without this, ConfigurationModal (or a legacy settings modal)
-    // would stay open layered on top of an empty session, with stale
-    // model/preset state from the prior session still shown.
+    // Without this, ConfigurationModal (or the legacy raw JSON editor
+    // modal, pending task #25) would stay open layered on top of an
+    // empty session, with stale state from the prior session shown.
     setShowConfiguration(false)
     setShowEditConfig(false)
-    setShowAutoCompactSettings(false)
-    setShowCompileSettings(false)
 
     // Tear down in-flight streams (advisor turns AND compile) before clearing
     // state. stopAll handles both via its centralized abortActiveCompile call.
@@ -112,19 +106,15 @@ export function AppLayout(): ReactNode {
         // Ctrl+, hotkey, or the Electron main-process menu.
         openConfiguration()
         break
-      // Legacy menu actions remain wired so the existing IPC menu
-      // emissions from the Electron main process continue to function
-      // through the rollout. Once tasks #23 and #25 port the legacy
-      // panes inline, the IPC menu definitions in the main process can
-      // also be collapsed to a single Configuration entry.
+      // 'menu:edit-config' remains wired for the legacy raw JSON
+      // editor modal until task #25 ports it into the Advanced pane.
+      // 'menu:compile-settings' and 'menu:auto-compaction-settings'
+      // were removed in task #23 when those panes became native
+      // inside ConfigurationModal — nothing in the main process
+      // emits those channels anymore, but the preload allowlist
+      // keeps them as a no-op safety net during the rollout.
       case 'menu:edit-config':
         setShowEditConfig(true)
-        break
-      case 'menu:auto-compaction-settings':
-        setShowAutoCompactSettings(true)
-        break
-      case 'menu:compile-settings':
-        setShowCompileSettings(true)
         break
       case 'menu:welcome-tour':
         setShowWelcomeTour(true)
@@ -213,12 +203,6 @@ export function AppLayout(): ReactNode {
       {showEditConfig && (
         <EditConfigModal onClose={() => setShowEditConfig(false)} />
       )}
-      {showAutoCompactSettings && (
-        <AutoCompactionSettingsModal onClose={() => setShowAutoCompactSettings(false)} />
-      )}
-      {showCompileSettings && (
-        <CompileSettingsModal onClose={() => setShowCompileSettings(false)} />
-      )}
       {showAbout && (
         <AboutModal onClose={() => setShowAbout(false)} />
       )}
@@ -228,8 +212,6 @@ export function AppLayout(): ReactNode {
       {showConfiguration && (
         <ConfigurationModal
           onClose={() => setShowConfiguration(false)}
-          onOpenCompileSettings={() => setShowCompileSettings(true)}
-          onOpenAutoCompactSettings={() => setShowAutoCompactSettings(true)}
           onOpenAdvanced={() => setShowEditConfig(true)}
           onOpenAdaptersAndKeys={openAdaptersAndKeys}
         />
