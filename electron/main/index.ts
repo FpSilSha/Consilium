@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, mkdirSync, statSync, readdirSync, unlinkSy
 import { loadAdapterDefinitions, saveAdapterDefinition, deleteAdapterDefinition, isValidAdapterDef } from './adapter-store'
 import { loadCustomProviders, saveCustomProviders, isValidProvider, type CustomProviderDef } from './custom-providers-store'
 import { loadCustomModels, saveCustomModels, addCustomModelId } from './custom-models-store'
+import { listDocuments, loadDocument, saveDocument, deleteDocument, isValidDocument } from './documents-store'
 
 // ── App Configuration ─────────────────────────────────────────
 
@@ -25,6 +26,10 @@ interface AppConfig {
   readonly showOnboarding: boolean
   readonly autoCompactionEnabled: boolean
   readonly autoCompactionConfig: AutoCompactionConfigPersisted | null
+  /** Output token cap for Compile Document calls. Must be > 0. */
+  readonly compileMaxTokens: number
+  /** Default model used for compile when no per-call override is provided. */
+  readonly compileModelConfig: AutoCompactionConfigPersisted | null
 }
 
 /** Description for each config key — shown in the Edit Configuration modal */
@@ -36,6 +41,8 @@ export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
   showOnboarding: 'Show the onboarding wizard on next startup. Automatically set to false after completing the wizard.',
   autoCompactionEnabled: 'When true, new sessions inherit auto-compaction turned on using the configured model.',
   autoCompactionConfig: 'Default summarization model for auto-compaction on new sessions. Managed via the Auto-compact button.',
+  compileMaxTokens: 'Maximum output tokens for Compile Document calls. Higher values let the document grow longer before being truncated. Default 16384. Provider may cap server-side.',
+  compileModelConfig: 'Default model used by Compile Document. Managed via Edit → Compile Settings.',
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -46,6 +53,8 @@ const DEFAULT_CONFIG: AppConfig = {
   showOnboarding: true,
   autoCompactionEnabled: false,
   autoCompactionConfig: null,
+  compileMaxTokens: 16384,
+  compileModelConfig: null,
 }
 
 function isValidAutoCompactionConfig(v: unknown): v is AutoCompactionConfigPersisted {
@@ -69,6 +78,10 @@ function loadAppConfig(): AppConfig {
       showOnboarding: typeof parsed['showOnboarding'] === 'boolean' ? parsed['showOnboarding'] : DEFAULT_CONFIG.showOnboarding,
       autoCompactionEnabled: typeof parsed['autoCompactionEnabled'] === 'boolean' ? parsed['autoCompactionEnabled'] : DEFAULT_CONFIG.autoCompactionEnabled,
       autoCompactionConfig: isValidAutoCompactionConfig(parsed['autoCompactionConfig']) ? parsed['autoCompactionConfig'] : DEFAULT_CONFIG.autoCompactionConfig,
+      compileMaxTokens: typeof parsed['compileMaxTokens'] === 'number' && parsed['compileMaxTokens'] > 0
+        ? parsed['compileMaxTokens']
+        : DEFAULT_CONFIG.compileMaxTokens,
+      compileModelConfig: isValidAutoCompactionConfig(parsed['compileModelConfig']) ? parsed['compileModelConfig'] : DEFAULT_CONFIG.compileModelConfig,
     }
   } catch {
     try {
@@ -407,6 +420,14 @@ function registerIpcHandlers(): void {
         : isValidAutoCompactionConfig(raw['autoCompactionConfig'])
           ? raw['autoCompactionConfig']
           : appConfig.autoCompactionConfig,
+      compileMaxTokens: typeof raw['compileMaxTokens'] === 'number' && raw['compileMaxTokens'] > 0
+        ? raw['compileMaxTokens']
+        : appConfig.compileMaxTokens,
+      compileModelConfig: raw['compileModelConfig'] === null
+        ? null
+        : isValidAutoCompactionConfig(raw['compileModelConfig'])
+          ? raw['compileModelConfig']
+          : appConfig.compileModelConfig,
     }
     appConfig = validated
     saveAppConfig(validated)
@@ -455,6 +476,25 @@ function registerIpcHandlers(): void {
   ipcMain.handle('custom-models:add', (_event, provider: unknown, modelId: unknown) => {
     if (typeof provider !== 'string' || typeof modelId !== 'string') throw new Error('Invalid args')
     addCustomModelId(provider, modelId)
+  })
+
+  // ── Compiled documents ─────────────────────────────────────
+
+  ipcMain.handle('documents:list', () => listDocuments())
+
+  ipcMain.handle('documents:load', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid document id')
+    return loadDocument(id)
+  })
+
+  ipcMain.handle('documents:save', (_event, doc: unknown) => {
+    if (!isValidDocument(doc)) throw new Error('Invalid document — missing required fields')
+    saveDocument(doc)
+  })
+
+  ipcMain.handle('documents:delete', (_event, id: unknown) => {
+    if (typeof id !== 'string' || id === '') throw new Error('Invalid document id')
+    return deleteDocument(id)
   })
 
   // ── Session persistence ────────────────────────────────────
