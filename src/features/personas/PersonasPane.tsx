@@ -1,6 +1,11 @@
 import { type ReactNode, useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import { useStore } from '@/store'
-import { useRegisterDirtyGuard } from '@/features/configuration'
+// Import directly from the dirty-guard module (NOT the configuration
+// barrel) to avoid the circular dependency PersonasPane -> barrel ->
+// ConfigurationModal -> PersonasPane. The barrel re-exports
+// useRegisterDirtyGuard for non-pane consumers; native panes should
+// always use this direct path.
+import { useRegisterDirtyGuard } from '@/features/configuration/dirty-guard'
 import {
   validatePersonaInput,
   generateCustomPersonaId,
@@ -55,6 +60,30 @@ export function PersonasPane(): ReactNode {
   const addCustomPersona = useStore((s) => s.addCustomPersona)
   const removeCustomPersona = useStore((s) => s.removeCustomPersona)
 
+  // Delete handler — disk-first, store-second to mirror the save path.
+  // Without the IPC call, removing a persona only updates the in-memory
+  // store; the entry stays on disk and resurrects on next app launch.
+  // The store mutation runs unconditionally even if the IPC fails so the
+  // user isn't stuck with an undeletable row in the UI; a follow-up
+  // launch will reconcile by re-loading the still-on-disk entry, and
+  // the error is surfaced via console for debugging.
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const api = (
+        window as { consiliumAPI?: { personasDelete: (id: string) => Promise<boolean> } }
+      ).consiliumAPI
+      if (api != null) {
+        try {
+          await api.personasDelete(id)
+        } catch (err) {
+          console.error('[personas] failed to delete from disk:', err)
+        }
+      }
+      removeCustomPersona(id)
+    },
+    [removeCustomPersona],
+  )
+
   return (
     <div className="flex h-full flex-col">
       {/* Header with tabs */}
@@ -81,7 +110,7 @@ export function PersonasPane(): ReactNode {
           <CustomTab
             customs={customPersonas}
             onAdd={addCustomPersona}
-            onRemove={removeCustomPersona}
+            onRemove={handleDelete}
           />
         )}
       </div>
@@ -303,19 +332,28 @@ function CreateForm({
   }, [registerDirtyGuard])
 
   const handleTemplateChange = useCallback((id: string) => {
-    setTemplateId(id)
-    if (id === '') return
+    if (id === '') {
+      setTemplateId('')
+      return
+    }
     const template = BUILT_IN_PERSONAS.find((p) => p.id === id)
     if (template == null) return
     // Only overwrite content if the user hasn't typed something custom.
     // If they have, ask before clobbering — losing several lines of
     // typing to a misclick is the kind of avoidable papercut that
     // motivated the dirty guard pattern in the first place.
+    //
+    // Important: don't commit setTemplateId(id) until AFTER the user
+    // confirms. Otherwise the dropdown visually shows the rejected
+    // template while the textarea still holds the old content — a
+    // confusing desync where the dropdown label implies a template is
+    // applied that isn't.
     if (content.length > 0) {
       // eslint-disable-next-line no-alert
       const ok = window.confirm('Replace the current content with the template?')
       if (!ok) return
     }
+    setTemplateId(id)
     setContent(template.content)
   }, [content])
 
@@ -346,9 +384,27 @@ function CreateForm({
       // Disk write FIRST. Only on success do we mutate the in-memory
       // store, so a failed write never desyncs the UI from disk.
       await api.personasSave(stored)
+      // Reset submitting BEFORE onCreated. Currently onCreated unmounts
+      // the form, so the order is invisible — but the next three panes
+      // will copy this pattern and one of them might keep the form
+      // mounted (e.g., "save and create another"). Resetting first
+      // means the button is never stuck in the disabled state if the
+      // form survives the success callback.
+      setSubmitting(false)
       onCreated(toPersona(stored))
     } catch (err) {
-      setServerError(err instanceof Error ? err.message : 'Failed to save persona')
+      // Surface a friendly message instead of leaking the raw Node.js
+      // error string (e.g., "ENOSPC: no space left on device, write ..."
+      // when disk is full). The original message is still logged so
+      // devs can see it.
+      console.error('[personas] save failed:', err)
+      const raw = err instanceof Error ? err.message : String(err)
+      const friendly = raw.includes('ENOSPC')
+        ? 'Could not save: disk is full.'
+        : raw.includes('EACCES') || raw.includes('EROFS')
+          ? 'Could not save: permission denied or read-only volume.'
+          : `Could not save persona. ${raw}`
+      setServerError(friendly)
       setSubmitting(false)
     }
   }, [name, content, errors, onCreated])

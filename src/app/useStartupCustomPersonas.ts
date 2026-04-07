@@ -30,13 +30,18 @@ interface PersonasAPI {
 
 export function useStartupCustomPersonas(): void {
   const setCustomPersonas = useStore((s) => s.setCustomPersonas)
+  const setPersonasLoaded = useStore((s) => s.setPersonasLoaded)
 
   useEffect(() => {
     if (hasRun) return
     hasRun = true
 
     const api = (window as { consiliumAPI?: PersonasAPI }).consiliumAPI
-    if (api == null) return
+    if (api == null) {
+      // No Electron — flip the loaded flag so consumers don't wait forever.
+      setPersonasLoaded(true)
+      return
+    }
 
     api
       .personasLoad()
@@ -52,10 +57,26 @@ export function useStartupCustomPersonas(): void {
             typeof r['name'] === 'string' &&
             typeof r['content'] === 'string',
         )
+        // Surface silent drops. The main process and this filter both
+        // discard invalid rows; without logging the count, a partially
+        // corrupted custom-personas.json silently loses entries on load
+        // and any subsequent save permanently rewrites the file without
+        // them. The user has no other warning that something is wrong.
+        const dropped = rows.length - valid.length
+        if (dropped > 0) {
+          console.warn(
+            `[startup] dropped ${dropped} invalid custom persona row(s) from custom-personas.json — fix the file or the next save will permanently remove them`,
+          )
+        }
         setCustomPersonas(valid.map((row) => toPersona(row)))
       })
       .catch((err) => {
         console.error('[startup] failed to load custom personas:', err)
       })
-  }, [setCustomPersonas])
+      .finally(() => {
+        // Always flip the loaded flag, even on error — consumers should
+        // unblock and show the empty state rather than wait forever.
+        setPersonasLoaded(true)
+      })
+  }, [setCustomPersonas, setPersonasLoaded])
 }

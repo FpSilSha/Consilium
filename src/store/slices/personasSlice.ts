@@ -88,6 +88,16 @@ export const createPersonasSlice: StateCreator<PersonasSlice> = (set) => ({
 
   addCustomPersona: (persona) =>
     set((state) => {
+      // Symmetric guard with removeCustomPersona: refuse to insert a
+      // persona using a `builtin_` prefixed ID. Without this, a buggy
+      // or malicious caller could shadow a built-in persona with a
+      // custom one — the merged list would contain two entries with
+      // the same ID and the custom one would be undeletable (the
+      // delete guard rejects builtin_ IDs).
+      if (persona.id.startsWith('builtin_')) {
+        console.error(`[personas] addCustomPersona refused id "${persona.id}" — builtin_ prefix is reserved`)
+        return state
+      }
       const idx = state.customPersonas.findIndex((p) => p.id === persona.id)
       const nextCustoms =
         idx === -1

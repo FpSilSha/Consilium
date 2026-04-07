@@ -1,5 +1,6 @@
-import { type ReactNode, createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
+import { type ReactNode, useState, useCallback, useEffect, useRef } from 'react'
 import { PANES_BY_GROUP, GROUP_LABELS, DEFAULT_PANE, getPane, type PaneId, type PaneDef } from './panes'
+import { DirtyGuardContext, type DirtyGuard, type SetDirtyGuard } from './dirty-guard'
 import { PersonasPane } from '@/features/personas/PersonasPane'
 
 /**
@@ -54,53 +55,6 @@ interface ConfigurationModalProps {
   readonly onOpenAutoCompactSettings: () => void
   readonly onOpenAdvanced: () => void
   readonly onOpenAdaptersAndKeys: () => void
-}
-
-/**
- * Interception hook for pane switching when a future native pane has
- * unsaved edits. The pane reports its dirty state to the modal via
- * `setDirtyGuard(check)`; on the next pane-switch attempt, the modal
- * calls the registered check function and only proceeds if it returns
- * true. The hook is exported on the React Context so any descendant
- * pane component can register/unregister without prop-drilling.
- *
- * Pre-wired now (in the shell) so panes added in tasks #15-#21 can
- * adopt the pattern from day one without retrofitting the parent.
- * Today every pane is placeholder/legacy and never registers a guard,
- * so the check is a no-op and pane switches happen instantly.
- */
-type DirtyGuard = () => boolean
-type SetDirtyGuard = (guard: DirtyGuard | null) => void
-
-const DirtyGuardContext = createContext<SetDirtyGuard>(() => {
-  // No-op outside ConfigurationModal — calling this from a stray
-  // descendant should not crash but should not silently appear to work
-  // either, hence the dev warning.
-  if (process.env.NODE_ENV !== 'production') {
-    console.warn('[configuration] useRegisterDirtyGuard called outside ConfigurationModal')
-  }
-})
-
-/**
- * Hook for native panes to register a dirty-state check. Pass a function
- * that returns `true` if it is safe to switch panes (e.g., no unsaved
- * edits, or the user confirmed discard) and `false` to block the switch.
- *
- * Call with `null` (or rely on unmount cleanup) to deregister.
- *
- * Usage in a future native pane:
- *
- *   const register = useRegisterDirtyGuard()
- *   useEffect(() => {
- *     register(() => {
- *       if (!isDirty) return true
- *       return window.confirm('Discard unsaved changes?')
- *     })
- *     return () => register(null)
- *   }, [isDirty, register])
- */
-export function useRegisterDirtyGuard(): SetDirtyGuard {
-  return useContext(DirtyGuardContext)
 }
 
 export function ConfigurationModal({

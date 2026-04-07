@@ -117,6 +117,17 @@ describe('personasSlice — addCustomPersona', () => {
     const ids = store.getState().customPersonas.map((p) => p.id)
     expect(ids).toEqual([customA.id, customB.id, customC.id])
   })
+
+  it('refuses to add a persona with a builtin_ prefixed id (symmetric with removeCustomPersona)', () => {
+    const store = createStore()
+    const shadow = { ...customA, id: 'builtin_cfo' }
+    store.getState().addCustomPersona(shadow)
+    // The custom list stays empty — the shadow is rejected.
+    expect(store.getState().customPersonas).toEqual([])
+    // The merged list is unchanged from the initial state (no duplicates,
+    // no shadowing of the real built-in CFO).
+    expect(store.getState().personas).toEqual(SORTED_BUILT_INS)
+  })
 })
 
 describe('personasSlice — removeCustomPersona', () => {

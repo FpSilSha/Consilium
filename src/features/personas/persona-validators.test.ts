@@ -122,9 +122,24 @@ describe('generateCustomPersonaId', () => {
     expect(generateCustomPersonaId('Test', 1700000123456)).toBe('custom_test_123456')
   })
 
-  it('falls back to "persona" when the name produces an empty slug', () => {
-    expect(generateCustomPersonaId('!!!', 1700000000000)).toBe('custom_persona_000000')
-    expect(generateCustomPersonaId('   ', 1700000000000)).toBe('custom_persona_000000')
+  it('falls back to "persona" with a random suffix when the slug is empty', () => {
+    // Random suffix is provided as a test seed for determinism. Without
+    // the seed, generateCustomPersonaId would call Math.random().
+    expect(generateCustomPersonaId('!!!', 1700000000000, 'abcd')).toBe('custom_persona_000000_abcd')
+    expect(generateCustomPersonaId('   ', 1700000000000, 'abcd')).toBe('custom_persona_000000_abcd')
+  })
+
+  it('produces different IDs for two empty-slug names in the same millisecond when randomSeed differs', () => {
+    // Real-world scenario: user creates two personas named "🤖" and "测试"
+    // in the same millisecond. Both slug to "persona", but the random
+    // suffix differentiates them.
+    const a = generateCustomPersonaId('🤖', 1700000000000, 'aaaa')
+    const b = generateCustomPersonaId('测试', 1700000000000, 'bbbb')
+    expect(a).not.toBe(b)
+  })
+
+  it('does NOT add a random suffix when the slug is non-empty (keeps ASCII IDs deterministic)', () => {
+    expect(generateCustomPersonaId('Tech Lead', 1700000000000, 'wxyz')).toBe('custom_tech-lead_000000')
   })
 
   it('produces different IDs for the same name at different timestamps', () => {

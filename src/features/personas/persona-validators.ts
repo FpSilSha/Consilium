@@ -83,24 +83,55 @@ export function validatePersonaInput(name: string, content: string): readonly Pe
  *     when they appear in advisor windows or session files.
  *
  *   - `timestampSuffix` is the last 6 digits of the current epoch ms.
- *     Two personas created with the same name in the same second will
- *     still differ by some digits, and the suffix is deterministic
- *     enough to be reproducible in tests by passing a `now` argument.
+ *
+ * Collision behavior — important to understand:
+ *
+ *   - Two personas created with DIFFERENT names in the same millisecond
+ *     differ by slug. Safe.
+ *
+ *   - Two personas created with the SAME name in different milliseconds
+ *     differ by suffix. Safe (until the suffix wraps every ~17 minutes,
+ *     which is well outside any realistic create cadence).
+ *
+ *   - Two personas created with the SAME name in the SAME millisecond
+ *     COLLIDE. This is essentially impossible via human input but is
+ *     reachable in tight test loops.
+ *
+ *   - Names that produce an EMPTY slug (all-Unicode names like "测试",
+ *     emoji-only names, etc.) all share the same `persona` fallback
+ *     slug. To avoid the collision case for these specifically, we mix
+ *     in a 4-char random suffix when the slug fell back to "persona" —
+ *     the random component differentiates two emoji personas created in
+ *     the same millisecond.
  *
  * The ID is generated once at create time and persists across renames —
  * renaming a persona does NOT regenerate its ID, so advisor windows that
  * reference the old slug-based ID continue to resolve correctly. The
  * slug in the ID is therefore a creation-time hint, not a live label.
+ *
+ * Test seam: pass `now` and `randomSeed` to make the output deterministic.
  */
-export function generateCustomPersonaId(name: string, now: number = Date.now()): string {
+export function generateCustomPersonaId(
+  name: string,
+  now: number = Date.now(),
+  randomSeed?: string,
+): string {
   const slug = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 24)
-  const fallbackSlug = slug.length > 0 ? slug : 'persona'
-  const suffix = String(now).slice(-6)
-  return `custom_${fallbackSlug}_${suffix}`
+  const slugIsFallback = slug.length === 0
+  const fallbackSlug = slugIsFallback ? 'persona' : slug
+  const timestampSuffix = String(now).slice(-6)
+  // Only mix in randomness when the slug had nothing to differentiate
+  // by — keeps deterministic IDs for the common ASCII case while
+  // protecting the all-Unicode/emoji edge case.
+  if (slugIsFallback) {
+    const random = randomSeed ?? Math.random().toString(36).slice(2, 6)
+    return `custom_${fallbackSlug}_${timestampSuffix}_${random}`
+  }
+  return `custom_${fallbackSlug}_${timestampSuffix}`
 }
 
 /**
