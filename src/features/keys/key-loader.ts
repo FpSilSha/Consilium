@@ -14,6 +14,14 @@ export async function loadPersistedKeys(): Promise<void> {
 
   try {
     const available = await api.keysAvailable()
+    // Mirror the encryption-available status into the store so the
+    // renderer can surface a warning banner when OS-level key storage
+    // is missing (Linux without libsecret/kwallet). When false, the
+    // store-side flag drives a fixed banner in AppLayout that tells
+    // the user how to fix it; the main process refuses to save keys
+    // in this state, so the user can't accidentally end up with
+    // plaintext-on-disk regardless.
+    useStore.getState().setKeysEncryptionAvailable(available)
     if (!available) return
 
     const storedKeys = await api.keysLoad()
