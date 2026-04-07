@@ -71,6 +71,11 @@ export function useStartupAutoCompaction(): void {
         }
 
         const rawCompileConfig = data.values['compileModelConfig']
+        // Track whether the disk needs to be cleaned up (validation failed
+        // on a previously-saved config). Without this, the next launch
+        // would re-read the stale config, re-fail validation, and re-clear
+        // the store in a silent loop forever.
+        let compileConfigNeedsDiskClear = false
         if (
           rawCompileConfig != null &&
           typeof rawCompileConfig === 'object' &&
@@ -90,13 +95,24 @@ export function useStartupAutoCompaction(): void {
             })
           } else {
             store.setCompileModelConfig(null)
+            compileConfigNeedsDiskClear = true
           }
         }
 
+        // Single disk write that bundles any pending updates from this run.
+        // Avoids two configSave round-trips when both auto-compaction AND
+        // compile config need cleanup on the same launch.
+        const diskUpdate: Record<string, unknown> = {}
         if (plan.persistedUpdate !== null) {
+          Object.assign(diskUpdate, plan.persistedUpdate)
+        }
+        if (compileConfigNeedsDiskClear) {
+          diskUpdate['compileModelConfig'] = null
+        }
+        if (Object.keys(diskUpdate).length > 0) {
           await api.configSave({
             ...data.values,
-            ...plan.persistedUpdate,
+            ...diskUpdate,
           })
         }
       } catch {

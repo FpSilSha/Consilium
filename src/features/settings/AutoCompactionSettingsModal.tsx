@@ -4,6 +4,7 @@ import { useStore } from '@/store'
 import { getModelById } from '@/features/modelSelector/model-registry'
 import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
+import { formatProviderLabel } from '@/features/modelCatalog/format-provider-label'
 
 interface AutoCompactionSettingsModalProps {
   readonly onClose: () => void
@@ -337,15 +338,3 @@ function BrowseModelsList({ provider, keyId, onSelect }: {
   )
 }
 
-function formatProviderLabel(provider: Provider): string {
-  switch (provider) {
-    case 'anthropic': return 'Anthropic'
-    case 'openai': return 'OpenAI'
-    case 'google': return 'Google'
-    case 'xai': return 'xAI'
-    case 'deepseek': return 'DeepSeek'
-    case 'openrouter': return 'OpenRouter'
-    case 'custom': return 'Custom'
-    default: return provider
-  }
-}
