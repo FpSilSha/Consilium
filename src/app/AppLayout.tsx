@@ -59,6 +59,17 @@ export function AppLayout(): ReactNode {
   }, [])
 
   const handleNewConsilium = useCallback(async () => {
+    // Tear down in-flight streams before clearing state. Without this:
+    //   - Active advisor turns continue and their onDone fires against the
+    //     new session's empty thread, contaminating it.
+    //   - In-flight compile continues consuming API quota for a result the
+    //     new session won't show (its sessionId guard discards the commit
+    //     but the spend is real).
+    const { stopAll } = await import('@/features/turnManager')
+    stopAll()
+    const { abortActiveCompile } = await import('@/features/documents/compile-controller')
+    abortActiveCompile()
+
     await saveCurrentSession().catch(() => {})
     const { clearMessages, clearAllWindows, setCurrentSessionId, setSessionCustomName } = useStore.getState()
     clearMessages()

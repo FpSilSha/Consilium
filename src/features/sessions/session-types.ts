@@ -33,6 +33,15 @@ export interface SessionFile {
    * Optional for back-compat with older sessions saved before this field.
    */
   readonly documentIds?: readonly string[]
+  /**
+   * Cumulative cost of compile-document calls in this session, in dollars.
+   * Compile is not an advisor turn, so its cost doesn't roll into any
+   * window's runningCost — it lives in this dedicated field. Without this
+   * persistence, the budget cap would silently regress on every session
+   * reload. Optional for back-compat with older sessions saved before this
+   * field; absence is treated as 0.
+   */
+  readonly sessionCompileCost?: number
 }
 
 export interface SessionWindow {

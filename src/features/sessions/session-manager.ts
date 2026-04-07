@@ -53,7 +53,21 @@ export function restoreSession(session: SessionFile): void {
   // loadSession before this point, so any callback that fires after will
   // be discarded by its sessionId guard.
   state.setDraftCompile(null)
+  // Restore the persisted compile cost (or 0 if absent — older session
+  // files won't have this field). resetCompileCost first so a missing
+  // field cleanly drops to 0.
   state.resetCompileCost()
+  if (typeof session.sessionCompileCost === 'number' && session.sessionCompileCost > 0) {
+    state.accumulateCompileCost(session.sessionCompileCost)
+  }
+
+  // CRITICAL ORDERING: setCurrentSessionId MUST happen before
+  // restoreDocuments, because restoreDocuments runs synchronously up to
+  // its first await and that synchronous portion includes the sessionId
+  // check. If currentSessionId is still the previous session here, the
+  // check fails on the first iteration and no documents load.
+  state.setCurrentSessionId(session.id)
+  state.setSessionCustomName(session.name)
 
   // Restore documents. The session holds a list of IDs; we fetch each doc
   // by ID via the documents:load IPC. Missing files are silently dropped —
@@ -67,12 +81,6 @@ export function restoreSession(session: SessionFile): void {
     const window = sessionWindowToAdvisor(sw, state)
     state.addWindow(window)
   }
-
-  // Set current session ID and restore the session name.
-  // This pins the name — if the user renamed it, the rename persists.
-  // If it was auto-derived, it stays as the derived name from last save.
-  state.setCurrentSessionId(session.id)
-  state.setSessionCustomName(session.name)
 
   // Check for model mismatches against allowed models
   const freshState = useStore.getState()
@@ -218,10 +226,15 @@ export function buildSessionFile(): SessionFile {
   const state = useStore.getState()
   const sessionId = state.currentSessionId ?? crypto.randomUUID()
 
-  const totalCost = state.windowOrder.reduce((sum, id) => {
+  // Combined session total: per-advisor running cost + isolated compile cost.
+  // Compile is not an advisor turn so it lives in its own slice field.
+  // This must include sessionCompileCost so the persisted totalCost matches
+  // what getSessionTotalCost() returns at runtime.
+  const advisorCost = state.windowOrder.reduce((sum, id) => {
     const w = state.windows[id]
     return sum + (w?.runningCost ?? 0)
   }, 0)
+  const totalCost = advisorCost + state.sessionCompileCost
 
   // Use custom name if set, otherwise derive from first user message or advisors
   const name = state.sessionCustomName != null
@@ -269,6 +282,7 @@ export function buildSessionFile(): SessionFile {
       config: state.autoCompactionConfig,
     },
     documentIds: state.documentIds,
+    sessionCompileCost: state.sessionCompileCost,
   }
 }
 
@@ -399,6 +413,19 @@ function isValidSessionFile(data: unknown): data is SessionFile {
         typeof cfgObj['keyId'] !== 'string'
       ) return false
     }
+  }
+
+  // documentIds: optional, must be an array of strings if present
+  const docIds = s['documentIds']
+  if (docIds !== undefined) {
+    if (!Array.isArray(docIds)) return false
+    if (!docIds.every((id) => typeof id === 'string')) return false
+  }
+
+  // sessionCompileCost: optional, must be a non-negative finite number if present
+  const compileCost = s['sessionCompileCost']
+  if (compileCost !== undefined) {
+    if (typeof compileCost !== 'number' || !Number.isFinite(compileCost) || compileCost < 0) return false
   }
 
   return true

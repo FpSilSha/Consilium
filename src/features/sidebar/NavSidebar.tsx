@@ -25,7 +25,12 @@ export function NavSidebar(): ReactNode {
   }, [windowCount, messageCount])
 
   const executeNewConsilium = useCallback(async () => {
+    // Tear down all in-flight streams. stopAll() handles advisor turns;
+    // abortActiveCompile() handles the isolated compile stream which is
+    // not in activeControllers.
     stopAll()
+    const { abortActiveCompile } = await import('@/features/documents/compile-controller')
+    abortActiveCompile()
     // Save current session before clearing
     await saveCurrentSession().catch(() => {})
     const { clearMessages, clearAllWindows } = useStore.getState()

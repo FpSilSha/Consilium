@@ -4,6 +4,16 @@ import { useStore } from '@/store'
 
 /**
  * Serializes the current app state into a .council session file format.
+ *
+ * NOTE: As of the documents feature this function is no longer the live
+ * serialization path — `buildSessionFile` in `session-manager.ts` is what
+ * `saveCurrentSession` and `buildSessionPayload` actually use. This function
+ * is preserved for the .council file export use case (when shipped) and is
+ * kept structurally identical to `buildSessionFile` so the two don't drift
+ * if a future caller reaches for either one.
+ *
+ * If you change the serialized SessionFile shape, update BOTH this function
+ * AND `buildSessionFile` in session-manager.ts.
  */
 export function serializeSession(
   sessionId: string,
@@ -21,10 +31,14 @@ export function serializeSession(
     })
     .filter((w): w is SessionWindow => w !== null)
 
-  const totalCost = state.windowOrder.reduce((sum, id) => {
+  // Combined session total: per-advisor running cost + isolated compile cost.
+  // Compile is not an advisor turn so it lives in its own slice field.
+  // Defensive `?? 0` for back-compat with older test mocks.
+  const advisorCost = state.windowOrder.reduce((sum, id) => {
     const w = state.windows[id]
     return sum + (w?.runningCost ?? 0)
   }, 0)
+  const totalCost = advisorCost + (state.sessionCompileCost ?? 0)
 
   return {
     version: 1,
@@ -41,6 +55,12 @@ export function serializeSession(
     totalCost,
     inputFiles: [],
     outputFiles: [],
+    autoCompaction: {
+      enabled: state.autoCompactionEnabled,
+      config: state.autoCompactionConfig,
+    },
+    documentIds: state.documentIds,
+    sessionCompileCost: state.sessionCompileCost,
   }
 }
 

@@ -13,15 +13,23 @@ export function BudgetBar(): ReactNode {
   const windows = useStore((s) => s.windows)
   const messages = useStore((s) => s.messages)
   const orModels = useStore((s) => s.catalogModels['openrouter']) ?? []
+  // Subscribe to sessionCompileCost so the displayed total updates when
+  // a compile finishes (Zustand re-renders only on subscribed slices).
+  const sessionCompileCost = useStore((s) => s.sessionCompileCost)
 
   const [showBudgetInput, setShowBudgetInput] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
   const [budgetValue, setBudgetValue] = useState('')
 
-  const totalCost = windowOrder.reduce((sum, id) => {
+  // Combined total: advisor running costs + compile cost (which is tracked
+  // separately because compile is not an advisor turn). The progress bar
+  // and budget checks use getSessionTotalCost() which sums the same fields,
+  // so this stays in sync.
+  const advisorCost = windowOrder.reduce((sum, id) => {
     const w = windows[id]
     return sum + (w?.runningCost ?? 0)
   }, 0)
+  const totalCost = advisorCost + sessionCompileCost
 
   const untrackedCount = messages.filter(
     (m) => m.role === 'assistant' && m.costMetadata == null,
@@ -88,6 +96,7 @@ export function BudgetBar(): ReactNode {
           windowOrder={windowOrder}
           orModels={orModels}
           totalCost={totalCost}
+          compileCost={sessionCompileCost}
           onClose={() => setShowBreakdown(false)}
         />
       )}

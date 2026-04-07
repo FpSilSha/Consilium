@@ -8,6 +8,12 @@ interface CostBreakdownModalProps {
   readonly windowOrder: readonly string[]
   readonly orModels: readonly import('@/types').ModelInfo[]
   readonly totalCost: number
+  /**
+   * Cumulative cost of compile-document calls in this session. Compile is
+   * not per-advisor so it doesn't appear in the per-window breakdown rows;
+   * we render it as a separate line item below the advisors when non-zero.
+   */
+  readonly compileCost: number
   readonly onClose: () => void
 }
 
@@ -28,6 +34,7 @@ export function CostBreakdownModal({
   windowOrder,
   orModels,
   totalCost,
+  compileCost,
   onClose,
 }: CostBreakdownModalProps): ReactNode {
   // Build per-advisor breakdown
@@ -74,9 +81,9 @@ export function CostBreakdownModal({
           </div>
         </div>
 
-        {/* Per-advisor rows */}
+        {/* Per-advisor rows + compile pseudo-row */}
         <div className="mt-3 flex flex-col gap-2">
-          {entries.length === 0 ? (
+          {entries.length === 0 && compileCost === 0 ? (
             <p className="py-4 text-center text-xs text-content-disabled">
               No advisor activity yet.
             </p>
@@ -126,6 +133,31 @@ export function CostBreakdownModal({
                 </div>
               </div>
             ))
+          )}
+
+          {/* Compile-document pseudo-row — shown when there's any compile cost.
+              Compile is not an advisor turn, so it doesn't fit the per-window
+              breakdown above. Rendered with a neutral icon and a "Compile"
+              label so users can see where their money went. */}
+          {compileCost > 0 && (
+            <div className="flex items-center gap-3 rounded-md border border-edge-subtle bg-surface-base px-3 py-2">
+              <div className="flex h-3 w-3 shrink-0 items-center justify-center rounded-full bg-content-disabled text-[8px] text-content-inverse">
+                ✎
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-medium text-content-primary">
+                  Compile Document
+                </div>
+                <div className="truncate text-[10px] text-content-disabled">
+                  isolated calls outside any advisor
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <span className="text-xs text-content-primary">
+                  ~${compileCost.toFixed(4)}
+                </span>
+              </div>
+            </div>
           )}
         </div>
       </div>

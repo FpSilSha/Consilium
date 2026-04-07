@@ -10,15 +10,23 @@ interface ConfigData {
  * via the generic configuration editor. They're persisted in config.json
  * but not surfaced here.
  *
- * Note: `compileMaxTokens` is intentionally NOT in this list. It has a
- * dedicated UI in the Compile Settings modal, but it's a plain number so
- * editing the raw value here is also safe. Two paths to the same setting;
- * users find whichever first.
+ * Why hidden, not just JSON-blob fields:
+ * - autoCompactionEnabled / autoCompactionConfig / compileModelConfig: edited
+ *   via dedicated modals that also update the in-memory Zustand store. The
+ *   raw editor here only writes to disk — it does NOT update the store, so
+ *   editing a store-mirrored field via this modal would leave the store and
+ *   disk out of sync until next launch (silent settings rot).
+ * - compileMaxTokens: same reason. The Compile Settings modal owns it.
+ *
+ * Rule of thumb: if the field is mirrored in the store and read from the
+ * store at runtime, it MUST be hidden from this modal until/unless the
+ * raw editor learns to push values back into the store.
  */
 const HIDDEN_KEYS: ReadonlySet<string> = new Set([
   'autoCompactionEnabled',
   'autoCompactionConfig',
   'compileModelConfig',
+  'compileMaxTokens',
 ])
 
 interface EditConfigModalProps {
