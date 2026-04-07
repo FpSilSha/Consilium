@@ -30,6 +30,16 @@ export interface PersistedDocument {
   readonly createdAt: number
   /** The user's optional focus prompt, if any was provided. */
   readonly focusPrompt?: string
+  /**
+   * Compile preset ID used when producing this document. Optional for
+   * back-compat with files written before the preset system existed.
+   */
+  readonly presetId?: string
+  /**
+   * True if the user's focus prompt fully replaced the preset's default
+   * instructions. Display-only; no runtime behavior depends on this.
+   */
+  readonly focusReplacedDefault?: boolean
 }
 
 /**

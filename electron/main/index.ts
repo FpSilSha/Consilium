@@ -30,6 +30,13 @@ interface AppConfig {
   readonly compileMaxTokens: number
   /** Default model used for compile when no per-call override is provided. */
   readonly compileModelConfig: AutoCompactionConfigPersisted | null
+  /**
+   * Default compile preset ID. Renderer owns the list of valid preset IDs
+   * in src/features/chat/compile-presets.ts — main process accepts any
+   * non-empty string and renderer resolves unknown IDs to the default at
+   * runtime (graceful degradation).
+   */
+  readonly compilePresetId: string
 }
 
 /** Description for each config key — shown in the Edit Configuration modal */
@@ -43,6 +50,7 @@ export const CONFIG_DESCRIPTIONS: Readonly<Record<string, string>> = {
   autoCompactionConfig: 'Default summarization model for auto-compaction on new sessions. Managed via the Auto-compact button.',
   compileMaxTokens: 'Maximum output tokens for Compile Document calls. Higher values let the document grow longer before being truncated. Default 16384. Provider may cap server-side.',
   compileModelConfig: 'Default model used by Compile Document. Managed via Edit → Compile Settings.',
+  compilePresetId: 'Default compile preset (style template). Managed via Edit → Compile Settings.',
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -55,6 +63,10 @@ const DEFAULT_CONFIG: AppConfig = {
   autoCompactionConfig: null,
   compileMaxTokens: 16384,
   compileModelConfig: null,
+  // Hardcoded default — must match `DEFAULT_PRESET_ID` in
+  // src/features/chat/compile-presets.ts. Kept as a string here so the
+  // main process doesn't need to import renderer-side modules.
+  compilePresetId: 'comprehensive',
 }
 
 function isValidAutoCompactionConfig(v: unknown): v is AutoCompactionConfigPersisted {
@@ -82,6 +94,9 @@ function loadAppConfig(): AppConfig {
         ? parsed['compileMaxTokens']
         : DEFAULT_CONFIG.compileMaxTokens,
       compileModelConfig: isValidAutoCompactionConfig(parsed['compileModelConfig']) ? parsed['compileModelConfig'] : DEFAULT_CONFIG.compileModelConfig,
+      compilePresetId: typeof parsed['compilePresetId'] === 'string' && parsed['compilePresetId'] !== ''
+        ? parsed['compilePresetId']
+        : DEFAULT_CONFIG.compilePresetId,
     }
   } catch {
     try {
@@ -428,6 +443,9 @@ function registerIpcHandlers(): void {
         : isValidAutoCompactionConfig(raw['compileModelConfig'])
           ? raw['compileModelConfig']
           : appConfig.compileModelConfig,
+      compilePresetId: typeof raw['compilePresetId'] === 'string' && raw['compilePresetId'] !== ''
+        ? raw['compilePresetId']
+        : appConfig.compilePresetId,
     }
     appConfig = validated
     saveAppConfig(validated)

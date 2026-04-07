@@ -88,7 +88,7 @@ describe('computeConservativeCompileEstimate', () => {
   describe('regression: the "false safe" cases that motivated the fix', () => {
     it('a 5500-token chat against an 8k model is correctly flagged as exceeded', () => {
       // BEFORE the conservative estimate: 5500 / 8000 = 68% → muted
-      // AFTER (1.5x): ceil(5500 × 1.5) + 300 = 8250 + 300 = 8550 > 8000 → EXCEEDS
+      // AFTER (1.5x + 500 overhead): ceil(5500 × 1.5) + 500 = 8250 + 500 = 8750 > 8000 → EXCEEDS
       // This is the exact case where the user would have clicked "safe"
       // and the API call would have failed on a code-heavy chat.
       const estimate = computeConservativeCompileEstimate(5500, 0)
@@ -97,7 +97,7 @@ describe('computeConservativeCompileEstimate', () => {
 
     it('an 80k-token chat against a 128k model is flagged above 90% (not 63%)', () => {
       // BEFORE: 80000 / 128000 = 63% → completely muted, user has no idea they're near the limit
-      // AFTER (1.5x): ceil(80000 × 1.5) + 300 = 120300 / 128000 ≈ 94% → yellow warning
+      // AFTER (1.5x + 500 overhead): ceil(80000 × 1.5) + 500 = 120500 / 128000 ≈ 94% → yellow warning
       const estimate = computeConservativeCompileEstimate(80_000, 0)
       const percent = (estimate / 128_000) * 100
       expect(percent).toBeGreaterThan(90)
@@ -105,7 +105,7 @@ describe('computeConservativeCompileEstimate', () => {
     })
 
     it('a 90k-token chat against a 128k model is flagged as exceeded', () => {
-      // AFTER (1.5x): ceil(90000 × 1.5) + 300 = 135300 > 128000 → red exceeds
+      // AFTER (1.5x + 500 overhead): ceil(90000 × 1.5) + 500 = 135500 > 128000 → red exceeds
       // BEFORE: 90000 / 128000 = 70% → muted, looked completely safe
       const estimate = computeConservativeCompileEstimate(90_000, 0)
       expect(estimate).toBeGreaterThan(128_000)

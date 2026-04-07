@@ -1,4 +1,4 @@
-import { type ReactNode, useState, useCallback, useMemo } from 'react'
+import { type ReactNode, useState, useCallback, useMemo, useEffect } from 'react'
 import type { Provider, ModelInfo } from '@/types'
 import { useStore } from '@/store'
 import { streamResponse } from '@/services/api/stream-orchestrator'
@@ -15,34 +15,50 @@ import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSe
 import { formatProviderLabel } from '@/features/modelCatalog/format-provider-label'
 import type { SessionDocument } from '@/features/documents/types'
 import { registerActiveCompile, clearActiveCompile } from '@/features/documents/compile-controller'
-
-const DEFAULT_COMPILE_PROMPT = `Based on the entire conversation above, produce a single comprehensive document in markdown format.
-
-Include:
-- An executive summary
-- All key decisions and conclusions reached
-- Action items and next steps
-- Any technical specifications or requirements discussed
-- Areas of disagreement or open questions
-
-Use proper markdown formatting: headings, lists, tables where appropriate, and code blocks for any technical content. Attribute key points to the advisor who raised them.`
-
+import { COMPILE_PRESETS, getPresetById } from './compile-presets'
+import { COMPILE_SYSTEM_PROMPT } from './compile-system-prompt'
 
 /**
- * Builds the final compile prompt. The default is always sent — user focus
- * is appended as additional guidance, not a replacement, so the document
- * still has structure even when steering is provided.
+ * Builds the final compile prompt sent as the last user message in the
+ * compile API call.
+ *
+ * Three modes:
+ *   1. Preset only (no focus prompt) — return the preset's prompt verbatim.
+ *   2. Preset + appended focus — preset prompt, then a separator, then the
+ *      user's focus text labeled as additional guidance.
+ *   3. Replace mode (focus REPLACES preset) — when `replaceDefault` is true
+ *      AND the user typed a focus prompt, the focus text fully replaces
+ *      the preset's instructions. The system prompt still applies, so the
+ *      model still knows about the conversation format and honesty rules.
+ *
+ * When focus is empty, `replaceDefault` is ignored — there's nothing to
+ * replace with, so the preset is used as-is.
  */
-function buildCompilePrompt(userFocus: string): string {
-  const trimmed = userFocus.trim()
-  if (trimmed === '') return DEFAULT_COMPILE_PROMPT
+function buildCompilePrompt(
+  presetId: string,
+  userFocus: string,
+  replaceDefault: boolean,
+): string {
+  const trimmedFocus = userFocus.trim()
+  const preset = getPresetById(presetId)
 
-  return `${DEFAULT_COMPILE_PROMPT}
+  if (trimmedFocus === '') return preset.prompt
+
+  if (replaceDefault) {
+    // User's focus text fully replaces the preset's instructions.
+    // No separator, no "additional guidance" framing — the focus IS the
+    // instructions. The system prompt still provides context format +
+    // honesty rules, so the model isn't flying blind.
+    return trimmedFocus
+  }
+
+  // Default: append focus as additional guidance on top of the preset.
+  return `${preset.prompt}
 
 ---
 
 ADDITIONAL GUIDANCE FROM THE USER (apply this on top of the structure above):
-${trimmed}`
+${trimmedFocus}`
 }
 
 /**
@@ -73,6 +89,7 @@ export function CompileDocumentButton(): ReactNode {
   const keys = useStore((s) => s.keys)
   const compileMaxTokens = useStore((s) => s.compileMaxTokens)
   const globalCompileConfig = useStore((s) => s.compileModelConfig)
+  const globalCompilePresetId = useStore((s) => s.compilePresetId)
   const addDocument = useStore((s) => s.addDocument)
   const setDraftCompile = useStore((s) => s.setDraftCompile)
   const appendDraftCompileContent = useStore((s) => s.appendDraftCompileContent)
@@ -82,7 +99,26 @@ export function CompileDocumentButton(): ReactNode {
   const [showPicker, setShowPicker] = useState(false)
   const [browseMode, setBrowseMode] = useState(false)
   const [userFocus, setUserFocus] = useState('')
+  // Per-call preset override — seeds from the global default each time the
+  // picker opens but the user can change it for this compile only.
+  const [selectedPresetId, setSelectedPresetId] = useState(globalCompilePresetId)
+  // When true AND userFocus is non-empty, the focus text fully replaces the
+  // preset's instructions instead of being appended.
+  const [replaceDefault, setReplaceDefault] = useState(false)
   const [compiling, setCompiling] = useState(false)
+
+  // Re-seed the preset selection from the global default whenever it changes
+  // (e.g., user updates the global default in Compile Settings while the
+  // popover is closed). Doesn't override an in-progress per-call selection.
+  // Only applies when the picker is closed — once open, the user owns the
+  // dropdown for that session of the popover.
+  useEffect(() => {
+    if (!showPicker) {
+      setSelectedPresetId(globalCompilePresetId)
+    }
+  }, [globalCompilePresetId, showPicker])
+
+  const selectedPreset = getPresetById(selectedPresetId)
 
   // Conservative estimate of compile input tokens — lean HIGH on purpose.
   // See computeConservativeCompileEstimate() above for the formula.
@@ -137,7 +173,13 @@ export function CompileDocumentButton(): ReactNode {
     // Self-context here doesn't matter — the compile model isn't an advisor
     // in this thread, so it has no own past turns to imitate. Pass undefined.
     const threadMessages = messagesToApiFormat(messages)
-    const compilePrompt = buildCompilePrompt(userFocus)
+    // Capture the preset/focus state at compile-start so the doc records
+    // exactly what the user chose, even if they re-open the picker and
+    // change settings while the compile is in flight.
+    const presetIdAtStart = selectedPresetId
+    const focusAtStart = userFocus
+    const replaceAtStart = replaceDefault && userFocus.trim() !== ''
+    const compilePrompt = buildCompilePrompt(presetIdAtStart, focusAtStart, replaceAtStart)
 
     // Holder for the controller so callbacks can check it. Assigned after
     // streamResponse returns it.
@@ -179,7 +221,9 @@ export function CompileDocumentButton(): ReactNode {
           modelName,
           cost,
           createdAt: Date.now(),
-          ...(userFocus.trim() !== '' ? { focusPrompt: userFocus.trim() } : {}),
+          ...(focusAtStart.trim() !== '' ? { focusPrompt: focusAtStart.trim() } : {}),
+          presetId: presetIdAtStart,
+          ...(replaceAtStart ? { focusReplacedDefault: true } : {}),
         }
 
         // Try disk first. If save fails, surface as an error draft and
@@ -218,6 +262,7 @@ export function CompileDocumentButton(): ReactNode {
         setDraftCompile(null)
         setCompiling(false)
         setUserFocus('')
+        setReplaceDefault(false)
       },
 
       onError: (error) => {
@@ -247,7 +292,12 @@ export function CompileDocumentButton(): ReactNode {
         provider: provider as Provider,
         model,
         apiKey,
-        systemPrompt: 'You are a document compiler. Produce well-structured markdown.',
+        // Compile model gets its own purpose-built system prompt that
+        // explains the [Label]: identity-header convention from the
+        // shared context bus + honesty rules. Replaces the previous
+        // anemic "You are a document compiler. Produce well-structured
+        // markdown." one-liner.
+        systemPrompt: COMPILE_SYSTEM_PROMPT,
         messages: [...threadMessages, { role: 'user' as const, content: compilePrompt }],
         maxTokens: compileMaxTokens,
       },
@@ -257,6 +307,8 @@ export function CompileDocumentButton(): ReactNode {
   }, [
     messages,
     userFocus,
+    selectedPresetId,
+    replaceDefault,
     compileMaxTokens,
     addDocument,
     accumulateCompileCost,
@@ -293,7 +345,24 @@ export function CompileDocumentButton(): ReactNode {
             Compile Document
           </p>
           <p className="mb-2 text-[10px] text-content-disabled">
-            The compile model reads the full conversation and writes a single comprehensive markdown document — executive summary, decisions, action items, technical specs, and open questions, with attribution to whoever raised each point. The result lands in the Documents panel on the right.
+            The compile model reads the full conversation and produces a markdown document in the selected style. The result lands in the Documents panel on the right — it does not get added to the chat.
+          </p>
+
+          {/* Style preset dropdown */}
+          <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-disabled">
+            Style
+          </label>
+          <select
+            value={selectedPresetId}
+            onChange={(e) => setSelectedPresetId(e.target.value)}
+            className="mb-1 w-full rounded-md border border-edge-subtle bg-surface-base px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
+          >
+            {COMPILE_PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id}>{preset.label}</option>
+            ))}
+          </select>
+          <p className="mb-2 text-[10px] italic text-content-disabled">
+            {selectedPreset.description}
           </p>
 
           {/* Optional focus textarea */}
@@ -302,13 +371,41 @@ export function CompileDocumentButton(): ReactNode {
           </label>
           <textarea
             value={userFocus}
-            onChange={(e) => setUserFocus(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value
+              setUserFocus(next)
+              // Auto-uncheck "Replace default" when the focus textarea is
+              // emptied. Without this, the checkbox stays visually checked
+              // but disabled — confusing UX implying an active setting that
+              // has no effect (the compile path correctly ignores it via
+              // the replaceAtStart capture, but the visual state lies).
+              if (next.trim() === '' && replaceDefault) {
+                setReplaceDefault(false)
+              }
+            }}
             placeholder="e.g., Focus on the security architecture decisions. Ignore the budget tangent."
             rows={3}
-            className="mb-2 w-full resize-none rounded-md border border-edge-subtle bg-surface-base px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
+            className="mb-1 w-full resize-none rounded-md border border-edge-subtle bg-surface-base px-2 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
           />
-          <p className="mb-2 text-[10px] text-content-disabled">
-            Appended to the default instructions — the document still has the standard structure.
+
+          {/* Replace-default toggle — only meaningful when focus is non-empty */}
+          <label className={`mb-2 flex items-center gap-1.5 text-[10px] ${userFocus.trim() === '' ? 'text-content-disabled' : 'text-content-muted cursor-pointer'}`}>
+            <input
+              type="checkbox"
+              checked={replaceDefault}
+              onChange={(e) => setReplaceDefault(e.target.checked)}
+              disabled={userFocus.trim() === ''}
+              className="h-3 w-3 accent-accent-blue disabled:opacity-50"
+            />
+            <span>
+              Replace style with my focus text
+              {userFocus.trim() === '' && <span className="text-content-disabled"> (type a focus prompt first)</span>}
+            </span>
+          </label>
+          <p className="mb-2 text-[10px] italic text-content-disabled">
+            {userFocus.trim() === '' || !replaceDefault
+              ? 'Focus text is appended to the style. The document still follows the selected style.'
+              : 'Focus text fully replaces the style instructions. Use this for one-off custom compiles.'}
           </p>
 
           {/* Cost warning */}
@@ -387,6 +484,11 @@ export function CompileDocumentButton(): ReactNode {
                 setShowPicker(false)
                 setBrowseMode(false)
                 setUserFocus('')
+                setReplaceDefault(false)
+                // Don't reset selectedPresetId — the useEffect re-seeds
+                // it from the global default the next time the picker
+                // opens (showPicker === false), so it stays in sync
+                // with any changes made in Compile Settings.
               }}
               className="rounded-md px-2 py-1 text-[10px] text-content-disabled hover:text-content-muted"
             >

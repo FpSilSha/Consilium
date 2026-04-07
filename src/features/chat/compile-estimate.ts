@@ -15,18 +15,22 @@
 /**
  * Fixed token overhead for a compile API call that is NOT captured by
  * `estimateThreadTokens(messages)`. Accounts for:
- *   - The system prompt ("You are a document compiler...")
- *   - The DEFAULT_COMPILE_PROMPT appended as a final user message
+ *   - COMPILE_SYSTEM_PROMPT (explains identity headers + honesty rules)
+ *   - The selected preset's instruction prompt (appended as final user message)
  *   - Per-message API wrapper overhead (role tags, JSON envelope)
  *   - Small headroom for tokenizer variance
  *
- * Sized at ~300 because:
- *   - DEFAULT_COMPILE_PROMPT ≈ 130–150 tokens
- *   - System prompt ≈ 12 tokens
+ * Sized at 500 to cover the longest reasonable preset:
+ *   - COMPILE_SYSTEM_PROMPT ≈ 150 tokens (identity-header explanation + honesty)
+ *   - Longest preset prompt (minutes) ≈ 250 tokens
  *   - Per-message envelope ≈ 3–5 tokens × ~20 messages ≈ 100 tokens
- *   - Plus small safety buffer
+ *   - Plus safety buffer for tokenizer variance
+ *
+ * Still tiny relative to typical context windows (128k+), so the higher
+ * constant doesn't meaningfully shift warning thresholds — it just makes
+ * the estimate accurate across all presets without per-preset computation.
  */
-export const COMPILE_OVERHEAD_TOKENS = 300
+export const COMPILE_OVERHEAD_TOKENS = 500
 
 /**
  * Conservative safety multiplier on the thread token estimate. The base

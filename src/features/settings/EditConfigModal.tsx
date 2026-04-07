@@ -17,6 +17,9 @@ interface ConfigData {
  *   editing a store-mirrored field via this modal would leave the store and
  *   disk out of sync until next launch (silent settings rot).
  * - compileMaxTokens: same reason. The Compile Settings modal owns it.
+ * - compilePresetId: same reason. The Compile Settings modal owns it, and
+ *   it's an enum-style field where the renderer validates against the
+ *   known preset list — raw text editing would be error-prone.
  *
  * Rule of thumb: if the field is mirrored in the store and read from the
  * store at runtime, it MUST be hidden from this modal until/unless the
@@ -27,6 +30,7 @@ const HIDDEN_KEYS: ReadonlySet<string> = new Set([
   'autoCompactionConfig',
   'compileModelConfig',
   'compileMaxTokens',
+  'compilePresetId',
 ])
 
 interface EditConfigModalProps {

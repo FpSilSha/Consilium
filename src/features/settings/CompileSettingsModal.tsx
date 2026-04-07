@@ -5,6 +5,7 @@ import { getModelById } from '@/features/modelSelector/model-registry'
 import { SearchableModelSelect } from '@/features/modelCatalog/SearchableModelSelect'
 import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
 import { formatProviderLabel } from '@/features/modelCatalog/format-provider-label'
+import { COMPILE_PRESETS, getPresetById } from '@/features/chat/compile-presets'
 
 interface CompileSettingsModalProps {
   readonly onClose: () => void
@@ -24,14 +25,17 @@ interface CompileSettingsModalProps {
 export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): ReactNode {
   const compileModelConfig = useStore((s) => s.compileModelConfig)
   const compileMaxTokens = useStore((s) => s.compileMaxTokens)
+  const compilePresetId = useStore((s) => s.compilePresetId)
   const setCompileModelConfig = useStore((s) => s.setCompileModelConfig)
   const setCompileMaxTokens = useStore((s) => s.setCompileMaxTokens)
+  const setCompilePresetId = useStore((s) => s.setCompilePresetId)
   const keys = useStore((s) => s.keys)
   const orModels = useStore((s) => s.catalogModels['openrouter']) ?? []
 
   // Local draft — committed only on Save
   const [draftConfig, setDraftConfig] = useState(compileModelConfig)
   const [draftMaxTokens, setDraftMaxTokens] = useState(String(compileMaxTokens))
+  const [draftPresetId, setDraftPresetId] = useState(compilePresetId)
   const [browseMode, setBrowseMode] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -40,7 +44,10 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
   useEffect(() => {
     setDraftConfig(compileModelConfig)
     setDraftMaxTokens(String(compileMaxTokens))
-  }, [compileModelConfig, compileMaxTokens])
+    setDraftPresetId(compilePresetId)
+  }, [compileModelConfig, compileMaxTokens, compilePresetId])
+
+  const draftPreset = getPresetById(draftPresetId)
 
   const selectedLabel = draftConfig != null
     ? (getModelById(draftConfig.model, orModels)?.name ?? draftConfig.model.split('/').pop() ?? 'Model')
@@ -91,16 +98,18 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
         ...current.values,
         compileModelConfig: draftConfig,
         compileMaxTokens: validatedMax,
+        compilePresetId: draftPresetId,
       })
       setCompileModelConfig(draftConfig)
       setCompileMaxTokens(validatedMax)
+      setCompilePresetId(draftPresetId)
       setSaved(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to save')
     } finally {
       setSaving(false)
     }
-  }, [draftConfig, draftMaxTokens, setCompileModelConfig, setCompileMaxTokens])
+  }, [draftConfig, draftMaxTokens, draftPresetId, setCompileModelConfig, setCompileMaxTokens, setCompilePresetId])
 
   return (
     <div
@@ -121,7 +130,7 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
               Compile Document Settings
             </h2>
             <p className="mt-0.5 text-[10px] text-content-disabled">
-              Default model and output limits for the Compile Document button
+              Default style, model, and output limits for the Compile Document button
             </p>
           </div>
           <button
@@ -138,6 +147,28 @@ export function CompileSettingsModal({ onClose }: CompileSettingsModalProps): Re
           <p className="mb-3 text-xs text-content-muted">
             Compile Document is an isolated API call — it does not run as one of the advisors. The compiled result lands in the Documents panel on the right, not in the chat thread.
           </p>
+
+          {/* Default preset */}
+          <div className="mb-4">
+            <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-disabled">
+              Default Style
+            </label>
+            <p className="mb-2 text-[10px] text-content-disabled">
+              Each style is a different prompt template that shapes the output. Users can override per-compile in the picker.
+            </p>
+            <select
+              value={draftPresetId}
+              onChange={(e) => { setDraftPresetId(e.target.value); setSaved(false) }}
+              className="w-full rounded-md border border-edge-subtle bg-surface-base px-3 py-1.5 text-xs text-content-primary outline-none focus:border-edge-focus"
+            >
+              {COMPILE_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>{preset.label}</option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[10px] italic text-content-disabled">
+              {draftPreset.description}
+            </p>
+          </div>
 
           {/* Default model */}
           <div className="mb-4">

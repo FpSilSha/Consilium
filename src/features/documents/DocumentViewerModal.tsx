@@ -2,6 +2,7 @@ import { type ReactNode, useCallback } from 'react'
 import { useStore } from '@/store'
 import { MarkdownContent } from '@/features/chat/MarkdownContent'
 import { createUserMessage } from '@/services/context-bus/message-factory'
+import { getPresetById, isKnownPresetId } from '@/features/chat/compile-presets'
 import type { SessionDocument } from './types'
 
 interface DocumentViewerModalProps {
@@ -52,7 +53,14 @@ export function DocumentViewerModal({ document, onClose }: DocumentViewerModalPr
             <p className="mt-0.5 text-[10px] text-content-disabled">
               {document.modelName}
               {document.cost > 0 && <span> · ~${document.cost.toFixed(4)}</span>}
-              {document.focusPrompt != null && <span> · focused</span>}
+              {/* Only show preset label when ID resolves to a current preset.
+                  Stale IDs (from a renamed/removed preset) are hidden. */}
+              {document.presetId != null && isKnownPresetId(document.presetId) && (
+                <span> · {getPresetById(document.presetId).label}</span>
+              )}
+              {document.focusReplacedDefault === true
+                ? <span> · custom</span>
+                : document.focusPrompt != null && <span> · focused</span>}
             </p>
           </div>
           <div className="ml-3 flex items-center gap-2">

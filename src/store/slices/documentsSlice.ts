@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand'
 import type { SessionDocument } from '@/features/documents/types'
+import { DEFAULT_PRESET_ID } from '@/features/chat/compile-presets'
 
 export interface CompileModelConfig {
   readonly provider: string
@@ -49,6 +50,14 @@ export interface DocumentsSlice {
   readonly compileMaxTokens: number
 
   /**
+   * Global default compile preset ID. Loaded from config.json at startup,
+   * persisted by the Compile Settings modal. Each compile call seeds its
+   * per-call picker from this value, but the user can override in the
+   * popover without affecting the global default.
+   */
+  readonly compilePresetId: string
+
+  /**
    * Total cost spent on compile calls for the current session, in dollars.
    * Compile is not an advisor turn, so its cost doesn't roll into any
    * window's runningCost — this slice owns it. Counted by the budget
@@ -84,6 +93,7 @@ export interface DocumentsSlice {
   /** Global compile defaults — set by startup loader and Compile Settings modal. */
   setCompileModelConfig: (config: CompileModelConfig | null) => void
   setCompileMaxTokens: (max: number) => void
+  setCompilePresetId: (id: string) => void
 
   /** Adds to the compile-cost ledger. Called when a compile finishes. */
   accumulateCompileCost: (cost: number) => void
@@ -98,6 +108,7 @@ export const createDocumentsSlice: StateCreator<DocumentsSlice> = (set) => ({
   draftCompile: null,
   compileModelConfig: null,
   compileMaxTokens: 16384,
+  compilePresetId: DEFAULT_PRESET_ID,
   sessionCompileCost: 0,
 
   setSessionDocuments: (docs) =>
@@ -143,6 +154,7 @@ export const createDocumentsSlice: StateCreator<DocumentsSlice> = (set) => ({
 
   setCompileModelConfig: (config) => set({ compileModelConfig: config }),
   setCompileMaxTokens: (max) => set({ compileMaxTokens: max }),
+  setCompilePresetId: (id) => set({ compilePresetId: id }),
 
   accumulateCompileCost: (cost) =>
     set((state) => ({ sessionCompileCost: state.sessionCompileCost + cost })),

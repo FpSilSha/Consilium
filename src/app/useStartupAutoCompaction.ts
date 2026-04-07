@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useStore } from '@/store'
 import { computeStartupAutoCompactionPlan } from './startup-auto-compaction'
+import { isKnownPresetId, DEFAULT_PRESET_ID } from '@/features/chat/compile-presets'
 
 /** Module-scope guard — run exactly once per app process */
 let hasRun = false
@@ -99,15 +100,35 @@ export function useStartupAutoCompaction(): void {
           }
         }
 
+        // Compile preset — load from disk, validate against the known
+        // preset list, fall back to the default if unknown. If the saved
+        // ID is unknown (e.g., a renamed preset in a future release), we
+        // also clean up the disk so we don't re-validate the stale value
+        // on every launch.
+        const rawCompilePresetId = data.values['compilePresetId']
+        let compilePresetIdNeedsDiskClear = false
+        if (typeof rawCompilePresetId === 'string' && rawCompilePresetId !== '') {
+          if (isKnownPresetId(rawCompilePresetId)) {
+            store.setCompilePresetId(rawCompilePresetId)
+          } else {
+            // Unknown preset ID — fall back to default and clean up disk
+            store.setCompilePresetId(DEFAULT_PRESET_ID)
+            compilePresetIdNeedsDiskClear = true
+          }
+        }
+
         // Single disk write that bundles any pending updates from this run.
-        // Avoids two configSave round-trips when both auto-compaction AND
-        // compile config need cleanup on the same launch.
+        // Avoids multiple configSave round-trips when several settings need
+        // cleanup on the same launch.
         const diskUpdate: Record<string, unknown> = {}
         if (plan.persistedUpdate !== null) {
           Object.assign(diskUpdate, plan.persistedUpdate)
         }
         if (compileConfigNeedsDiskClear) {
           diskUpdate['compileModelConfig'] = null
+        }
+        if (compilePresetIdNeedsDiskClear) {
+          diskUpdate['compilePresetId'] = DEFAULT_PRESET_ID
         }
         if (Object.keys(diskUpdate).length > 0) {
           await api.configSave({

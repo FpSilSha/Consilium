@@ -2,6 +2,7 @@ import { type ReactNode, useState, useCallback } from 'react'
 import { useStore } from '@/store'
 import { Tooltip } from '@/features/ui/Tooltip'
 import { createUserMessage } from '@/services/context-bus/message-factory'
+import { getPresetById, isKnownPresetId } from '@/features/chat/compile-presets'
 import type { SessionDocument } from './types'
 import { DocumentViewerModal } from './DocumentViewerModal'
 
@@ -176,7 +177,15 @@ function DocumentRow({ doc, onView }: {
           <div className="truncate text-[10px] text-content-disabled">
             {doc.modelName}
             {doc.cost > 0 && <span> · ~${doc.cost.toFixed(4)}</span>}
-            {doc.focusPrompt != null && <span> · focused</span>}
+            {/* Only show the preset label if it resolves to a current preset.
+                Stale IDs from removed/renamed presets are hidden rather than
+                silently mapped to the default (which would be misleading). */}
+            {doc.presetId != null && isKnownPresetId(doc.presetId) && (
+              <span> · {getPresetById(doc.presetId).label}</span>
+            )}
+            {doc.focusReplacedDefault === true
+              ? <span> · custom</span>
+              : doc.focusPrompt != null && <span> · focused</span>}
           </div>
         </button>
 
