@@ -1,4 +1,4 @@
-import { type ReactNode, useState, useCallback } from 'react'
+import { type ReactNode, useState, useCallback, useRef, useEffect } from 'react'
 import type { Attachment } from '@/types'
 import { useStore } from '@/store'
 import { createUserMessage } from '@/services/context-bus'
@@ -18,8 +18,18 @@ export function SharedInputBar(): ReactNode {
   const queue = useStore((s) => s.queue)
   const windowCount = useStore((s) => s.windowOrder.length)
   const [showRepeat, setShowRepeat] = useState(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const showUserTurnHint = isRunning && isUserTurn(queue)
+
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20
+    const maxHeight = lineHeight * 15
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`
+  }, [input])
 
   const handleSubmit = useCallback(() => {
     const trimmed = input.trim()
@@ -162,6 +172,7 @@ export function SharedInputBar(): ReactNode {
 
         {/* Input area */}
         <textarea
+          ref={textareaRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -171,7 +182,7 @@ export function SharedInputBar(): ReactNode {
               : 'Message your advisors... (Enter to send, @Agent for direct, Shift+Enter for new line)'
           }
           rows={1}
-          className={`flex-1 resize-none rounded-lg border bg-surface-panel px-4 py-2.5 text-sm text-content-primary placeholder-content-disabled outline-none transition-colors focus:border-edge-focus ${
+          className={`flex-1 resize-none overflow-y-auto rounded-lg border bg-surface-panel px-4 py-2.5 text-sm text-content-primary placeholder-content-disabled outline-none transition-colors focus:border-edge-focus ${
             showUserTurnHint ? 'border-accent-blue' : 'border-edge-subtle'
           }`}
         />
