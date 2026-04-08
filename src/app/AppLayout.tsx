@@ -7,6 +7,7 @@ import { ConfigModal } from '@/features/modelCatalog/ConfigModal'
 import { ModelMismatchModal } from '@/features/sessions/ModelMismatchModal'
 import { AboutModal } from '@/features/settings/AboutModal'
 import { ConfigurationModal, useConfigurationShortcut } from '@/features/configuration'
+import { KeyEncryptionWarning } from '@/features/keys/KeyEncryptionWarning'
 import { TitleBar } from './TitleBar'
 import { useStore } from '@/store'
 import { saveCurrentSession, initializeNewSession } from '@/features/sessions/session-manager'
@@ -156,6 +157,15 @@ export function AppLayout(): ReactNode {
     <div className="flex h-screen flex-col bg-surface-base">
       {/* Custom title bar */}
       <TitleBar onMenuAction={handleMenuAction} />
+
+      {/* OS key-encryption warning — visible only when safeStorage
+          is unavailable on the host (typically Linux without
+          gnome-keyring/libsecret/kwallet installed). The banner is
+          intentionally non-dismissible because the underlying issue
+          is functional: the app cannot save API keys until it's
+          fixed. Hidden by default; the keys-loaded check inside
+          the component prevents a startup flash. */}
+      <KeyEncryptionWarning />
 
       {/* Main content */}
       <div className="flex min-h-0 flex-1">

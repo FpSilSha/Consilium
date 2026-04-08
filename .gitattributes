@@ -1,0 +1,42 @@
+# Line ending normalization for cross-platform development.
+#
+# Git stores all text files with LF endings in the repository.
+# Windows users still see their preferred endings in the working
+# tree (controlled by their local core.autocrlf setting), but the
+# canonical bytes in the repo are always LF — no more "LF will be
+# replaced by CRLF" warnings on every commit when working from
+# Windows.
+
+* text=auto eol=lf
+
+# Shell scripts must keep LF endings even on Windows checkouts
+# (Unix shells choke on CRLF in shebang lines).
+*.sh text eol=lf
+
+# Windows batch files must keep CRLF even on Unix checkouts
+# (cmd.exe is the only consumer; Unix never runs them).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Explicit binary types — prevents git from trying to diff them
+# or accidentally normalizing line endings on binary content.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.bmp binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.otf binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+*.exe binary
+*.dmg binary
+*.AppImage binary
+*.node binary

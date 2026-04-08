@@ -116,6 +116,14 @@ export function loadEncryptedKeys(): readonly { providerId: string; rawKey: stri
 /**
  * Encrypts and saves a key for a provider.
  * Overwrites any existing key for that provider.
+ *
+ * When safeStorage is unavailable (typically Linux without
+ * gnome-keyring/libsecret/kwallet) this throws and the renderer
+ * catches the error and falls back to in-memory-only storage —
+ * the key works for the current session but is not persisted to
+ * disk. The user is warned about this via the KeyEncryptionWarning
+ * banner so they understand they'll need to re-enter the key on
+ * each launch until they install a secret service.
  */
 export function saveEncryptedKey(
   providerId: string,
