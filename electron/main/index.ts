@@ -259,6 +259,14 @@ function createAppMenu(): void {
     {
       label: 'Edit',
       submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+        { type: 'separator' },
         {
           // Single entry by design — opens the unified ConfigurationModal
           // on the renderer side, which contains panes for personas, the
