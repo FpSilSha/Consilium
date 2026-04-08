@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/hero.png" alt="Consilium — collaborate with multiple AIs in a virtual council" />
+</p>
+
 # Consilium
 
 > A multi-agent AI orchestration desktop app where you act as CEO of a virtual boardroom. Multiple AI models from different providers participate in a single conversation, each with its own role and persona, and you direct the discussion.
