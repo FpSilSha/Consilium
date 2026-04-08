@@ -105,15 +105,6 @@ npm install
 npm run dev      # launches the Electron app in dev mode
 ```
 
-### Other scripts
-
-```bash
-npm run build      # production build
-npm run package    # build a packaged Electron binary (electron-builder)
-npm run typecheck  # TypeScript check (main + renderer)
-npm test           # vitest suite
-```
-
 ### First-run setup
 
 On first launch, the onboarding wizard walks you through adding an API key for at least one provider, choosing a model, and picking a persona for your first advisor. From there you can add more advisors via the right sidebar, switch turn modes via the input bar, and start chatting.
