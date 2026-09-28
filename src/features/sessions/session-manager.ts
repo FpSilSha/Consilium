@@ -9,7 +9,10 @@ import { sameSessionSnapshot, sessionSnapshot } from './session-snapshot'
 let loadSequence = 0
 let sessionGeneration = 0
 
-/** Capture with the session ID to reject results from an earlier restoration. */
+/**
+ * Conversation identity for asynchronous results: advances on restore or new
+ * initialization, but not when saving assigns an ID to the same conversation.
+ */
 export function getSessionGeneration(): number {
   return sessionGeneration
 }
@@ -212,45 +215,38 @@ function isValidSessionDocument(d: Record<string, unknown>): boolean {
   )
 }
 
-/** Prevents concurrent initializeNewSession calls from double-creating. */
-let initInProgress = false
-
 /**
  * Initializes a new session with an ID and saves an initial entry.
  * Called on app load (post-onboarding) and on "New Consilium".
  * The session appears immediately in the sidebar.
  */
 export async function initializeNewSession(): Promise<void> {
-  if (initInProgress) return
   const state = useStore.getState()
   if (state.currentSessionId != null) return
-  initInProgress = true
-  try {
-    loadSequence++
-    sessionGeneration++
-    const sessionId = crypto.randomUUID()
-    state.setCurrentSessionId(sessionId)
-    state.setSessionCustomName(null)
-    state.setSessionBudget(0)
-    state.setLoopCount(0)
+  loadSequence++
+  sessionGeneration++
+  const sessionId = crypto.randomUUID()
+  // Assign synchronously so duplicate calls see this ID, while a later New
+  // Consilium can initialize immediately even if this session's save is pending.
+  state.setCurrentSessionId(sessionId)
+  state.setSessionCustomName(null)
+  state.setSessionBudget(0)
+  state.setLoopCount(0)
 
-    // New sessions inherit the global auto-compaction default.
-    // If global hasn't loaded from config.json yet (keys still loading),
-    // useStartupAutoCompaction will patch the current session once it runs.
-    state.setAutoCompaction(
-      state.globalAutoCompactionEnabled && state.globalAutoCompactionConfig !== null,
-      state.globalAutoCompactionConfig,
-    )
+  // New sessions inherit the global auto-compaction default.
+  // If global hasn't loaded from config.json yet (keys still loading),
+  // useStartupAutoCompaction will patch the current session once it runs.
+  state.setAutoCompaction(
+    state.globalAutoCompactionEnabled && state.globalAutoCompactionConfig !== null,
+    state.globalAutoCompactionConfig,
+  )
 
-    // Fresh sessions start with no document references and a zero compile-cost ledger
-    state.setSessionDocuments([])
-    state.resetCompileCost()
-    state.setDraftCompile(null)
+  // Fresh sessions start with no document references and a zero compile-cost ledger
+  state.setSessionDocuments([])
+  state.resetCompileCost()
+  state.setDraftCompile(null)
 
-    await saveCurrentSession()
-  } finally {
-    initInProgress = false
-  }
+  await saveCurrentSession()
 }
 
 /**

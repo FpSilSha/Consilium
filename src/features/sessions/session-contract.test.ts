@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useStore } from '@/store'
 import {
-  buildSessionFile, getSessionGeneration, initializeNewSession, restoreSession,
+  buildSessionFile, getSessionGeneration, initializeNewSession, restoreSession, saveCurrentSession,
 } from './session-manager'
 import { isValidSessionFile } from './session-validation'
 
@@ -70,6 +70,61 @@ describe('local-agent persistence contract', () => {
   it('does not invalidate the current generation for a rejected restore', () => {
     const generation = getSessionGeneration()
     restoreSession(JSON.parse(JSON.stringify({ ...buildSessionFile(), version: 99 })))
+    expect(getSessionGeneration()).toBe(generation)
+  })
+
+  it('keeps one initialization when called again while its save is pending', async () => {
+    let finishSave!: () => void
+    const pendingSave = new Promise<void>((resolve) => { finishSave = resolve })
+    const sessionSave = vi.fn(() => pendingSave)
+    vi.stubGlobal('window', { consiliumAPI: { sessionSave } })
+    const first = initializeNewSession()
+    const sessionId = useStore.getState().currentSessionId
+    const generation = getSessionGeneration()
+    try {
+      await initializeNewSession()
+      expect(useStore.getState().currentSessionId).toBe(sessionId)
+      expect(getSessionGeneration()).toBe(generation)
+      expect(sessionSave).toHaveBeenCalledTimes(1)
+    } finally {
+      finishSave()
+      await first
+    }
+  })
+
+  it('advances the generation for a new conversation while the previous initial save is pending', async () => {
+    let finishSave!: () => void
+    const pendingSave = new Promise<void>((resolve) => { finishSave = resolve })
+    const sessionSave = vi.fn(async () => {}).mockImplementationOnce(() => pendingSave)
+    vi.stubGlobal('window', { consiliumAPI: { sessionSave } })
+    const first = initializeNewSession()
+    const firstId = useStore.getState().currentSessionId
+    const generation = getSessionGeneration()
+    // The New Consilium command clears the current conversation before initializing.
+    const state = useStore.getState()
+    state.clearMessages()
+    state.clearAllWindows()
+    state.setCurrentSessionId(null)
+    try {
+      await initializeNewSession()
+      expect(getSessionGeneration()).toBeGreaterThan(generation)
+      expect(useStore.getState().currentSessionId).not.toBeNull()
+      expect(useStore.getState().currentSessionId).not.toBe(firstId)
+      expect(sessionSave).toHaveBeenCalledTimes(2)
+      const newId = useStore.getState().currentSessionId
+      finishSave()
+      await first
+      expect(useStore.getState().currentSessionId).toBe(newId)
+    } finally {
+      finishSave()
+      await first
+    }
+  })
+
+  it('keeps the generation when saving assigns an ID to the same conversation', async () => {
+    const generation = getSessionGeneration()
+    await saveCurrentSession()
+    expect(useStore.getState().currentSessionId).not.toBeNull()
     expect(getSessionGeneration()).toBe(generation)
   })
 })
