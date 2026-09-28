@@ -29,7 +29,8 @@ function message(value: unknown): boolean {
   const cost = value['costMetadata']
   if (cost !== undefined && (!record(cost)
     || !nonNegative(cost['inputTokens']) || !nonNegative(cost['outputTokens'])
-    || !nonNegative(cost['estimatedCost']) || typeof cost['isEstimate'] !== 'boolean')) return false
+    || !nonNegative(cost['estimatedCost']) || typeof cost['isEstimate'] !== 'boolean'
+    || (cost['billing'] !== undefined && cost['billing'] !== 'api' && cost['billing'] !== 'subscription'))) return false
   const attachments = value['attachments']
   return attachments === undefined || arrayOf(attachments, (a) => record(a)
     && strings(a, ['id', 'name', 'mimeType', 'data'])

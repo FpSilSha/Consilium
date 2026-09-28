@@ -9,6 +9,11 @@ import { sameSessionSnapshot, sessionSnapshot } from './session-snapshot'
 let loadSequence = 0
 let sessionGeneration = 0
 
+/** Capture with the session ID to reject results from an earlier restoration. */
+export function getSessionGeneration(): number {
+  return sessionGeneration
+}
+
 /**
  * Restores app state from a session file.
  */
