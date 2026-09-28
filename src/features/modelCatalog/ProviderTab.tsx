@@ -2,11 +2,11 @@ import { type ReactNode, useState, useCallback, useRef, useEffect } from 'react'
 import type { Provider } from '@/types'
 import { useStore } from '@/store'
 import { createApiKeyEntry } from '@/features/keys/key-storage'
-import { storeRawKey, removeRawKey, getRawKey } from '@/features/keys/key-vault'
+import { storeRawKey, removeRawKey } from '@/features/keys/key-vault'
 import { detectProvider } from '@/features/keys/key-detection'
 import { validateKey } from '@/features/keys/key-validation'
 import type { KnownProvider } from '@/features/keys/key-detection'
-import { fetchOpenRouterCatalog, fetchOpenAICatalog, fetchGoogleCatalog, fetchXAICatalog, fetchDeepSeekCatalog } from '@/services/api/catalog'
+import { refreshProviderCatalog } from '@/services/api/catalog'
 import { ModelCheckboxList } from './ModelCheckboxList'
 
 interface ProviderTabProps {
@@ -35,15 +35,15 @@ export function ProviderTab({ provider }: ProviderTabProps): ReactNode {
   }, [])
 
   // Debounced validation only — does NOT add/persist the key
-  const doValidateOnly = useCallback(async (raw: string) => {
+  const doValidateOnly = useCallback(async (raw: string): Promise<boolean | null> => {
     const trimmed = raw.trim()
-    if (trimmed === '') return
+    if (trimmed === '') return false
 
     const detected = detectProvider(trimmed)
     if (detected != null && detected.provider !== provider) {
       setError(`This looks like a ${detected.provider} key, not ${provider}`)
       setValidated(false)
-      return
+      return false
     }
 
     if (detected != null && provider !== 'custom') {
@@ -57,16 +57,18 @@ export function ProviderTab({ provider }: ProviderTabProps): ReactNode {
       const result = await validateKey(trimmed, detected.provider as KnownProvider, controller.signal)
       setValidating(false)
 
-      if (controller.signal.aborted) return
+      if (controller.signal.aborted) return false
 
       if (!result.valid && result.reason === 'auth_failure') {
         setError('Invalid or revoked API key')
         setValidated(false)
-        return
+        return false
       }
-      if (!result.valid && result.reason === 'cancelled') return
+      if (!result.valid && result.reason === 'cancelled') return false
       setValidated(result.valid)
+      return result.valid ? true : null
     }
+    return null
   }, [provider])
 
   // Explicit add — called on Enter or Add button click
@@ -91,12 +93,9 @@ export function ProviderTab({ provider }: ProviderTabProps): ReactNode {
       return
     }
 
-    // If not yet validated, validate first
-    if (validated == null && detected != null && provider !== 'custom') {
-      await doValidateOnly(trimmed)
-    }
-
-    const verifiedEntry = { ...entry, verified: validated === true }
+    const validation = detected != null && provider !== 'custom' ? await doValidateOnly(trimmed) : null
+    if (validation === false) return
+    const verifiedEntry = { ...entry, verified: validation === true }
 
     try {
       await window.consiliumAPI?.keysSave(verifiedEntry.id, trimmed, { provider })
@@ -107,7 +106,7 @@ export function ProviderTab({ provider }: ProviderTabProps): ReactNode {
     setKeyInput('')
     setError('')
     setValidated(null)
-  }, [keyInput, provider, validated, addKey, doValidateOnly])
+  }, [keyInput, provider, addKey, doValidateOnly])
 
   const handleKeyInputChange = useCallback((value: string) => {
     setKeyInput(value)
@@ -203,86 +202,35 @@ export function ProviderTab({ provider }: ProviderTabProps): ReactNode {
   )
 }
 
-const DIRECT_FETCHERS: Partial<Record<Provider, (apiKey: string, signal?: AbortSignal) => Promise<import('@/services/api/catalog').CatalogFetchResult>>> = {
-  openai: fetchOpenAICatalog,
-  google: fetchGoogleCatalog,
-  xai: fetchXAICatalog,
-  deepseek: fetchDeepSeekCatalog,
-}
-
 function RefreshButton({ provider }: { readonly provider: Provider }): ReactNode {
-  const catalogStatus = useStore((s) => s.catalogStatus[provider])
-  const setCatalogModels = useStore((s) => s.setCatalogModels)
-  const setCatalogStatus = useStore((s) => s.setCatalogStatus)
-  const keys = useStore((s) => s.keys)
-
+  const catalogStatus = useStore((state) => state.catalogStatus[provider])
   const [refreshError, setRefreshError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const controllerRef = useRef<AbortController | null>(null)
+  useEffect(() => () => controllerRef.current?.abort(), [])
 
   const handleRefresh = useCallback(async () => {
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
     setRefreshing(true)
     setRefreshError(null)
-    setCatalogStatus(provider, 'loading')
-
     try {
-      let result: import('@/services/api/catalog').CatalogFetchResult
-
-      if (provider === 'openrouter') {
-        result = await fetchOpenRouterCatalog()
-      } else {
-        const fetcher = DIRECT_FETCHERS[provider]
-        if (fetcher == null) {
-          setRefreshError('No fetcher available for this provider')
-          setCatalogStatus(provider, 'error')
-          setRefreshing(false)
-          return
-        }
-
-        const key = keys.find((k) => k.provider === provider)
-        if (key == null) {
-          setRefreshError('Add an API key first to fetch models')
-          setCatalogStatus(provider, 'error')
-          setRefreshing(false)
-          return
-        }
-
-        const rawKey = getRawKey(key.id)
-        if (rawKey == null) {
-          setRefreshError('API key not accessible')
-          setCatalogStatus(provider, 'error')
-          setRefreshing(false)
-          return
-        }
-
-        result = await fetcher(rawKey)
-      }
-
-      if (result.error != null) {
-        setRefreshError(result.error)
-        setCatalogStatus(provider, 'error')
-      } else {
-        setCatalogModels(provider, result.models)
-        setCatalogStatus(provider, 'loaded')
-      }
+      const result = await refreshProviderCatalog(provider, controller.signal)
+      if (!controller.signal.aborted) setRefreshError(result.error ?? null)
     } catch {
-      setRefreshError('Unexpected error during refresh')
-      setCatalogStatus(provider, 'error')
+      if (!controller.signal.aborted) setRefreshError('Could not refresh models')
     } finally {
-      setRefreshing(false)
+      if (!controller.signal.aborted) setRefreshing(false)
     }
-  }, [provider, keys, setCatalogModels, setCatalogStatus])
+  }, [provider])
 
   return (
     <div className="flex items-center gap-2">
-      {refreshError != null && (
-        <span className="text-[10px] text-error">{refreshError}</span>
-      )}
-      <button
-        onClick={handleRefresh}
-        disabled={refreshing || catalogStatus === 'loading'}
-        className="rounded-md bg-surface-base px-2 py-1 text-[10px] text-content-muted transition-colors hover:bg-surface-hover hover:text-content-primary disabled:opacity-50"
-      >
-        {refreshing ? 'Refreshing...' : 'Refresh List'}
+      {refreshError != null && <span role="status" className="text-[10px] text-error">{refreshError}</span>}
+      <button onClick={handleRefresh} disabled={refreshing || catalogStatus === 'loading'}
+        className="rounded-md bg-surface-base px-2 py-1 text-[10px] text-content-muted transition-colors hover:bg-surface-hover hover:text-content-primary disabled:opacity-50">
+        {refreshing || catalogStatus === 'loading' ? 'Refreshing...' : 'Refresh List'}
       </button>
     </div>
   )

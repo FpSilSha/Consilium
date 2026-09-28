@@ -1,58 +1,30 @@
 import type { Provider } from '@/types'
 import { streamResponse } from '@/services/api/stream-orchestrator'
-
+import { fetchProviderCatalog } from '@/services/api/catalog/fetch-all-catalogs'
 export interface ModelTestResult {
   readonly valid: boolean
   readonly error?: string | undefined
 }
-
-/**
- * Providers that have free model listing endpoints — testing a model
- * on these providers can be done without cost by checking the catalog.
- */
-const FREE_VALIDATION_PROVIDERS: ReadonlySet<Provider> = new Set([
-  'openai', 'google', 'xai', 'deepseek', 'openrouter',
-])
-
-/**
- * Returns true if testing a model on this provider will incur cost.
- * Anthropic and custom providers have no free validation endpoint.
- */
-export function testWillCost(provider: Provider): boolean {
-  return !FREE_VALIDATION_PROVIDERS.has(provider)
-}
-
-/**
- * Tests whether a model ID is valid by sending a minimal prompt.
- * Uses the cheapest possible request: max_tokens=1, single-word prompt.
- */
-export async function testModelId(
-  provider: Provider,
-  modelId: string,
-  apiKey: string,
-  signal?: AbortSignal,
-): Promise<ModelTestResult> {
+export function testWillCost(provider: Provider): boolean { return provider === 'custom' }
+/** Built-in providers validate without generating billable text. */
+export async function testModelId(provider: Provider, modelId: string, apiKey: string, signal?: AbortSignal): Promise<ModelTestResult> {
+  if (signal?.aborted) return { valid: false, error: 'Cancelled' }
+  if (provider !== 'custom') {
+    try {
+      const result = await fetchProviderCatalog(provider, apiKey, signal)
+      if (result.error != null) return { valid: false, error: result.error }
+      return result.models.some((model) => model.id === modelId)
+        ? { valid: true } : { valid: false, error: 'Model is not in the available chat catalog' }
+    } catch { return { valid: false, error: signal?.aborted ? 'Cancelled' : 'Could not validate model' } }
+  }
   return new Promise((resolve) => {
-    const controller = streamResponse(
-      {
-        provider,
-        model: modelId,
-        apiKey,
-        systemPrompt: '',
-        messages: [{ role: 'user', content: 'hi' }],
-        maxTokens: 1,
-        signal,
-      },
-      {
-        onChunk: () => {},
-        onDone: () => { resolve({ valid: true }) },
-        onError: (error) => { resolve({ valid: false, error }) },
-      },
-    )
-
-    // If caller aborts, resolve as cancelled (signal is already linked via streamResponse)
-    signal?.addEventListener('abort', () => {
-      resolve({ valid: false, error: 'Cancelled' })
-    }, { once: true })
+    const finish = (result: ModelTestResult) => { signal?.removeEventListener('abort', cancel); resolve(result) }
+    const cancel = () => finish({ valid: false, error: 'Cancelled' })
+    signal?.addEventListener('abort', cancel, { once: true })
+    try {
+      streamResponse({ provider, model: modelId, apiKey, systemPrompt: '', messages: [{ role: 'user', content: 'hi' }], maxTokens: 1, signal }, {
+        onChunk: () => {}, onDone: () => finish({ valid: true }), onError: (error) => finish({ valid: false, error }),
+      })
+    } catch { finish({ valid: false, error: 'Could not validate model' }) }
   })
 }

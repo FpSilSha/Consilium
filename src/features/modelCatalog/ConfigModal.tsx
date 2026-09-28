@@ -5,7 +5,7 @@ import { ProviderTab } from './ProviderTab'
 import { CustomProviderTab } from './CustomProviderTab'
 import { AdapterBuilderDialog } from '@/features/customAdapter/AdapterBuilderDialog'
 
-interface CustomProviderDef {
+type CustomProviderDef = {
   readonly id: string
   readonly name: string
   readonly baseUrl: string
@@ -37,7 +37,7 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
     const api = getAPI()
     if (api == null) return
     api.customProvidersLoad()
-      .then((providers) => setCustomProviders(providers as CustomProviderDef[]))
+      .then((providers) => setCustomProviders(providers.filter(isCustomProviderDef)))
       .catch(() => {})
   }, [])
 
@@ -172,7 +172,7 @@ export function ConfigModal({ onClose }: ConfigModalProps): ReactNode {
         {/* Tab content */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {isBuiltIn && (
-            <ProviderTab provider={activeTab as Provider} />
+            <ProviderTab key={activeTab} provider={activeTab as Provider} />
           )}
           {activeCustom != null && (
             <CustomProviderTab
@@ -365,4 +365,12 @@ function getAPI() {
     customProvidersLoad(): Promise<readonly Record<string, unknown>[]>
     customProvidersSave(providers: readonly Record<string, unknown>[]): Promise<void>
   } }).consiliumAPI ?? null
+}
+
+function isCustomProviderDef(value: Record<string, unknown>): value is CustomProviderDef {
+  return typeof value['id'] === 'string' && typeof value['name'] === 'string'
+    && typeof value['baseUrl'] === 'string'
+    && ['modelListEndpoint', 'healthCheckEndpoint', 'costEndpoint'].every(
+      (field) => value[field] === null || typeof value[field] === 'string',
+    )
 }

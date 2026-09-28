@@ -4,45 +4,34 @@ export interface PricingEntry {
   readonly input: number
   readonly output: number
   readonly contextWindow: number
+  readonly pricingKnown?: boolean | undefined
 }
 
-/**
- * Builds a lookup map from OpenRouter's model catalog for cross-provider
- * pricing enrichment. Creates two indexes:
- *
- * 1. Exact match by full OpenRouter ID (e.g. "anthropic/claude-sonnet-4.6")
- * 2. Suffix match by stripping the provider prefix (e.g. "claude-sonnet-4.6")
- *
- * The suffix index allows matching provider-native model IDs against
- * OpenRouter's prefixed format.
- */
-export function buildPricingIndex(
-  openRouterModels: readonly ModelInfo[],
-): ReadonlyMap<string, PricingEntry> {
+/** Provider-native Claude version separators differ from OpenRouter's IDs. */
+export function nativeModelId(openRouterId: string): string | undefined {
+  const slash = openRouterId.indexOf('/')
+  if (slash < 0 || openRouterId.includes(':')) return undefined
+  const author = openRouterId.slice(0, slash)
+  const id = openRouterId.slice(slash + 1)
+  if (!['anthropic', 'openai', 'google', 'x-ai', 'deepseek'].includes(author)) return undefined
+  return author === 'anthropic' ? id.replace(/(\d)\.(\d)/g, '$1-$2') : id
+}
+
+export function buildPricingIndex(models: readonly ModelInfo[]): ReadonlyMap<string, PricingEntry> {
   const index = new Map<string, PricingEntry>()
-
-  for (const m of openRouterModels) {
+  for (const model of models) {
     const entry: PricingEntry = {
-      input: m.inputPricePerToken,
-      output: m.outputPricePerToken,
-      contextWindow: m.contextWindow,
+      input: model.inputPricePerToken, output: model.outputPricePerToken,
+      contextWindow: model.contextWindow, pricingKnown: model.pricingKnown !== false,
     }
-
-    // Full OpenRouter ID (e.g. "anthropic/claude-sonnet-4.6")
-    index.set(m.id, entry)
-
-    // Stripped suffix (e.g. "claude-sonnet-4.6") for cross-provider matching
-    const slashIndex = m.id.indexOf('/')
-    if (slashIndex !== -1) {
-      const suffix = m.id.slice(slashIndex + 1)
-      // First entry wins for suffixes. In theory two providers could share
-      // a suffix (e.g. "gpt-4o"), but in practice provider-native IDs are
-      // distinct. If this becomes an issue, add provider-qualified lookups.
-      if (!index.has(suffix)) {
-        index.set(suffix, entry)
-      }
-    }
+    index.set(model.id, entry)
+    const slash = model.id.indexOf('/')
+    const suffix = slash < 0 ? undefined : model.id.slice(slash + 1)
+    if (suffix != null && !index.has(suffix)) index.set(suffix, entry)
+    const native = nativeModelId(model.id)
+    if (native != null && !index.has(native)) index.set(native, entry)
+    // This is a stable, documented Anthropic snapshot ID, not a guessed alias.
+    if (native === 'claude-haiku-4-5') index.set('claude-haiku-4-5-20251001', entry)
   }
-
   return index
 }

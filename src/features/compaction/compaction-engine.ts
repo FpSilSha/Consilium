@@ -23,7 +23,7 @@ export function shouldCompact(
   window: AdvisorWindow,
 ): boolean {
   const model = resolveModelById(window.model)
-  if (model === undefined) return false
+  if (model === undefined || model.contextWindow <= 0) return false
 
   const tokenCount = estimateThreadTokens(messages)
   return tokenCount >= model.contextWindow * COMPACTION_THRESHOLD
@@ -100,7 +100,7 @@ export function getContextUsagePercent(
   modelId: string,
 ): number {
   const model = resolveModelById(modelId)
-  if (model === undefined) return 0
+  if (model === undefined || model.contextWindow <= 0) return 0
 
   const tokens = estimateThreadTokens(messages)
   return Math.min((tokens / model.contextWindow) * 100, 100)

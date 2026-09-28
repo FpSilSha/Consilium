@@ -1,3 +1,5 @@
+export { fetchAnthropicCatalog } from './fetch-anthropic'
+export { fetchProviderCatalog, refreshProviderCatalog } from './fetch-all-catalogs'
 export type { CatalogFetchResult } from './catalog-types'
 export { CATALOG_FETCH_TIMEOUT_MS } from './fetch-openai-compat'
 export { fetchOpenAICatalog } from './fetch-openai'

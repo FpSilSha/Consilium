@@ -1,6 +1,7 @@
 import type { ModelInfo, Provider } from '@/types'
 import { useStore } from '@/store'
-import { getModelById, getModelsForProvider, getAllModels } from './model-registry'
+import { getModelById } from './model-registry'
+import { availableModels } from './available-models'
 
 /**
  * Store-aware model lookups.
@@ -24,8 +25,7 @@ export function resolveModelById(modelId: string): ModelInfo | undefined {
 export function resolveModelsForProvider(provider: Provider): readonly ModelInfo[] {
   const state = useStore.getState()
   const catalogModels = state.catalogModels[provider] ?? []
-  if (catalogModels.length > 0) return catalogModels
-  return getModelsForProvider(provider)
+  return availableModels(provider, catalogModels, state.catalogStatus[provider])
 }
 
 export function resolveAllModels(): readonly ModelInfo[] {
@@ -34,12 +34,8 @@ export function resolveAllModels(): readonly ModelInfo[] {
 
   for (const provider of Object.keys(state.catalogModels) as Provider[]) {
     const catalog = state.catalogModels[provider] ?? []
-    if (catalog.length > 0) {
-      result.push(...catalog)
-    } else {
-      result.push(...getModelsForProvider(provider))
-    }
+    result.push(...availableModels(provider, catalog, state.catalogStatus[provider]))
   }
 
-  return result.length > 0 ? result : getAllModels()
+  return result
 }

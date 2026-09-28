@@ -4,12 +4,12 @@ import type { TokenUsage } from './types'
 import { useStore } from '@/store'
 
 // Actual pricing from model-registry.ts (used to verify math without re-importing internals)
-const CLAUDE_OPUS_INPUT_PRICE = 0.000015
-const CLAUDE_OPUS_OUTPUT_PRICE = 0.000075
+const CLAUDE_OPUS_INPUT_PRICE = 0.000005
+const CLAUDE_OPUS_OUTPUT_PRICE = 0.000025
 const CLAUDE_SONNET_INPUT_PRICE = 0.000003
 const CLAUDE_SONNET_OUTPUT_PRICE = 0.000015
-const CLAUDE_HAIKU_INPUT_PRICE = 0.0000008
-const CLAUDE_HAIKU_OUTPUT_PRICE = 0.000004
+const CLAUDE_HAIKU_INPUT_PRICE = 0.000001
+const CLAUDE_HAIKU_OUTPUT_PRICE = 0.000005
 
 describe('buildCostMetadata', () => {
   describe('when tokenUsage is undefined', () => {
@@ -99,9 +99,9 @@ describe('buildCostMetadata', () => {
       const usage: TokenUsage = { inputTokens: 100_000, outputTokens: 50_000 }
       const expected = 100_000 * CLAUDE_OPUS_INPUT_PRICE + 50_000 * CLAUDE_OPUS_OUTPUT_PRICE
       const result = buildCostMetadata(usage, 'claude-opus-4-6')
-      // $1.50 input + $3.75 output = $5.25
+      // $0.50 input + $1.25 output = $1.75
       expect(result?.estimatedCost).toBeCloseTo(expected, 6)
-      expect(result?.estimatedCost).toBeCloseTo(5.25, 6)
+      expect(result?.estimatedCost).toBeCloseTo(1.75, 6)
     })
 
     it('handles 1M tokens with gemini-2.0-flash (very small per-token price)', () => {

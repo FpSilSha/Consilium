@@ -1,193 +1,45 @@
-import { describe, it, expect } from 'vitest'
-import { getModelsForProvider, getModelById, getAllModels } from './model-registry'
-
-describe('model-registry', () => {
-  describe('getAllModels', () => {
-    it('returns exactly 12 models', () => {
-      expect(getAllModels()).toHaveLength(12)
-    })
-
-    it('every model has the required fields with correct types', () => {
-      for (const model of getAllModels()) {
-        expect(typeof model.id).toBe('string')
-        expect(model.id.length).toBeGreaterThan(0)
-        expect(typeof model.name).toBe('string')
-        expect(model.name.length).toBeGreaterThan(0)
-        expect(typeof model.provider).toBe('string')
-        expect(typeof model.contextWindow).toBe('number')
-        expect(model.contextWindow).toBeGreaterThan(0)
-        expect(typeof model.inputPricePerToken).toBe('number')
-        expect(typeof model.outputPricePerToken).toBe('number')
-      }
-    })
-
-    it('has no duplicate IDs', () => {
-      const ids = getAllModels().map((m) => m.id)
-      const uniqueIds = new Set(ids)
-      expect(uniqueIds.size).toBe(ids.length)
-    })
-
-    it('output price is always >= input price for every model (pricing sanity)', () => {
-      for (const model of getAllModels()) {
-        expect(model.outputPricePerToken).toBeGreaterThanOrEqual(model.inputPricePerToken)
-      }
-    })
-
-    it('all 5 providers are represented', () => {
-      const providers = new Set(getAllModels().map((m) => m.provider))
-      expect(providers).toContain('anthropic')
-      expect(providers).toContain('openai')
-      expect(providers).toContain('google')
-      expect(providers).toContain('xai')
-      expect(providers).toContain('deepseek')
-    })
-
-    it('returns a readonly reference (same object on repeated calls)', () => {
-      expect(getAllModels()).toBe(getAllModels())
-    })
+import { describe, expect, it } from 'vitest'
+import { getAllModels, getModelById, getModelsForProvider } from './model-registry'
+describe('offline model registry', () => {
+  it('covers all direct providers with current fallback choices', () => {
+    for (const provider of ['anthropic', 'openai', 'google', 'xai', 'deepseek'] as const) {
+      expect(getModelsForProvider(provider).length).toBeGreaterThan(0)
+      expect(getModelsForProvider(provider).every((model) => model.provider === provider)).toBe(true)
+    }
+    for (const id of ['claude-fable-5-1', 'claude-opus-5', 'claude-sonnet-5', 'gpt-6-astra', 'gemini-3.8-flash', 'grok-4.7', 'deepseek-flash']) {
+      expect(getAllModels().some((model) => model.id === id)).toBe(true)
+    }
   })
-
-  describe('getModelsForProvider', () => {
-    it('returns only anthropic models and there are exactly 3', () => {
-      const models = getModelsForProvider('anthropic')
-      expect(models).toHaveLength(3)
-      for (const m of models) {
-        expect(m.provider).toBe('anthropic')
-      }
-    })
-
-    it('returns only openai models and there are exactly 3', () => {
-      const models = getModelsForProvider('openai')
-      expect(models).toHaveLength(3)
-      for (const m of models) {
-        expect(m.provider).toBe('openai')
-      }
-    })
-
-    it('returns only google models and there are exactly 2', () => {
-      const models = getModelsForProvider('google')
-      expect(models).toHaveLength(2)
-      for (const m of models) {
-        expect(m.provider).toBe('google')
-      }
-    })
-
-    it('returns only xai models and there are exactly 2', () => {
-      const models = getModelsForProvider('xai')
-      expect(models).toHaveLength(2)
-      for (const m of models) {
-        expect(m.provider).toBe('xai')
-      }
-    })
-
-    it('returns only deepseek models and there are exactly 2', () => {
-      const models = getModelsForProvider('deepseek')
-      expect(models).toHaveLength(2)
-      for (const m of models) {
-        expect(m.provider).toBe('deepseek')
-      }
-    })
-
-    it('returns an empty array for an unknown provider', () => {
-      // Cast needed to pass a value outside the union for this edge-case test
-      const result = getModelsForProvider('unknown-provider' as Parameters<typeof getModelsForProvider>[0])
-      expect(result).toEqual([])
-    })
-
-    it('provider filter is case-sensitive — wrong case returns empty array', () => {
-      const result = getModelsForProvider('Anthropic' as Parameters<typeof getModelsForProvider>[0])
-      expect(result).toEqual([])
-    })
-
-    it('all models returned by provider are also present in getAllModels()', () => {
-      const all = getAllModels()
-      for (const provider of ['anthropic', 'openai', 'google', 'xai', 'deepseek'] as const) {
-        for (const m of getModelsForProvider(provider)) {
-          expect(all).toContainEqual(m)
-        }
-      }
-    })
+  it('has unique IDs and valid numeric metadata', () => {
+    const models = getAllModels()
+    expect(new Set(models.map((model) => model.id)).size).toBe(models.length)
+    for (const model of models) {
+      expect(model.name.trim()).not.toBe('')
+      expect(model.contextWindow).toBeGreaterThan(0)
+      expect(model.inputPricePerToken).toBeGreaterThanOrEqual(0)
+      expect(model.outputPricePerToken).toBeGreaterThanOrEqual(0)
+    }
   })
-
-  describe('getModelById', () => {
-    it('returns the correct model for claude-opus-4-6 with all pricing fields', () => {
-      const model = getModelById('claude-opus-4-6')
-      expect(model).toBeDefined()
-      expect(model?.id).toBe('claude-opus-4-6')
-      expect(model?.name).toBe('Claude Opus 4.6')
-      expect(model?.provider).toBe('anthropic')
-      expect(model?.contextWindow).toBe(200000)
-      expect(model?.inputPricePerToken).toBe(0.000015)
-      expect(model?.outputPricePerToken).toBe(0.000075)
-    })
-
-    it('returns the correct model for claude-sonnet-4-6', () => {
-      const model = getModelById('claude-sonnet-4-6')
-      expect(model).toBeDefined()
-      expect(model?.provider).toBe('anthropic')
-      expect(model?.inputPricePerToken).toBe(0.000003)
-      expect(model?.outputPricePerToken).toBe(0.000015)
-    })
-
-    it('returns the correct model for gpt-4o', () => {
-      const model = getModelById('gpt-4o')
-      expect(model).toBeDefined()
-      expect(model?.provider).toBe('openai')
-      expect(model?.contextWindow).toBe(128000)
-    })
-
-    it('returns the correct model for gemini-2.0-flash with 1M context window', () => {
-      const model = getModelById('gemini-2.0-flash')
-      expect(model).toBeDefined()
-      expect(model?.provider).toBe('google')
-      expect(model?.contextWindow).toBe(1000000)
-    })
-
-    it('returns the correct model for grok-3', () => {
-      const model = getModelById('grok-3')
-      expect(model).toBeDefined()
-      expect(model?.provider).toBe('xai')
-      expect(model?.contextWindow).toBe(131072)
-    })
-
-    it('returns the correct model for deepseek-reasoner', () => {
-      const model = getModelById('deepseek-reasoner')
-      expect(model).toBeDefined()
-      expect(model?.provider).toBe('deepseek')
-      expect(model?.contextWindow).toBe(128000)
-    })
-
-    it('returns undefined for a completely unknown model ID', () => {
-      expect(getModelById('does-not-exist')).toBeUndefined()
-    })
-
-    it('returns undefined for an empty string', () => {
-      expect(getModelById('')).toBeUndefined()
-    })
-
-    it('is case-sensitive — upper-cased ID returns undefined', () => {
-      expect(getModelById('Claude-Opus-4-6')).toBeUndefined()
-      expect(getModelById('GPT-4O')).toBeUndefined()
-    })
-
-    it('all 12 known IDs resolve to a model', () => {
-      const knownIds = [
-        'claude-opus-4-6',
-        'claude-sonnet-4-6',
-        'claude-haiku-4-5-20251001',
-        'gpt-4o',
-        'gpt-4o-mini',
-        'o3',
-        'gemini-2.0-flash',
-        'gemini-2.5-pro',
-        'grok-3',
-        'grok-3-mini',
-        'deepseek-chat',
-        'deepseek-reasoner',
-      ]
-      for (const id of knownIds) {
-        expect(getModelById(id), `Expected model for id: ${id}`).toBeDefined()
-      }
-    })
+  it('keeps historical sessions readable without suggesting retired models', () => {
+    expect(getModelById('gemini-2.0-flash')?.contextWindow).toBe(1000000)
+    expect(getModelsForProvider('google').some((model) => model.id === 'gemini-2.0-flash')).toBe(false)
+    expect(getModelById('deepseek-chat')).toBeDefined()
+  })
+  it('prefers live metadata and does not duplicate fallback records', () => {
+    const updated = { ...getModelById('claude-opus-4-6')!, contextWindow: 12345 }
+    expect(getModelById(updated.id, [updated])).toBe(updated)
+    expect(getAllModels([updated]).filter((model) => model.id === updated.id)).toEqual([updated])
+  })
+  it('corrects Opus 4.6 and Haiku 4.5 base prices', () => {
+    expect(getModelById('claude-opus-4-6')).toMatchObject({ inputPricePerToken: 0.000005, outputPricePerToken: 0.000025 })
+    expect(getModelById('claude-haiku-4-5-20251001')).toMatchObject({ inputPricePerToken: 0.000001, outputPricePerToken: 0.000005 })
+  })
+  it('does not invent prices for models with only verified IDs', () => {
+    expect(getModelById('deepseek-flash')?.pricingKnown).toBe(false)
+  })
+  it('handles missing IDs and preserves the fallback reference', () => {
+    expect(getModelById('does-not-exist')).toBeUndefined()
+    expect(getModelsForProvider('openrouter')).toEqual([])
+    expect(getAllModels()).toBe(getAllModels())
   })
 })
