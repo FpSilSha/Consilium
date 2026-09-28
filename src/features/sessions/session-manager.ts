@@ -113,7 +113,9 @@ function sessionWindowToAdvisor(
     : null
 
   const key = state.keys.find((k) => k.id === sw.keyId)
-  const keyError = key === undefined
+  // The subscription runtime owns authentication; installation/sign-in is
+  // checked by transport readiness. Empty key IDs alone do not imply this mode.
+  const keyError = sw.provider !== 'claude-subscription' && key === undefined
     ? `API key for ${sw.provider} not found. Configure a key.`
     : null
 

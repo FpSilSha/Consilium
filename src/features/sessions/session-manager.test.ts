@@ -40,6 +40,41 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('session persistence', () => {
+  it('restores a keyless Claude subscription advisor without requiring a runtime or API key', () => {
+    restoreSession({
+      ...legacySession(),
+      windows: [{ ...advisor, provider: 'claude-subscription', keyId: '', personaFilename: '' }],
+    })
+    expect(useStore.getState().windows['advisor-1']).toMatchObject({
+      provider: 'claude-subscription', keyId: '', error: null,
+    })
+    const saved = buildSessionFile()
+    expect(saved.windows[0]).toMatchObject({ provider: 'claude-subscription', keyId: '' })
+    restoreSession(saved)
+    expect(useStore.getState().windows['advisor-1']?.error).toBeNull()
+  })
+
+  it.each(['openai', 'anthropic', 'custom', 'unknown-provider'])(
+    'keeps missing-key errors for %s instead of inferring a subscription from an empty key',
+    (provider) => {
+      restoreSession({
+        ...legacySession(),
+        windows: [{ ...advisor, provider, keyId: '', personaFilename: '' }],
+      })
+      expect(useStore.getState().windows['advisor-1']?.error).toBe(
+        `API key for ${provider} not found. Configure a key.`,
+      )
+    },
+  )
+
+  it('still reports a missing persona for a subscription advisor', () => {
+    restoreSession({
+      ...legacySession(),
+      windows: [{ ...advisor, provider: 'claude-subscription', keyId: '', personaId: 'missing', personaFilename: '' }],
+    })
+    expect(useStore.getState().windows['advisor-1']?.error).toContain('Persona "Advisor" not found')
+  })
+
   it('round-trips budget, summaries, turn settings, messages, and compile spending', () => {
     const state = useStore.getState()
     state.setCurrentSessionId('current-session')
