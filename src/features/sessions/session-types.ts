@@ -1,4 +1,4 @@
-import type { Message, AdvisorWindow, TurnMode, QueueCard } from '@/types'
+import type { Message, TurnMode, QueueCard } from '@/types'
 
 export interface SessionAutoCompaction {
   readonly enabled: boolean
@@ -10,7 +10,7 @@ export interface SessionAutoCompaction {
 }
 
 export interface SessionFile {
-  readonly version: 1
+  readonly version: 1 | 2
   readonly id: string
   readonly name: string
   readonly createdAt: number
@@ -22,6 +22,9 @@ export interface SessionFile {
   readonly turnMode: TurnMode
   readonly sessionInstructions: string
   readonly totalCost: number
+  /** Version 2 writes these fields; version 1 defaults to unlimited/zero. */
+  readonly sessionBudget?: number
+  readonly loopCount?: number
   readonly inputFiles: readonly SessionFileRef[]
   readonly outputFiles: readonly SessionFileRef[]
   /** Optional — older session files won't have this. Restored as off/null when absent. */
@@ -55,6 +58,8 @@ export interface SessionWindow {
   readonly accentColor: string
   readonly runningCost: number
   readonly isCompacted: boolean
+  /** Older files omitted the summary even when isCompacted was true. */
+  readonly compactedSummary?: string | null
   readonly bufferSize: number
 }
 
