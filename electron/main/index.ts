@@ -839,7 +839,7 @@ app.whenReady().then(() => {
   migrateCustomData()
   createAppMenu()
   registerIpcHandlers()
-  registerLocalAgentIpc(ipcMain, app, nodeRunnerDeps)
+  registerLocalAgentIpc(createTrustedIpc(ipcMain, RENDERER), app, nodeRunnerDeps)
   createWindow()
   setupContextMenu()
 

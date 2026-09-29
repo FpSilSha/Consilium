@@ -1,10 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
-import { pathToFileURL } from 'node:url'
 import { LOCAL_AGENT_CHANNELS } from '../../../shared/local-agent/protocol'
-import { createLocalAgentHandlers, isTrustedRendererUrl } from './ipc'
+import { createLocalAgentHandlers, registerLocalAgentIpc } from './ipc'
 import type { ChildProcessLike, RunnerDeps } from './runner'
 
 vi.mock('electron', () => ({}))
@@ -96,43 +93,26 @@ describe('local-agent IPC handlers', () => {
   })
 })
 
-describe('isTrustedRendererUrl', () => {
-  const rendererPath = join(tmpdir(), 'Apps [old]', 'CONSIL~1', 'dist', 'renderer', 'index.html')
-  const encodedUrl = pathToFileURL(rendererPath).href
-  // Chromium's canonical form keeps [ ] ~ literal where Node percent-encodes them.
-  const chromiumUrl = encodedUrl.replace(/%5B/gi, '[').replace(/%5D/gi, ']').replace(/%7E/gi, '~')
-
-  it('trusts the packaged renderer file however the URL is encoded, ignoring hash and query', () => {
-    expect(isTrustedRendererUrl(encodedUrl, rendererPath, undefined)).toBe(true)
-    expect(isTrustedRendererUrl(chromiumUrl, rendererPath, undefined)).toBe(true)
-    expect(isTrustedRendererUrl(`${chromiumUrl}#/chat`, rendererPath, undefined)).toBe(true)
-    expect(isTrustedRendererUrl(`${chromiumUrl}?x=1`, rendererPath, undefined)).toBe(true)
-  })
-
-  it.runIf(process.platform === 'win32')('ignores drive-letter and path case on Windows', () => {
-    const lowerDrive = rendererPath.replace(/^([A-Z]):/, (_m, d: string) => `${d.toLowerCase()}:`)
-    expect(isTrustedRendererUrl(pathToFileURL(rendererPath).href, lowerDrive, undefined)).toBe(true)
-  })
-
-  it('rejects a file URL with a host, other local files, and remote pages', () => {
-    expect(isTrustedRendererUrl(`file://otherhost${new URL(encodedUrl).pathname}`, rendererPath, undefined)).toBe(false)
-    expect(isTrustedRendererUrl(pathToFileURL(join(tmpdir(), 'evil.html')).href, rendererPath, undefined)).toBe(false)
-    expect(isTrustedRendererUrl('https://example.com/', rendererPath, undefined)).toBe(false)
-    expect(isTrustedRendererUrl('not a url', rendererPath, undefined)).toBe(false)
-  })
-
-  it('trusts the dev server origin only when one is configured', () => {
-    expect(isTrustedRendererUrl('http://localhost:5173/#/x', rendererPath, 'http://localhost:5173')).toBe(true)
-    expect(isTrustedRendererUrl('http://localhost:5174/', rendererPath, 'http://localhost:5173')).toBe(false)
-    expect(isTrustedRendererUrl('http://localhost:5173/', rendererPath, undefined)).toBe(false)
-  })
-})
-
 describe('readiness over IPC', () => {
   it('never includes the account email', async () => {
     const { handlers } = setup()
     const readiness = await handlers.readiness('claude-code')
     expect(readiness).toEqual({ state: 'ready', runtimeVersion: '2.1.284' })
     expect(JSON.stringify(readiness)).not.toContain('example.com')
+  })
+})
+
+describe('registerLocalAgentIpc', () => {
+  it('registers the three channels through the trusted wrapper and cancels on renderer loss and quit', async () => {
+    const { deps } = setup()
+    const registered = new Map<string, (...args: unknown[]) => unknown>()
+    const ipc = { handle: (channel: string, listener: (...args: unknown[]) => unknown) => { registered.set(channel, listener) } }
+    const appEvents: string[] = []
+    const app = { on: (name: string) => { appEvents.push(name); return app } }
+    registerLocalAgentIpc(ipc as never, app as never, deps)
+    expect([...registered.keys()].sort()).toEqual([LOCAL_AGENT_CHANNELS.cancel, LOCAL_AGENT_CHANNELS.readiness, LOCAL_AGENT_CHANNELS.start].sort())
+    expect(appEvents.sort()).toEqual(['before-quit', 'web-contents-created'])
+    const readiness = await registered.get(LOCAL_AGENT_CHANNELS.readiness)!({}, 'claude-code')
+    expect(readiness).toEqual({ state: 'ready', runtimeVersion: '2.1.284' })
   })
 })
