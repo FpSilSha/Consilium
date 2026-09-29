@@ -7,6 +7,7 @@ import { googleAdapter } from './adapters/google'
 import { xaiAdapter, deepseekAdapter, openrouterAdapter } from './adapters/openai-compatible'
 import { compileCustomAdapter } from './adapters/custom'
 import { useStore } from '@/store'
+import { streamLocalAgent, defaultLocalAgentDeps, CLAUDE_SUBSCRIPTION_PROVIDER } from './local-agent'
 
 const adapters: Readonly<Record<KnownProvider, ProviderAdapter>> = {
   anthropic: anthropicAdapter,
@@ -26,6 +27,9 @@ export function evictAdapterCache(id: string): void {
 }
 
 export function getAdapter(provider: Provider, baseUrl?: string, adapterDefinitionId?: string): ProviderAdapter {
+  if (provider === CLAUDE_SUBSCRIPTION_PROVIDER) {
+    throw new Error('Claude subscription advisors run through the local Claude Code runtime, not an HTTP adapter')
+  }
   if (provider === 'custom') {
     // Check for a custom adapter definition first
     if (adapterDefinitionId != null && adapterDefinitionId !== '') {
@@ -65,6 +69,13 @@ export interface StreamCallbacks {
   onChunk: (content: string) => void
   onDone: (fullContent: string, tokenUsage?: StreamChunk['tokenUsage']) => void
   onError: (error: string, tokenUsage?: StreamChunk['tokenUsage'], statusCode?: number) => void
+  /**
+   * The conversation changed (another session loaded or a new one started)
+   * before the turn finished. The request is already cancelled; the caller
+   * should release its own bookkeeping without writing to the store.
+   * Only local-agent turns report this; HTTP turns rely on abort.
+   */
+  onStale?: () => void
 }
 
 /** Returns true for HTTP status codes that indicate a transient/retriable error. */
@@ -85,6 +96,12 @@ export function streamResponse(
   config: ApiRequestConfig,
   callbacks: StreamCallbacks,
 ): AbortController {
+  // Subscription advisors never use HTTP or an API key; they stream from the
+  // user's own Claude Code install via the Electron main process.
+  if (config.provider === CLAUDE_SUBSCRIPTION_PROVIDER) {
+    return streamLocalAgent(config, callbacks, defaultLocalAgentDeps())
+  }
+
   const controller = new AbortController()
   const adapter = getAdapter(config.provider, config.baseUrl, config.adapterDefinitionId)
 

@@ -9,6 +9,7 @@ import { performPersonaSwitch } from '@/features/compaction'
 import { retryAdvisor, createAgentCard } from '@/features/turnManager'
 import { getDisplayLabel } from '@/features/windows/display-labels'
 import { PersonaPreview } from './PersonaPreview'
+import { ClaudeSubscriptionStatus } from '@/features/modelSelector/ClaudeSubscriptionStatus'
 
 const PROVIDERS: readonly { readonly value: Provider; readonly label: string }[] = [
   { value: 'anthropic', label: 'Anthropic' },
@@ -18,6 +19,7 @@ const PROVIDERS: readonly { readonly value: Provider; readonly label: string }[]
   { value: 'deepseek', label: 'DeepSeek' },
   { value: 'openrouter', label: 'OpenRouter' },
   { value: 'custom', label: 'Custom' },
+  { value: 'claude-subscription', label: 'Claude subscription (Claude Code)' },
 ]
 
 interface AdvisorListItemProps {
@@ -220,6 +222,7 @@ export function AdvisorListItem({ advisor }: AdvisorListItemProps): ReactNode {
             <option key={p.value} value={p.value}>{p.label}</option>
           ))}
         </select>
+        {selectedProvider === 'claude-subscription' && <ClaudeSubscriptionStatus />}
 
         {/* Model select */}
         <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-content-disabled">

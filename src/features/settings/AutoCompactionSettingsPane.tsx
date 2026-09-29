@@ -198,7 +198,8 @@ export function AutoCompactionSettingsPane(): ReactNode {
                 </p>
                 {windowOrder.map((id) => {
                   const win = windows[id]
-                  if (win == null) return null
+                  // Summaries need an API key; subscription advisors can't run them yet.
+                  if (win == null || win.provider === 'claude-subscription') return null
                   const isSelected =
                     draftEnabled &&
                     draftConfig?.keyId === win.keyId &&

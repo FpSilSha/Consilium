@@ -13,6 +13,8 @@ import { loadCustomCompactPrompts, saveCustomCompactPrompt, deleteCustomCompactP
 import { loadCustomProviders, saveCustomProviders, isValidProvider, type CustomProviderDef } from './custom-providers-store'
 import { loadCustomModels, saveCustomModels, addCustomModelId } from './custom-models-store'
 import { loadDocument, saveDocument, deleteDocument, isValidDocument } from './documents-store'
+import { registerLocalAgentIpc } from './claude-cli/ipc'
+import { nodeRunnerDeps } from './claude-cli/node-deps'
 
 // ── App Configuration ─────────────────────────────────────────
 
@@ -837,6 +839,7 @@ app.whenReady().then(() => {
   migrateCustomData()
   createAppMenu()
   registerIpcHandlers()
+  registerLocalAgentIpc(ipcMain, app, nodeRunnerDeps)
   createWindow()
   setupContextMenu()
 

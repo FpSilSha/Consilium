@@ -124,7 +124,8 @@ export function AutoCompactButton(): ReactNode {
                   <p className="mb-1 mt-1.5 text-[10px] font-medium text-content-disabled">Active Advisors</p>
                   {windowOrder.map((id) => {
                     const win = windows[id]
-                    if (win == null) return null
+                    // Summaries need an API key; subscription advisors can't run them yet.
+                    if (win == null || win.provider === 'claude-subscription') return null
                     const isSelected = enabled && config?.keyId === win.keyId && config?.model === win.model
                     return (
                       <button

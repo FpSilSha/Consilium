@@ -1,4 +1,4 @@
-export type Provider = 'anthropic' | 'openai' | 'google' | 'xai' | 'deepseek' | 'openrouter' | 'custom'
+export type Provider = 'anthropic' | 'openai' | 'google' | 'xai' | 'deepseek' | 'openrouter' | 'custom' | 'claude-subscription'
 
 export interface ApiKey {
   readonly id: string

@@ -21,6 +21,7 @@ export const DIRECT_FETCHERS = {
 export async function fetchProviderCatalog(provider: Provider, apiKey: string, signal?: AbortSignal): Promise<CatalogFetchResult> {
   if (provider === 'openrouter') return fetchOpenRouterCatalog(signal)
   if (provider === 'custom') return { provider, models: [], error: 'Use the custom provider model endpoint' }
+  if (provider === 'claude-subscription') return { provider, models: [], error: 'Subscription models come from the local Claude Code runtime' }
   return DIRECT_FETCHERS[provider](apiKey, signal)
 }
 

@@ -12,6 +12,24 @@ const CLAUDE_HAIKU_INPUT_PRICE = 0.000001
 const CLAUDE_HAIKU_OUTPUT_PRICE = 0.000005
 
 describe('buildCostMetadata', () => {
+  describe('for a Claude subscription advisor', () => {
+    it('marks usage as subscription and never applies the API price of the same model', () => {
+      expect(buildCostMetadata({ inputTokens: 1000, outputTokens: 500 }, 'claude-opus-4-6', 'claude-subscription')).toEqual({
+        inputTokens: 1000, outputTokens: 500, estimatedCost: 0, isEstimate: false, billing: 'subscription',
+      })
+    })
+
+    it('returns undefined without usage instead of a confirmed zero', () => {
+      expect(buildCostMetadata(undefined, 'claude-opus-4-6', 'claude-subscription')).toBeUndefined()
+    })
+
+    it('leaves API-billed providers unchanged (no billing marker)', () => {
+      const meta = buildCostMetadata({ inputTokens: 1000, outputTokens: 500 }, 'claude-opus-4-6', 'anthropic')
+      expect(meta?.estimatedCost).toBeGreaterThan(0)
+      expect(meta?.billing).toBeUndefined()
+    })
+  })
+
   describe('when tokenUsage is undefined', () => {
     it('returns undefined for a known PAID model', () => {
       // We don't fabricate token counts — paid models without usage data

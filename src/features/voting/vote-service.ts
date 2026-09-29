@@ -6,6 +6,7 @@ import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
 import { resolveAdvisorSystemPrompt } from '@/features/systemPrompts/system-prompt-resolver'
 import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { getRawKey } from '@/features/keys/key-vault'
+import { resolveAdvisorCredential } from '@/services/api/local-agent/advisor-credential'
 import type { AdvisorVote, VoteTally } from './vote-types'
 import { parseVoteResponse, tallyVotes } from './vote-parser'
 
@@ -106,11 +107,10 @@ async function collectVoteFromWindow(
   const window = state.windows[windowId]
   if (window === undefined) return null
 
-  const key = state.keys.find((k) => k.id === window.keyId)
-  if (key === undefined) return null
-
-  const apiKey = getRawKey(key.id)
-  if (apiKey === null) return null
+  const credential = resolveAdvisorCredential(window, state.keys, getRawKey)
+  if (credential.kind === 'missing-key' || credential.kind === 'unreadable-key') return null
+  // Votes have always sent only the key (no custom baseUrl); that is unchanged here.
+  const apiKey = credential.kind === 'api-key' ? credential.apiKey : ''
 
   const persona = state.personas.find((p) => p.id === window.personaId)
   const advisorPromptOverride = resolveAdvisorSystemPrompt(state.systemPromptsConfig, state.customSystemPrompts)
@@ -165,6 +165,11 @@ async function collectVoteFromWindow(
               window.accentColor,
             )
             resolve(vote)
+          },
+          onStale: () => {
+            // The conversation changed; count as no vote without touching the new session.
+            if (ctrl != null) activeVoteControllers.delete(ctrl)
+            resolve(null)
           },
           onError: (error) => {
             if (ctrl != null) activeVoteControllers.delete(ctrl)

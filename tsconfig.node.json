@@ -7,5 +7,5 @@
     "target": "ES2022",
     "outDir": "./dist/main"
   },
-  "include": ["electron/**/*"]
+  "include": ["electron/**/*", "shared/**/*"]
 }

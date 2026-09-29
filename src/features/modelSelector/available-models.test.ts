@@ -9,4 +9,9 @@ describe('available models', () => {
     const cached = [{ id: 'future', name: 'Future', provider: 'openai' as const, contextWindow: 0, inputPricePerToken: 0, outputPricePerToken: 0 }]
     expect(availableModels('openai', cached, 'error')).toBe(cached)
   })
+  it('offers the fixed subscription list for Claude subscription advisors, never priced as free', () => {
+    const models = availableModels('claude-subscription', [], 'idle')
+    expect(models.map((m) => m.id)).toEqual(['claude-opus-5-5', 'claude-fable-5-1', 'claude-sonnet-5-5', 'claude-haiku-4-5'])
+    expect(models.every((m) => m.provider === 'claude-subscription' && m.pricingKnown === false)).toBe(true)
+  })
 })

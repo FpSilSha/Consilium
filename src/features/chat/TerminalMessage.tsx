@@ -21,7 +21,9 @@ export function TerminalMessage({ message, accentColor }: TerminalMessageProps):
       <span className="whitespace-pre-wrap text-content-primary">{message.content}</span>
       {message.costMetadata !== undefined && (
         <span className="ml-2 text-xs text-content-disabled">
-          [~${message.costMetadata.estimatedCost.toFixed(4)}]
+          {message.costMetadata.billing === 'subscription'
+            ? '[subscription]'
+            : `[~$${message.costMetadata.estimatedCost.toFixed(4)}]`}
         </span>
       )}
     </div>

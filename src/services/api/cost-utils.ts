@@ -22,7 +22,22 @@ import { resolvePrice } from '@/features/modelCatalog/price-resolver'
 export function buildCostMetadata(
   tokenUsage: TokenUsage | undefined,
   modelId: string,
+  provider?: string,
 ): CostMetadata | undefined {
+  // Subscription usage is never priced from the API catalog, even though the
+  // model ID (e.g. claude-opus-5-5) has an API price. Without usage data there
+  // is nothing to report; zero is never fabricated.
+  if (provider === 'claude-subscription') {
+    if (tokenUsage == null) return undefined
+    return {
+      inputTokens: tokenUsage.inputTokens,
+      outputTokens: tokenUsage.outputTokens,
+      estimatedCost: 0,
+      isEstimate: false,
+      billing: 'subscription',
+    }
+  }
+
   const price = resolvePrice(modelId)
 
   if (tokenUsage == null) {

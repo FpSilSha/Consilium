@@ -79,7 +79,8 @@ export function MainThreadCompactButton(): ReactNode {
               <p className="mb-1 text-[10px] font-medium text-content-disabled">Active Advisors</p>
               {windowOrder.map((id) => {
                 const win = windows[id]
-                if (win == null) return null
+                // Summaries need an API key; subscription advisors can't run them yet.
+                if (win == null || win.provider === 'claude-subscription') return null
                 return (
                   <button
                     key={id}

@@ -7,6 +7,7 @@ import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
 import { resolveAdvisorSystemPrompt } from '@/features/systemPrompts/system-prompt-resolver'
 import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { buildCostMetadata } from '@/services/api/cost-utils'
+import { resolveAdvisorCredential, credentialRequestFields } from '@/services/api/local-agent/advisor-credential'
 import { getRawKey } from '@/features/keys/key-vault'
 import { isBudgetExceeded } from '@/features/budget/budget-engine'
 import { computeDisplayLabels } from '@/features/windows/display-labels'
@@ -19,7 +20,8 @@ import {
   completeUserTurn,
 } from './turn-engine'
 
-const activeControllers = new Map<string, { controller: AbortController; windowId: string }>()
+// `provider` and `model` are what the request was sent with; billing must use them even if the advisor is edited mid-stream.
+const activeControllers = new Map<string, { controller: AbortController; windowId: string; provider: string; model: string }>()
 
 /** Tracks cards that have been auto-retried this run cycle (max 1 retry per card). */
 const retriedCards = new Set<string>()
@@ -100,7 +102,7 @@ export function stopAll(): void {
   const entries = [...activeControllers.entries()]
   activeControllers.clear()
   const state = useStore.getState()
-  for (const [cardId, { controller, windowId }] of entries) {
+  for (const [cardId, { controller, windowId, provider, model }] of entries) {
     controller.abort()
     state.removeActiveCard(cardId)
 
@@ -111,7 +113,7 @@ export function stopAll(): void {
     const win = useStore.getState().windows[windowId]
     if (win != null && win.streamContent.trim() !== '') {
       const partialContent = `${win.streamContent.trim()}\n\n*(response cut off)*`
-      const costMeta = buildCostMetadata(undefined, win.model)
+      const costMeta = buildCostMetadata(undefined, model, provider)
       const message = createAssistantMessage(
         partialContent,
         win.personaLabel,
@@ -183,8 +185,8 @@ function dispatchAgentTurn(card: QueueCard): void {
   }
 
   // Validate key and persona before marking card as active
-  const key = state.keys.find((k) => k.id === window.keyId)
-  if (key === undefined) {
+  const credential = resolveAdvisorCredential(window, state.keys, getRawKey)
+  if (credential.kind === 'missing-key') {
     const errMsg = 'API key not found'
     state.setCardStatus(card.id, 'errored', errMsg)
     state.updateWindow(card.windowId, { isStreaming: false, error: errMsg })
@@ -193,8 +195,7 @@ function dispatchAgentTurn(card: QueueCard): void {
     return
   }
 
-  const apiKey = getRawKey(key.id)
-  if (apiKey === null) {
+  if (credential.kind === 'unreadable-key') {
     const errMsg = 'Could not retrieve API key'
     state.setCardStatus(card.id, 'errored', errMsg)
     state.updateWindow(card.windowId, { isStreaming: false, error: errMsg })
@@ -243,7 +244,7 @@ function dispatchAgentTurn(card: QueueCard): void {
 
       const current = useStore.getState()
       const freshWindow = current.windows[card.windowId]
-      const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
+      const costMeta = buildCostMetadata(tokenUsage, window.model, window.provider)
 
       const message = createAssistantMessage(
         fullContent,
@@ -264,6 +265,10 @@ function dispatchAgentTurn(card: QueueCard): void {
       // Use queueMicrotask to avoid unbounded recursive call stack
       queueMicrotask(onTurnComplete)
     },
+    onStale: () => {
+      // Another conversation is loaded now; its queue and windows are not ours to touch.
+      activeControllers.delete(card.id)
+    },
     onError: (error, tokenUsage, statusCode) => {
       activeControllers.delete(card.id)
 
@@ -272,7 +277,7 @@ function dispatchAgentTurn(card: QueueCard): void {
 
       const current = useStore.getState()
       const freshWindow = current.windows[card.windowId]
-      const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
+      const costMeta = buildCostMetadata(tokenUsage, window.model, window.provider)
 
       // Auto-retry once on transient errors if enabled
       if (
@@ -326,16 +331,14 @@ function dispatchAgentTurn(card: QueueCard): void {
     {
       provider: window.provider,
       model: window.model,
-      apiKey,
+      ...credentialRequestFields(credential),
       systemPrompt,
       messages: threadMessages,
-      ...(key.baseUrl != null ? { baseUrl: key.baseUrl } : {}),
-      ...(key.adapterDefinitionId != null ? { adapterDefinitionId: key.adapterDefinitionId } : {}),
     },
     callbacks,
   )
 
-  activeControllers.set(card.id, { controller, windowId: card.windowId })
+  activeControllers.set(card.id, { controller, windowId: card.windowId, provider: window.provider, model: window.model })
   useStore.getState().updateWindow(card.windowId, { isStreaming: true, streamContent: '', error: null })
 }
 

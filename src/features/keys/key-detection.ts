@@ -1,7 +1,8 @@
 import type { Provider } from '@/types'
 
 /** Providers that have known API endpoints for key validation (excludes 'custom') */
-export type KnownProvider = Exclude<Provider, 'custom'>
+/** Providers authenticated with an API key. The subscription seat has no key. */
+export type KnownProvider = Exclude<Provider, 'custom' | 'claude-subscription'>
 
 interface DetectionResult {
   readonly provider: KnownProvider

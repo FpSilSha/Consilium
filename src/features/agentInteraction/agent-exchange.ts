@@ -6,6 +6,7 @@ import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
 import { resolveAdvisorSystemPrompt } from '@/features/systemPrompts/system-prompt-resolver'
 import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { buildCostMetadata } from '@/services/api/cost-utils'
+import { resolveAdvisorCredential, credentialRequestFields } from '@/services/api/local-agent/advisor-credential'
 import { getRawKey } from '@/features/keys/key-vault'
 import { isBudgetExceeded } from '@/features/budget/budget-engine'
 import { resolveMentionTargets, cleanMentions } from './mention-router'
@@ -89,15 +90,14 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
       return
     }
 
-    const key = state.keys.find((k) => k.id === window.keyId)
-    if (key === undefined) {
+    const credential = resolveAdvisorCredential(window, state.keys, getRawKey)
+    if (credential.kind === 'missing-key') {
       state.updateWindow(windowId, { isStreaming: false, error: 'API key not found' })
       resolve(false)
       return
     }
 
-    const apiKey = getRawKey(key.id)
-    if (apiKey === null) {
+    if (credential.kind === 'unreadable-key') {
       state.updateWindow(windowId, { isStreaming: false, error: 'Could not retrieve API key' })
       resolve(false)
       return
@@ -142,7 +142,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
 
         const current = useStore.getState()
         const freshWindow = current.windows[windowId]
-        const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
+        const costMeta = buildCostMetadata(tokenUsage, window.model, window.provider)
         const message = createAssistantMessage(
           fullContent,
           freshWindow?.personaLabel ?? window.personaLabel,
@@ -159,6 +159,11 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
 
         resolve(false)
       },
+      onStale: () => {
+        // The conversation changed; settle without writing into the new one.
+        activeExchangeControllers.delete(windowId)
+        resolve(true)
+      },
       onError: (error, tokenUsage) => {
         activeExchangeControllers.delete(windowId)
 
@@ -170,7 +175,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
 
         const current = useStore.getState()
         const freshWindow = current.windows[windowId]
-        const errorCostMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
+        const errorCostMeta = buildCostMetadata(tokenUsage, window.model, window.provider)
 
         current.updateWindow(windowId, {
           isStreaming: false,
@@ -187,12 +192,10 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
       {
         provider: window.provider,
         model: window.model,
-        apiKey,
+        ...credentialRequestFields(credential),
         systemPrompt,
         messages,
         signal: controller.signal,
-        ...(key.baseUrl != null ? { baseUrl: key.baseUrl } : {}),
-        ...(key.adapterDefinitionId != null ? { adapterDefinitionId: key.adapterDefinitionId } : {}),
       },
       callbacks,
     )
