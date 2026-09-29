@@ -341,8 +341,12 @@ function setupContextMenu(): void {
 }
 
 import { loadEncryptedKeys, saveEncryptedKey, deleteEncryptedKey, isEncryptionAvailable, isValidProviderId } from './key-store'
+import { createTrustedIpc, guardRendererNavigation, resolveRendererLocation } from './renderer-trust'
 
 let mainWindow: BrowserWindow | null = null
+
+// The only page the main window may show, and the only caller IPC handlers serve.
+const RENDERER = resolveRendererLocation(join(__dirname, '../renderer/index.html'), app.isPackaged, process.env)
 
 function createWindow(): void {
   const isMac = process.platform === 'darwin'
@@ -362,10 +366,13 @@ function createWindow(): void {
     },
   })
 
-  if (!app.isPackaged && process.env['ELECTRON_RENDERER_URL'] !== undefined) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+  // A page the window navigated to would still get the preload.
+  guardRendererNavigation(mainWindow.webContents, RENDERER, (url) => shell.openExternal(url))
+
+  if (RENDERER.devServerUrl !== undefined) {
+    mainWindow.loadURL(RENDERER.devServerUrl)
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(RENDERER.rendererFilePath)
   }
 
   mainWindow.on('closed', () => {
@@ -382,11 +389,14 @@ function isPathWithinAllowed(targetPath: string, allowedRoots: readonly string[]
 }
 
 function registerIpcHandlers(): void {
-  ipcMain.handle('get-user-data-path', () => app.getPath('userData'))
+  // Handlers serve only the app's own top-level page; see renderer-trust.ts.
+  const ipc = createTrustedIpc(ipcMain, RENDERER)
+
+  ipc.handle('get-user-data-path', () => app.getPath('userData'))
 
   // ── Window controls ────────────────────────────────────────
-  ipcMain.handle('window:minimize', () => { mainWindow?.minimize() })
-  ipcMain.handle('window:maximize', () => {
+  ipc.handle('window:minimize', () => { mainWindow?.minimize() })
+  ipc.handle('window:maximize', () => {
     if (mainWindow == null) return
     if (mainWindow.isMaximized()) {
       mainWindow.unmaximize()
@@ -394,22 +404,22 @@ function registerIpcHandlers(): void {
       mainWindow.maximize()
     }
   })
-  ipcMain.handle('window:close', () => { mainWindow?.close() })
-  ipcMain.handle('window:is-maximized', () => mainWindow?.isMaximized() ?? false)
-  ipcMain.handle('window:toggle-devtools', () => { mainWindow?.webContents.toggleDevTools() })
+  ipc.handle('window:close', () => { mainWindow?.close() })
+  ipc.handle('window:is-maximized', () => mainWindow?.isMaximized() ?? false)
+  ipc.handle('window:toggle-devtools', () => { mainWindow?.webContents.toggleDevTools() })
 
-  ipcMain.handle('shell:open-external', (_event, url: unknown) => {
+  ipc.handle('shell:open-external', (_event, url: unknown) => {
     if (typeof url !== 'string') throw new Error('Invalid URL')
     // Only allow http/https URLs to prevent file:// or other protocol abuse
     if (!url.startsWith('https://') && !url.startsWith('http://')) throw new Error('Only http(s) URLs allowed')
     return shell.openExternal(url)
   })
 
-  ipcMain.handle('keys:available', () => isEncryptionAvailable())
+  ipc.handle('keys:available', () => isEncryptionAvailable())
 
-  ipcMain.handle('keys:load', () => loadEncryptedKeys())
+  ipc.handle('keys:load', () => loadEncryptedKeys())
 
-  ipcMain.handle('keys:save', async (_event, providerId: unknown, rawKey: unknown, metadata: unknown) => {
+  ipc.handle('keys:save', async (_event, providerId: unknown, rawKey: unknown, metadata: unknown) => {
     if (typeof providerId !== 'string' || typeof rawKey !== 'string') {
       throw new Error('Invalid arguments: expected (string, string)')
     }
@@ -431,7 +441,7 @@ function registerIpcHandlers(): void {
     saveEncryptedKey(providerId, rawKey, validatedMetadata)
   })
 
-  ipcMain.handle('keys:delete', async (_event, providerId: unknown) => {
+  ipc.handle('keys:delete', async (_event, providerId: unknown) => {
     if (typeof providerId !== 'string') {
       throw new Error('Invalid argument: expected string')
     }
@@ -441,7 +451,7 @@ function registerIpcHandlers(): void {
     deleteEncryptedKey(providerId)
   })
 
-  ipcMain.handle('catalog-prefs:load', () => {
+  ipc.handle('catalog-prefs:load', () => {
     const filePath = join(app.getPath('userData'), 'catalog-preferences.json')
     try {
       const content = readFileSync(filePath, 'utf-8')
@@ -451,7 +461,7 @@ function registerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('catalog-prefs:save', (_event, data: unknown) => {
+  ipc.handle('catalog-prefs:save', (_event, data: unknown) => {
     if (typeof data !== 'object' || data === null || Array.isArray(data)) {
       throw new Error('Invalid catalog preferences format')
     }
@@ -465,7 +475,7 @@ function registerIpcHandlers(): void {
     writeFileSync(filePath, serialized, 'utf-8')
   })
 
-  ipcMain.handle('dialog:save-file', async (_event, defaultName: unknown, content: unknown, filters: unknown) => {
+  ipc.handle('dialog:save-file', async (_event, defaultName: unknown, content: unknown, filters: unknown) => {
     if (mainWindow == null) return false
     if (typeof defaultName !== 'string' || typeof content !== 'string') return false
 
@@ -489,12 +499,12 @@ function registerIpcHandlers(): void {
 
   // ── App config ─────────────────────────────────────────────
 
-  ipcMain.handle('config:load', () => ({
+  ipc.handle('config:load', () => ({
     values: appConfig,
     descriptions: CONFIG_DESCRIPTIONS,
   }))
 
-  ipcMain.handle('config:save', (_event, newConfig: unknown) => {
+  ipc.handle('config:save', (_event, newConfig: unknown) => {
     if (typeof newConfig !== 'object' || newConfig === null || Array.isArray(newConfig)) {
       throw new Error('Invalid config format')
     }
@@ -546,87 +556,87 @@ function registerIpcHandlers(): void {
 
   // ── Custom adapter definitions ─────────────────────────────
 
-  ipcMain.handle('adapters:load', () => loadAdapterDefinitions())
+  ipc.handle('adapters:load', () => loadAdapterDefinitions())
 
-  ipcMain.handle('adapters:save', (_event, def: unknown) => {
+  ipc.handle('adapters:save', (_event, def: unknown) => {
     if (!isValidAdapterDef(def)) throw new Error('Invalid adapter definition: must include id, name, request, response, createdAt, updatedAt')
     saveAdapterDefinition(def)
   })
 
-  ipcMain.handle('adapters:delete', (_event, id: unknown) => {
+  ipc.handle('adapters:delete', (_event, id: unknown) => {
     if (typeof id !== 'string') throw new Error('Invalid adapter ID')
     deleteAdapterDefinition(id)
   })
 
   // ── Custom personas ────────────────────────────────────────
 
-  ipcMain.handle('personas:load', () => loadCustomPersonas())
+  ipc.handle('personas:load', () => loadCustomPersonas())
 
-  ipcMain.handle('personas:save', (_event, persona: unknown) => {
+  ipc.handle('personas:save', (_event, persona: unknown) => {
     if (!isValidCustomPersona(persona)) {
       throw new Error('Invalid custom persona: must include id, name, content, createdAt, updatedAt')
     }
     saveCustomPersona(persona)
   })
 
-  ipcMain.handle('personas:delete', (_event, id: unknown) => {
+  ipc.handle('personas:delete', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '') throw new Error('Invalid persona ID')
     return deleteCustomPersona(id)
   })
 
   // ── Custom system prompts ──────────────────────────────────
 
-  ipcMain.handle('system-prompts:load', () => loadCustomSystemPrompts())
+  ipc.handle('system-prompts:load', () => loadCustomSystemPrompts())
 
-  ipcMain.handle('system-prompts:save', (_event, entry: unknown) => {
+  ipc.handle('system-prompts:save', (_event, entry: unknown) => {
     if (!isValidStoredSystemPrompt(entry)) {
       throw new Error('Invalid system prompt: must include id, category, name, content, createdAt, updatedAt')
     }
     saveCustomSystemPrompt(entry)
   })
 
-  ipcMain.handle('system-prompts:delete', (_event, id: unknown) => {
+  ipc.handle('system-prompts:delete', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '') throw new Error('Invalid system prompt ID')
     return deleteCustomSystemPrompt(id)
   })
 
   // ── Custom compile prompts ─────────────────────────────────
 
-  ipcMain.handle('compile-prompts:load', () => loadCustomCompilePrompts())
+  ipc.handle('compile-prompts:load', () => loadCustomCompilePrompts())
 
-  ipcMain.handle('compile-prompts:save', (_event, entry: unknown) => {
+  ipc.handle('compile-prompts:save', (_event, entry: unknown) => {
     if (!isValidStoredCompilePrompt(entry)) {
       throw new Error('Invalid compile prompt: must include id, label, description, prompt, createdAt, updatedAt')
     }
     saveCustomCompilePrompt(entry)
   })
 
-  ipcMain.handle('compile-prompts:delete', (_event, id: unknown) => {
+  ipc.handle('compile-prompts:delete', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '') throw new Error('Invalid compile prompt ID')
     return deleteCustomCompilePrompt(id)
   })
 
   // ── Custom compact prompts ─────────────────────────────────
 
-  ipcMain.handle('compact-prompts:load', () => loadCustomCompactPrompts())
+  ipc.handle('compact-prompts:load', () => loadCustomCompactPrompts())
 
-  ipcMain.handle('compact-prompts:save', (_event, entry: unknown) => {
+  ipc.handle('compact-prompts:save', (_event, entry: unknown) => {
     if (!isValidStoredCompactPrompt(entry)) {
       throw new Error('Invalid compact prompt: must include id, name, content, createdAt, updatedAt')
     }
     saveCustomCompactPrompt(entry)
   })
 
-  ipcMain.handle('compact-prompts:delete', (_event, id: unknown) => {
+  ipc.handle('compact-prompts:delete', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '') throw new Error('Invalid compact prompt ID')
     return deleteCustomCompactPrompt(id)
   })
 
   // ── Custom providers ───────────────────────────────────────
 
-  ipcMain.handle('custom-providers:load', () => loadCustomProviders())
+  ipc.handle('custom-providers:load', () => loadCustomProviders())
 
-  ipcMain.handle('custom-providers:save', (_event, providers: unknown) => {
+  ipc.handle('custom-providers:save', (_event, providers: unknown) => {
     if (!Array.isArray(providers)) throw new Error('Invalid providers format')
     const validated = providers.filter(isValidProvider)
     saveCustomProviders(validated)
@@ -634,9 +644,9 @@ function registerIpcHandlers(): void {
 
   // ── Custom models ─────────────────────────────────────────
 
-  ipcMain.handle('custom-models:load', () => loadCustomModels())
+  ipc.handle('custom-models:load', () => loadCustomModels())
 
-  ipcMain.handle('custom-models:save', (_event, models: unknown) => {
+  ipc.handle('custom-models:save', (_event, models: unknown) => {
     if (typeof models !== 'object' || models === null || Array.isArray(models)) throw new Error('Invalid models format')
     // Validate each entry is a string array
     const validated: Record<string, readonly string[]> = {}
@@ -648,24 +658,24 @@ function registerIpcHandlers(): void {
     saveCustomModels(validated)
   })
 
-  ipcMain.handle('custom-models:add', (_event, provider: unknown, modelId: unknown) => {
+  ipc.handle('custom-models:add', (_event, provider: unknown, modelId: unknown) => {
     if (typeof provider !== 'string' || typeof modelId !== 'string') throw new Error('Invalid args')
     addCustomModelId(provider, modelId)
   })
 
   // ── Compiled documents ─────────────────────────────────────
 
-  ipcMain.handle('documents:load', (_event, id: unknown) => {
+  ipc.handle('documents:load', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '') throw new Error('Invalid document id')
     return loadDocument(id)
   })
 
-  ipcMain.handle('documents:save', (_event, doc: unknown) => {
+  ipc.handle('documents:save', (_event, doc: unknown) => {
     if (!isValidDocument(doc)) throw new Error('Invalid document — missing required fields')
     saveDocument(doc)
   })
 
-  ipcMain.handle('documents:delete', (_event, id: unknown) => {
+  ipc.handle('documents:delete', (_event, id: unknown) => {
     if (typeof id !== 'string' || id === '') throw new Error('Invalid document id')
     return deleteDocument(id)
   })
@@ -689,7 +699,7 @@ function registerIpcHandlers(): void {
     }
   }
 
-  ipcMain.handle('session:save', (_event, id: unknown, content: unknown) => {
+  ipc.handle('session:save', (_event, id: unknown, content: unknown) => {
     if (typeof id !== 'string' || typeof content !== 'string') throw new Error('Invalid args')
     if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error('Invalid session ID')
     const maxBytes = appConfig.maxSessionSizeMB * 1024 * 1024
@@ -698,7 +708,7 @@ function registerIpcHandlers(): void {
   })
 
   // Synchronous save for beforeunload — blocks renderer until write completes
-  ipcMain.on('session:save-sync', (event, id: unknown, content: unknown) => {
+  ipc.handleSync('session:save-sync', (event, id: unknown, content: unknown) => {
     try {
       if (typeof id !== 'string' || typeof content !== 'string') { event.returnValue = false; return }
       if (!/^[a-zA-Z0-9_-]+$/.test(id)) { event.returnValue = false; return }
@@ -709,9 +719,9 @@ function registerIpcHandlers(): void {
     } catch {
       event.returnValue = false
     }
-  })
+  }, false)
 
-  ipcMain.handle('session:load', (_event, id: unknown) => {
+  ipc.handle('session:load', (_event, id: unknown) => {
     if (typeof id !== 'string') throw new Error('Invalid arg')
     if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error('Invalid session ID')
     const filePath = join(sessionsDir, `${id}.council`)
@@ -719,7 +729,7 @@ function registerIpcHandlers(): void {
     return readFileSync(filePath, 'utf-8')
   })
 
-  ipcMain.handle('session:list', () => {
+  ipc.handle('session:list', () => {
     if (!existsSync(sessionsDir)) return []
     const files = readdirSync(sessionsDir).filter((f) => f.endsWith('.council'))
     return files.map((f) => {
@@ -738,14 +748,14 @@ function registerIpcHandlers(): void {
     }).sort((a, b) => b.updatedAt - a.updatedAt)
   })
 
-  ipcMain.handle('session:delete', (_event, id: unknown) => {
+  ipc.handle('session:delete', (_event, id: unknown) => {
     if (typeof id !== 'string') throw new Error('Invalid arg')
     if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new Error('Invalid session ID')
     const filePath = join(sessionsDir, `${id}.council`)
     if (existsSync(filePath)) unlinkSync(filePath)
   })
 
-  ipcMain.handle('dialog:open-file', async (_event, filters: unknown) => {
+  ipc.handle('dialog:open-file', async (_event, filters: unknown) => {
     if (mainWindow == null) return []
 
     const dialogFilters = Array.isArray(filters)
@@ -800,7 +810,7 @@ function registerIpcHandlers(): void {
     return files
   })
 
-  ipcMain.handle('open-folder', async (_event, path: unknown) => {
+  ipc.handle('open-folder', async (_event, path: unknown) => {
     if (typeof path !== 'string') {
       throw new Error('Invalid path: expected string')
     }
