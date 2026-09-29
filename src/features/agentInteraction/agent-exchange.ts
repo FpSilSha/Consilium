@@ -118,12 +118,25 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
 
     // Register controller before setting isStreaming to avoid cancellation gap
     const controller = new AbortController()
+    let settled = false
+    const settle = (aborted: boolean): boolean => {
+      if (settled) return false
+      settled = true
+      if (activeExchangeControllers.get(windowId) === controller) {
+        activeExchangeControllers.delete(windowId)
+      }
+      controller.signal.removeEventListener('abort', onAbort)
+      resolve(aborted)
+      return true
+    }
+    // HTTP may stop silently before headers; the local client may also call onError.
+    const onAbort = (): void => { settle(true) }
+    controller.signal.addEventListener('abort', onAbort, { once: true })
     activeExchangeControllers.set(windowId, controller)
-
-    state.updateWindow(windowId, { isStreaming: true, streamContent: '', error: null })
 
     const callbacks: StreamCallbacks = {
       onChunk: (content) => {
+        if (settled) return
         const current = useStore.getState()
         const currentWindow = current.windows[windowId]
         if (currentWindow === undefined) return
@@ -132,13 +145,7 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
         })
       },
       onDone: (fullContent, tokenUsage) => {
-        activeExchangeControllers.delete(windowId)
-
-        // Discard late-arriving responses after cancellation
-        if (controller.signal.aborted) {
-          resolve(true)
-          return
-        }
+        if (!settle(false)) return
 
         const current = useStore.getState()
         const freshWindow = current.windows[windowId]
@@ -156,22 +163,13 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
           streamContent: '',
           runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
         })
-
-        resolve(false)
       },
       onStale: () => {
         // The conversation changed; settle without writing into the new one.
-        activeExchangeControllers.delete(windowId)
-        resolve(true)
+        settle(true)
       },
       onError: (error, tokenUsage) => {
-        activeExchangeControllers.delete(windowId)
-
-        // Discard late-arriving errors after cancellation
-        if (controller.signal.aborted) {
-          resolve(true)
-          return
-        }
+        if (!settle(false)) return
 
         const current = useStore.getState()
         const freshWindow = current.windows[windowId]
@@ -183,21 +181,25 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
           error,
           runningCost: (freshWindow?.runningCost ?? 0) + (errorCostMeta?.estimatedCost ?? 0),
         })
-
-        resolve(false)
       },
     }
 
-    streamResponse(
-      {
-        provider: window.provider,
-        model: window.model,
-        ...credentialRequestFields(credential),
-        systemPrompt,
-        messages,
-        signal: controller.signal,
-      },
-      callbacks,
-    )
+    try {
+      state.updateWindow(windowId, { isStreaming: true, streamContent: '', error: null })
+      if (settled) return
+      streamResponse(
+        {
+          provider: window.provider,
+          model: window.model,
+          ...credentialRequestFields(credential),
+          systemPrompt,
+          messages,
+          signal: controller.signal,
+        },
+        callbacks,
+      )
+    } catch (error) {
+      callbacks.onError(error instanceof Error ? error.message : 'Could not start advisor exchange')
+    }
   })
 }
