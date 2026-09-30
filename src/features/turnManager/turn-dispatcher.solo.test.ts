@@ -711,3 +711,25 @@ describe('errored advisors stay in the rotation', () => {
     expect(useStore.getState().queue.map((c) => c.status)).toEqual(['waiting', 'waiting'])
   })
 })
+
+describe('a request that cannot be set up', () => {
+  it('fails only that turn; the other advisors run and nothing stays active', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ turnMode: 'parallel', loopCount: 1, errorLog: [] })
+    let call = 0
+    streamResponse.mockImplementation((_config: unknown, callbacks: Callbacks) => {
+      call += 1
+      if (call === 1) throw new Error('Custom adapter definition not found')
+      const controller = new AbortController()
+      setTimeout(() => { if (!controller.signal.aborted) callbacks.onDone('reply') }, 1)
+      return controller
+    })
+    startRun()
+    await vi.waitFor(() => expect(useStore.getState().isRunning).toBe(false))
+    expect(useStore.getState().windows['a']?.error).toBe('Custom adapter definition not found')
+    expect(useStore.getState().windows['a']?.isStreaming).toBe(false)
+    expect(useStore.getState().activeCardIds).toEqual([])
+    expect(streamResponse).toHaveBeenCalledTimes(2) // b still answered
+    expect(useStore.getState().errorLog).toHaveLength(1)
+  })
+})

@@ -1,4 +1,4 @@
-import type { QueueCard } from '@/types'
+import type { AdvisorWindow, QueueCard } from '@/types'
 import { useStore } from '@/store'
 import { streamResponse, isTransientError } from '@/services/api/stream-orchestrator'
 import type { StreamCallbacks } from '@/services/api/stream-orchestrator'
@@ -302,20 +302,12 @@ function dispatchAgentTurn(card: QueueCard): void {
   // Validate key and persona before marking card as active
   const credential = resolveAdvisorCredential(window, state.keys, getRawKey)
   if (credential.kind === 'missing-key') {
-    const errMsg = 'API key not found'
-    state.setCardStatus(card.id, 'errored', errMsg)
-    state.updateWindow(card.windowId, { isStreaming: false, error: errMsg })
-    state.addErrorLog({ id: crypto.randomUUID(), timestamp: Date.now(), advisorLabel: window.personaLabel, accentColor: window.accentColor, message: errMsg, provider: window.provider, model: window.model })
-    onTurnComplete()
+    failTurnBeforeRequest(card, window, 'API key not found')
     return
   }
 
   if (credential.kind === 'unreadable-key') {
-    const errMsg = 'Could not retrieve API key'
-    state.setCardStatus(card.id, 'errored', errMsg)
-    state.updateWindow(card.windowId, { isStreaming: false, error: errMsg })
-    state.addErrorLog({ id: crypto.randomUUID(), timestamp: Date.now(), advisorLabel: window.personaLabel, accentColor: window.accentColor, message: errMsg, provider: window.provider, model: window.model })
-    onTurnComplete()
+    failTurnBeforeRequest(card, window, 'Could not retrieve API key')
     return
   }
 
@@ -446,16 +438,24 @@ function dispatchAgentTurn(card: QueueCard): void {
   }
 
   // Register controller before isStreaming to avoid cancellation gap
-  const controller = streamResponse(
-    {
-      provider: window.provider,
-      model: window.model,
-      ...credentialRequestFields(credential),
-      systemPrompt,
-      messages: threadMessages,
-    },
-    callbacks,
-  )
+  let controller: AbortController
+  try {
+    controller = streamResponse(
+      {
+        provider: window.provider,
+        model: window.model,
+        ...credentialRequestFields(credential),
+        systemPrompt,
+        messages: threadMessages,
+      },
+      callbacks,
+    )
+  } catch (err) {
+    // A request that can't even be set up (e.g. a missing custom adapter)
+    // fails this turn instead of leaving the card active and the run stuck.
+    failTurnBeforeRequest(card, window, err instanceof Error ? err.message : 'Could not start the request')
+    return
+  }
 
   activeControllers.set(card.id, { controller, windowId: card.windowId, provider: window.provider, model: window.model })
   useStore.getState().updateWindow(card.windowId, { isStreaming: true, streamContent: '', error: null })
@@ -482,6 +482,16 @@ function scheduleAutoRetry(card: QueueCard): void {
     if (latest.activeCardIds.length === 0) onTurnComplete()
   }, 1_000)
   autoRetryTimers.set(card.id, timer)
+}
+
+/** Fails a turn whose request never started; the advisor shows the error and the round moves on. */
+function failTurnBeforeRequest(card: QueueCard, window: AdvisorWindow, message: string): void {
+  const state = useStore.getState()
+  state.removeActiveCard(card.id)
+  state.setCardStatus(card.id, 'errored', message)
+  state.updateWindow(card.windowId, { isStreaming: false, error: message })
+  state.addErrorLog({ id: crypto.randomUUID(), timestamp: Date.now(), advisorLabel: window.personaLabel, accentColor: window.accentColor, message, provider: window.provider, model: window.model })
+  onTurnComplete()
 }
 
 function onTurnComplete(): void {
