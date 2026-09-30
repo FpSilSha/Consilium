@@ -54,6 +54,19 @@ describe('ensureUserTurnForSoloAgent', () => {
   })
 })
 
+describe('ensureUserTurnForSoloAgent with advisors that cannot reply', () => {
+  it('leaves failing advisors out, so a working one paired only with them still waits for the user', () => {
+    const result = ensureUserTurnForSoloAgent([agent('a'), agent('b')], 'sequential', (id) => id !== 'a')
+    expect(result.map((c) => (c.isUser ? 'U' : c.windowId))).toEqual(['U', 'a', 'b'])
+  })
+
+  it('counts every advisor when none can reply, and ignores the check outside Seq mode', () => {
+    const pair = [agent('a'), agent('b')]
+    expect(ensureUserTurnForSoloAgent(pair, 'sequential', () => false)).toBe(pair)
+    expect(ensureUserTurnForSoloAgent(pair, 'queue', (id) => id !== 'a')).toBe(pair)
+  })
+})
+
 describe('dropOrphanUserTurns', () => {
   it('removes user turns once no advisor card is left', () => {
     expect(dropOrphanUserTurns([user()])).toEqual([])

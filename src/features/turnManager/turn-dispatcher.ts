@@ -52,6 +52,13 @@ const liveRetryCards = new Set<string>()
 const isLiveRetryCard = (cardId: string): boolean => liveRetryCards.has(cardId)
 
 /**
+ * Advisors showing an error don't count toward the lone-AI check when a run
+ * starts (see ensureUserTurnForSoloAgent): a failing advisor stays in the
+ * queue to recover, but a working one paired only with it waits for the user.
+ */
+const canReplyNow = (windowId: string): boolean => useStore.getState().windows[windowId]?.error == null
+
+/**
  * Pending transient-error auto-retries by card id (see onError). Cancelled when
  * a run stops, ends or starts, and when the card is dispatched another way.
  */
@@ -186,7 +193,7 @@ export function handleUserMessage(): void {
 export function startRun(): void {
   beginRun()
   const state = useStore.getState()
-  const queue = prepareQueueForRun(state.queue, state.turnMode, isLiveRetryCard)
+  const queue = prepareQueueForRun(state.queue, state.turnMode, isLiveRetryCard, canReplyNow)
   state.setQueue(queue)
   // With no advisor left to run, a started run could never dispatch or finish.
   if (!hasActiveAgent(queue)) return
@@ -274,7 +281,7 @@ export function retryAdvisor(windowId: string): void {
   if (!state.isRunning) beginRun()
   const placement = state.isRunning
     ? queueForRetryWhileRunning(state.queue, card)
-    : queueForRetryFromStop(state.queue, card, state.turnMode, isLiveRetryCard)
+    : queueForRetryFromStop(state.queue, card, state.turnMode, isLiveRetryCard, canReplyNow)
   if (placement.oneShot) oneShotCards.add(card.id)
   state.setQueue(placement.queue)
   state.setIsRunning(true)

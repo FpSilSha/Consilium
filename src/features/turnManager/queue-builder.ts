@@ -99,12 +99,20 @@ export function isSoloSequentialQueue(queue: readonly QueueCard[], mode: TurnMod
  * user's plan doing it). Such a queue gets a user turn at the front, so the
  * advisor replies once and then waits for the user. With two or more AIs the
  * queue is left alone, so advisors can still discuss among themselves.
+ *
+ * `canReply` lets a new run leave out advisors that are currently failing
+ * (e.g. a missing API key), so a working advisor paired only with failing
+ * ones still waits for the user. If none can reply, all of them count.
  */
 export function ensureUserTurnForSoloAgent(
   queue: readonly QueueCard[],
   mode: TurnMode,
+  canReply: (windowId: string) => boolean = () => true,
 ): readonly QueueCard[] {
-  if (!isSoloSequentialQueue(queue, mode)) return queue
+  if (mode !== 'sequential') return queue
+  const agents = [...activeAgentIds(queue)]
+  const replying = agents.filter(canReply).length
+  if ((replying > 0 ? replying : agents.length) !== 1) return queue
   if (queue.some((card) => card.isUser && card.status !== 'skipped')) return queue
   return [createUserCard(), ...queue]
 }
@@ -136,9 +144,10 @@ export function prepareQueueForRun(
   queue: readonly QueueCard[],
   mode: TurnMode,
   isLiveRetryCard: (cardId: string) => boolean,
+  canReply?: (windowId: string) => boolean,
 ): readonly QueueCard[] {
   const withoutLeftovers = dropLeftoverRetryCards(resetQueueForNewRun(queue), isLiveRetryCard)
-  return dropOrphanUserTurns(ensureUserTurnForSoloAgent(withoutLeftovers, mode))
+  return dropOrphanUserTurns(ensureUserTurnForSoloAgent(withoutLeftovers, mode, canReply))
 }
 
 /** Where a retry card goes, and whether it runs once and leaves the queue. */
@@ -187,12 +196,13 @@ export function queueForRetryFromStop(
   retryCard: QueueCard,
   mode: TurnMode,
   isLiveRetryCard: (cardId: string) => boolean,
+  canReply?: (windowId: string) => boolean,
 ): RetryPlacement {
   const isAdvisorCard = (c: QueueCard): boolean => c.windowId === retryCard.windowId && !c.isUser && c.status !== 'skipped'
   const erroredAt = queue.findIndex((c) => isAdvisorCard(c) && c.status === 'errored')
   const keepsCard = queue.some((c) => isAdvisorCard(c) && c.status !== 'errored')
   const slotted = !keepsCard && erroredAt !== -1 ? replaceAt(queue, erroredAt, retryCard) : queue
-  const prepared = prepareQueueForRun(slotted, mode, isLiveRetryCard)
+  const prepared = prepareQueueForRun(slotted, mode, isLiveRetryCard, canReply)
   const placement = prepared.some((c) => c.id === retryCard.id)
     ? { queue: prepared, oneShot: false }
     : queueForRetryWhileRunning(prepared, retryCard)

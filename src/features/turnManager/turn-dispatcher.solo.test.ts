@@ -851,3 +851,31 @@ describe('skipping or removing a card while the run is idle', () => {
     stopAll()
   })
 })
+
+describe('a failing advisor kept in the queue', () => {
+  it('a working advisor paired only with it still waits for the user when the next run starts', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ loopCount: 1, keys: [], windows: { a: { ...advisor('a'), provider: 'anthropic' }, b: advisor('b') } })
+    startRun() // a fails (no key), b answers, the round limit ends the run
+    await vi.waitFor(() => expect(useStore.getState().isRunning).toBe(false))
+    expect(streamResponse).toHaveBeenCalledTimes(1)
+    useStore.setState({ loopCount: 0 })
+    startRun() // no message: b must not start answering itself
+    await settle()
+    expect(streamResponse).toHaveBeenCalledTimes(1)
+    expect(isUserTurn(useStore.getState().queue)).toBe(true)
+    expect(agentCards('a')).toHaveLength(1) // a stays, so it can recover
+  })
+
+  it('once the failing advisor is working again, both answer the next message', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ loopCount: 1, keys: [], windows: { a: { ...advisor('a'), provider: 'anthropic' }, b: advisor('b') } })
+    startRun()
+    await vi.waitFor(() => expect(useStore.getState().isRunning).toBe(false))
+    useStore.getState().updateWindow('a', { provider: 'claude-subscription' }) // a works again (its old error still shows)
+    startRun()
+    handleUserMessage()
+    await vi.waitFor(() => expect(useStore.getState().isRunning).toBe(false))
+    expect(streamResponse).toHaveBeenCalledTimes(3) // b, then a and b
+  })
+})
