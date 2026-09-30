@@ -7,6 +7,16 @@ import { QueueList } from './QueueList'
 import { CallForVoteButton } from '@/features/voting'
 import { ExportButton } from '@/features/export'
 import { DocumentsPanel } from '@/features/documents'
+import { useClaudeSubscriptionAvailability } from '@/features/modelSelector/use-claude-subscription'
+import { emptyAdvisorListText } from '@/features/chat/empty-state-guidance'
+
+/** The list's line when there are no advisors; checks the subscription only while shown. */
+function EmptyAdvisorListLine(): ReactNode {
+  const hasKeys = useStore((s) => s.keys.length > 0)
+  const subscription = useClaudeSubscriptionAvailability()
+  const text = emptyAdvisorListText(hasKeys, subscription)
+  return text === null ? null : <p className="px-3 py-3 text-xs text-content-disabled">{text}</p>
+}
 
 export function AdvisorPanel(): ReactNode {
   const windowOrder = useStore((s) => s.windowOrder)
@@ -47,11 +57,7 @@ export function AdvisorPanel(): ReactNode {
         {/* Advisor list */}
         <div className="max-h-56 overflow-y-auto px-1 pb-2">
           {windowOrder.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-content-disabled">
-              {keys.length === 0
-                ? 'Configure API keys first via Models & Keys.'
-                : 'No advisors yet. Click "+ Add Advisor" above.'}
-            </p>
+            <EmptyAdvisorListLine />
           ) : (
             windowOrder.map((id) => {
               const advisor = windows[id]

@@ -1,6 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import type { LocalAgentReadiness } from '../../../shared/local-agent/protocol'
 import { getClaudeSubscriptionReadiness } from '@/services/api/local-agent'
+import { beginClaudeSubscriptionCheck, recordClaudeSubscriptionReadiness } from './use-claude-subscription'
 
 function describeReadiness(readiness: LocalAgentReadiness): { readonly ok: boolean; readonly text: string } {
   switch (readiness.state) {
@@ -29,8 +30,12 @@ export function ClaudeSubscriptionStatus(): ReactNode {
   const check = useCallback(() => {
     const id = ++latestCheck.current
     setReadiness(null)
+    const ticket = beginClaudeSubscriptionCheck()
     void getClaudeSubscriptionReadiness().then((result) => {
-      if (latestCheck.current === id) setReadiness(result)
+      // Only the latest check speaks, here and for the shared result.
+      if (latestCheck.current !== id) return
+      recordClaudeSubscriptionReadiness(result, ticket)
+      setReadiness(result)
     })
   }, [])
 
