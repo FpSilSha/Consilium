@@ -8,7 +8,7 @@ vi.mock('@/services/api/stream-orchestrator', () => ({
 }))
 
 const { useStore } = await import('@/store')
-const { startRun, handleUserMessage, stopAll, retryAdvisor, dispatchNextTurn } = await import('./turn-dispatcher')
+const { startRun, handleUserMessage, stopAll, retryAdvisor, dispatchNextTurn, skipQueueCard, removeQueueCard } = await import('./turn-dispatcher')
 const { createAgentCard } = await import('./queue-builder')
 const { isUserTurn } = await import('./turn-engine')
 
@@ -809,5 +809,45 @@ describe('finishing a round: replies still streaming, empty queues', () => {
     useStore.getState().setPaused(false)
     dispatchNextTurn() // what Resume does
     expect(useStore.getState().isRunning).toBe(false)
+  })
+})
+
+describe('skipping or removing a card while the run is idle', () => {
+  it('skipping the open user turn lets the advisors carry on', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ turnMode: 'queue', loopCount: 2, queue: [createAgentCard('a'), createAgentCard('b'), userCard()] })
+    startRun()
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(isUserTurn(useStore.getState().queue)).toBe(true))
+    const userTurn = useStore.getState().queue.find((c) => c.isUser)
+    skipQueueCard(userTurn?.id ?? '')
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(4)) // round 2
+    await vi.waitFor(() => expect(useStore.getState().isRunning).toBe(false)) // round limit
+  })
+
+  it('removing a card while the run is idle carries the run on', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ turnMode: 'queue', queue: [userCard(), createAgentCard('a'), createAgentCard('b')] })
+    scriptCalls(() => ({ outcome: 'reply', delay: 1 }))
+    startRun()
+    useStore.getState().setPaused(true) // hold b back
+    handleUserMessage()
+    useStore.getState().setPaused(false) // idle now: a waits, b waits
+    removeQueueCard(cardOf('b')?.id ?? '')
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(1)) // a ran
+    await vi.waitFor(() => expect(isUserTurn(useStore.getState().queue)).toBe(true)) // next round waits for the user
+  })
+
+  it('does not start a second advisor while one is replying', async () => {
+    setup(['a', 'b', 'c'])
+    useStore.setState({ turnMode: 'queue', queue: [userCard(), createAgentCard('a'), createAgentCard('b'), createAgentCard('c')] })
+    scriptCalls(() => ({ outcome: 'reply', delay: 60 }))
+    startRun()
+    handleUserMessage() // a replies
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(1))
+    removeQueueCard(cardOf('c')?.id ?? '')
+    expect(streamResponse).toHaveBeenCalledTimes(1) // b waits for a
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(2))
+    stopAll()
   })
 })

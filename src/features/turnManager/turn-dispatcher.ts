@@ -282,6 +282,27 @@ export function retryAdvisor(windowId: string): void {
 }
 
 /**
+ * Skips a queue card, then carries an idle run on: skipping the open user
+ * turn, or the round's last waiting card, otherwise left the run waiting for
+ * nothing. While a reply is streaming, its end carries the run on instead.
+ */
+export function skipQueueCard(cardId: string): void {
+  useStore.getState().skipCard(cardId)
+  continueIdleRun()
+}
+
+/** Removes a queue card, then carries an idle run on (see skipQueueCard). */
+export function removeQueueCard(cardId: string): void {
+  useStore.getState().removeFromQueue(cardId)
+  continueIdleRun()
+}
+
+function continueIdleRun(): void {
+  const state = useStore.getState()
+  if (state.isRunning && !state.isPaused && state.activeCardIds.length === 0 && activeControllers.size === 0) dispatchNextTurn()
+}
+
+/**
  * Manually triggers a specific agent in manual mode.
  */
 export function manualDispatch(cardId: string): void {

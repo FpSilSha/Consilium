@@ -8,6 +8,8 @@ import {
   manualDispatch,
   createUserCard,
   createAgentCard,
+  skipQueueCard,
+  removeQueueCard,
 } from '@/features/turnManager'
 
 /**
@@ -23,10 +25,8 @@ export function QueueList(): ReactNode {
   const windowOrder = useStore((s) => s.windowOrder)
   const turnMode = useStore((s) => s.turnMode)
   const isRunning = useStore((s) => s.isRunning)
-  const skipCard = useStore((s) => s.skipCard)
   const unskipCard = useStore((s) => s.unskipCard)
   const duplicateCard = useStore((s) => s.duplicateCard)
-  const removeFromQueue = useStore((s) => s.removeFromQueue)
   const moveInQueue = useStore((s) => s.moveInQueue)
   const addToQueue = useStore((s) => s.addToQueue)
 
@@ -140,7 +140,7 @@ export function QueueList(): ReactNode {
         </div>
 
         {/* Errored cards — still shown in read-only mode */}
-        <ErroredCardList erroredCards={erroredCards} getCardInfo={getCardInfo} removeFromQueue={removeFromQueue} />
+        <ErroredCardList erroredCards={erroredCards} getCardInfo={getCardInfo} removeFromQueue={removeQueueCard} />
       </div>
     )
   }
@@ -253,7 +253,7 @@ export function QueueList(): ReactNode {
                       <>
                         <Tooltip text="Skip this turn" position="top">
                           <button
-                            onClick={() => skipCard(card.id)}
+                            onClick={() => skipQueueCard(card.id)}
                             className="rounded px-1 py-0.5 text-[10px] text-content-disabled hover:text-content-muted"
                           >
                             Skip
@@ -280,7 +280,7 @@ export function QueueList(): ReactNode {
                     {!isActive && (
                       <Tooltip text="Remove from queue" position="top">
                         <button
-                          onClick={() => removeFromQueue(card.id)}
+                          onClick={() => removeQueueCard(card.id)}
                           className="rounded px-0.5 py-0.5 text-[10px] text-content-disabled hover:text-accent-red"
                         >
                           ✕
@@ -296,7 +296,7 @@ export function QueueList(): ReactNode {
       </div>
 
       {/* Errored cards */}
-      <ErroredCardList erroredCards={erroredCards} getCardInfo={getCardInfo} removeFromQueue={removeFromQueue} />
+      <ErroredCardList erroredCards={erroredCards} getCardInfo={getCardInfo} removeFromQueue={removeQueueCard} />
     </div>
   )
 }
