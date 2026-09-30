@@ -128,13 +128,27 @@ export function dispatchNextTurn(): void {
     for (const card of cards) {
       dispatchAgentTurn(card)
     }
+    if (cards.length === 0) finishRoundIfDone()
     return
   }
 
   const next = getNextCard(queue, turnMode, isPaused)
   if (next !== null) {
     dispatchAgentTurn(next)
+    return
   }
+  finishRoundIfDone()
+}
+
+/**
+ * Nothing left to dispatch: if every card has finished and none is still
+ * replying, the round is over (e.g. the user just answered the round's last
+ * turn, or its last waiting card was removed while paused), so it ends here
+ * instead of leaving the run waiting for nothing.
+ */
+function finishRoundIfDone(): void {
+  const state = useStore.getState()
+  if (state.queue.length > 0 && state.activeCardIds.length === 0 && isCycleComplete(state.queue)) onTurnComplete()
 }
 
 /**

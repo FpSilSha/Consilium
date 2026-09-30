@@ -733,3 +733,44 @@ describe('a request that cannot be set up', () => {
     expect(useStore.getState().errorLog).toHaveLength(1)
   })
 })
+
+describe('rounds that end on the user turn or after a removal', () => {
+  const lastUserTurnQueue = () => [createAgentCard('a'), createAgentCard('b'), userCard()]
+
+  it('Queue mode with the user card last: the message ends the round and the next one starts', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ turnMode: 'queue', loopCount: 2, queue: lastUserTurnQueue() })
+    startRun()
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(isUserTurn(useStore.getState().queue)).toBe(true))
+    handleUserMessage()
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(4)) // round 2
+    await vi.waitFor(() => expect(isUserTurn(useStore.getState().queue)).toBe(true))
+  })
+
+  it('Parallel mode with a user card: the message ends the round once the advisors are done', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ turnMode: 'parallel', loopCount: 2, queue: lastUserTurnQueue() })
+    startRun()
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(useStore.getState().activeCardIds).toEqual([]))
+    handleUserMessage()
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(4))
+  })
+
+  it('removing the last waiting card while paused, then resuming, ends the round', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ turnMode: 'queue', queue: [userCard(), createAgentCard('a'), createAgentCard('b')] })
+    scriptCalls(() => ({ outcome: 'reply', delay: 50 }))
+    startRun()
+    handleUserMessage() // a starts
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(1))
+    useStore.getState().setPaused(true)
+    await vi.waitFor(() => expect(useStore.getState().activeCardIds).toEqual([])) // a finished while paused
+    useStore.getState().removeFromQueue(cardOf('b')?.id ?? '')
+    useStore.getState().setPaused(false)
+    dispatchNextTurn() // what Resume does
+    expect(isUserTurn(useStore.getState().queue)).toBe(true) // the next round waits for the user
+    expect(useStore.getState().isRunning).toBe(true)
+  })
+})
