@@ -774,3 +774,40 @@ describe('rounds that end on the user turn or after a removal', () => {
     expect(useStore.getState().isRunning).toBe(true)
   })
 })
+
+describe('finishing a round: replies still streaming, empty queues', () => {
+  it('a removed advisor that is still replying holds the round until its reply ends', async () => {
+    setup(['a', 'b', 'c'])
+    let inFlight = 0
+    let maxInFlight = 0
+    streamResponse.mockImplementation((_config: unknown, callbacks: Callbacks) => {
+      const controller = new AbortController()
+      inFlight += 1
+      maxInFlight = Math.max(maxInFlight, inFlight)
+      const slow = streamResponse.mock.calls.length === 3 // c's first reply
+      setTimeout(() => {
+        inFlight -= 1
+        if (!controller.signal.aborted) callbacks.onDone('reply')
+      }, slow ? 80 : 5)
+      return controller
+    })
+    startRun()
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(3)) // c is replying
+    useStore.getState().removeWindow('c')
+    handleUserMessage() // must not end the round while c's reply is still streaming
+    await vi.waitFor(() => expect(streamResponse.mock.calls.length).toBeGreaterThanOrEqual(6))
+    stopAll()
+    expect(maxInFlight).toBe(1)
+  })
+
+  it('removing every card while paused, then resuming, ends the run', () => {
+    setup(['a'])
+    useStore.setState({ turnMode: 'queue', queue: [userCard(), createAgentCard('a')] })
+    startRun() // waits at the user turn
+    useStore.getState().setPaused(true)
+    for (const card of useStore.getState().queue) useStore.getState().removeFromQueue(card.id)
+    useStore.getState().setPaused(false)
+    dispatchNextTurn() // what Resume does
+    expect(useStore.getState().isRunning).toBe(false)
+  })
+})

@@ -141,14 +141,16 @@ export function dispatchNextTurn(): void {
 }
 
 /**
- * Nothing left to dispatch: if every card has finished and none is still
- * replying, the round is over (e.g. the user just answered the round's last
- * turn, or its last waiting card was removed while paused), so it ends here
- * instead of leaving the run waiting for nothing.
+ * Nothing left to dispatch: if every card has finished and no reply is still
+ * streaming, the round is over (e.g. the user just answered the round's last
+ * turn, or its last waiting card — or every card — was removed while paused),
+ * so it ends here instead of leaving the run waiting for nothing. A removed
+ * advisor's reply can still be streaming after its card left the queue; its
+ * end carries the round on.
  */
 function finishRoundIfDone(): void {
   const state = useStore.getState()
-  if (state.queue.length > 0 && state.activeCardIds.length === 0 && isCycleComplete(state.queue)) onTurnComplete()
+  if (state.activeCardIds.length === 0 && activeControllers.size === 0 && isCycleComplete(state.queue)) onTurnComplete()
 }
 
 /**
