@@ -4,8 +4,8 @@ import { createApiKeyEntry } from '@/features/keys/key-storage'
 import { storeRawKey } from '@/features/keys/key-vault'
 import { detectProvider } from '@/features/keys/key-detection'
 import { validateKey } from '@/features/keys/key-validation'
-import { getAllModels, getModelsForProvider } from '@/features/modelSelector/model-registry'
-import { fetchOpenRouterModels } from '@/features/modelSelector/openrouter-models'
+import { resolveAllModels, resolveModelsForProvider } from '@/features/modelSelector/model-resolve'
+import { refreshProviderCatalog } from '@/services/api/catalog/fetch-all-catalogs'
 import { createAgentCard } from '@/features/turnManager'
 import { createDefaultAdvisorWindow } from '@/features/windows/advisor-factory'
 import { ModelTile } from './ModelTile'
@@ -36,7 +36,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
   const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null)
 
   const keys = useStore((s) => s.keys)
-  const openRouterModels = useStore((s) => s.catalogModels['openrouter']) ?? []
+  useStore((s) => s.catalogModels)
   const addKey = useStore((s) => s.addKey)
   const addWindow = useStore((s) => s.addWindow)
   const addToQueue = useStore((s) => s.addToQueue)
@@ -132,18 +132,15 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
     storeRawKey(verifiedEntry.id, trimmed)
 
     if (detected !== null) {
-      if (detected.provider === 'openrouter') {
-        const signal = abortRef.current?.signal
-        fetchOpenRouterModels(trimmed).then((models) => {
-          if (signal?.aborted) return
-          if (models.length > 0) setSelectedModel(models[0]!.id)
-        }).catch(() => {})
-      } else {
-        const models = getModelsForProvider(detected.provider)
-        if (models.length > 0) setSelectedModel(models[0]!.id)
-      }
+      const initialModels = resolveModelsForProvider(detected.provider)
+      if (initialModels.length > 0) setSelectedModel(initialModels[0]!.id)
+      const signal = abortRef.current?.signal
+      refreshProviderCatalog(detected.provider, signal).then((result) => {
+        if (!signal?.aborted && result.error == null && result.models.length > 0) {
+          setSelectedModel((current) => result.models.some((model) => model.id === current) ? current : result.models[0]!.id)
+        }
+      }).catch(() => {})
     }
-
     setKeyError('')
     setShowCustomUrl(false)
     setCustomUrl('')
@@ -170,7 +167,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps): ReactNo
     onComplete()
   }, [windowOrder, keys, selectedModel, selectedPersonaId, personas, addWindow, addToQueue, onComplete])
 
-  const allModels = getAllModels(openRouterModels)
+  const allModels = resolveAllModels()
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-base">

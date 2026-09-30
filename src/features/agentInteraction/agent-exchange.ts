@@ -6,6 +6,7 @@ import { buildSystemPrompt } from '@/services/context-bus/system-prompt'
 import { resolveAdvisorSystemPrompt } from '@/features/systemPrompts/system-prompt-resolver'
 import { messagesToApiFormat } from '@/services/context-bus/message-formatter'
 import { buildCostMetadata } from '@/services/api/cost-utils'
+import { resolveAdvisorCredential, credentialRequestFields } from '@/services/api/local-agent/advisor-credential'
 import { getRawKey } from '@/features/keys/key-vault'
 import { isBudgetExceeded } from '@/features/budget/budget-engine'
 import { resolveMentionTargets, cleanMentions } from './mention-router'
@@ -89,15 +90,14 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
       return
     }
 
-    const key = state.keys.find((k) => k.id === window.keyId)
-    if (key === undefined) {
+    const credential = resolveAdvisorCredential(window, state.keys, getRawKey)
+    if (credential.kind === 'missing-key') {
       state.updateWindow(windowId, { isStreaming: false, error: 'API key not found' })
       resolve(false)
       return
     }
 
-    const apiKey = getRawKey(key.id)
-    if (apiKey === null) {
+    if (credential.kind === 'unreadable-key') {
       state.updateWindow(windowId, { isStreaming: false, error: 'Could not retrieve API key' })
       resolve(false)
       return
@@ -118,12 +118,25 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
 
     // Register controller before setting isStreaming to avoid cancellation gap
     const controller = new AbortController()
+    let settled = false
+    const settle = (aborted: boolean): boolean => {
+      if (settled) return false
+      settled = true
+      if (activeExchangeControllers.get(windowId) === controller) {
+        activeExchangeControllers.delete(windowId)
+      }
+      controller.signal.removeEventListener('abort', onAbort)
+      resolve(aborted)
+      return true
+    }
+    // HTTP may stop silently before headers; the local client may also call onError.
+    const onAbort = (): void => { settle(true) }
+    controller.signal.addEventListener('abort', onAbort, { once: true })
     activeExchangeControllers.set(windowId, controller)
-
-    state.updateWindow(windowId, { isStreaming: true, streamContent: '', error: null })
 
     const callbacks: StreamCallbacks = {
       onChunk: (content) => {
+        if (settled) return
         const current = useStore.getState()
         const currentWindow = current.windows[windowId]
         if (currentWindow === undefined) return
@@ -132,17 +145,11 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
         })
       },
       onDone: (fullContent, tokenUsage) => {
-        activeExchangeControllers.delete(windowId)
-
-        // Discard late-arriving responses after cancellation
-        if (controller.signal.aborted) {
-          resolve(true)
-          return
-        }
+        if (!settle(false)) return
 
         const current = useStore.getState()
         const freshWindow = current.windows[windowId]
-        const costMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
+        const costMeta = buildCostMetadata(tokenUsage, window.model, window.provider)
         const message = createAssistantMessage(
           fullContent,
           freshWindow?.personaLabel ?? window.personaLabel,
@@ -156,21 +163,17 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
           streamContent: '',
           runningCost: (freshWindow?.runningCost ?? 0) + (costMeta?.estimatedCost ?? 0),
         })
-
-        resolve(false)
+      },
+      onStale: () => {
+        // The conversation changed; settle without writing into the new one.
+        settle(true)
       },
       onError: (error, tokenUsage) => {
-        activeExchangeControllers.delete(windowId)
-
-        // Discard late-arriving errors after cancellation
-        if (controller.signal.aborted) {
-          resolve(true)
-          return
-        }
+        if (!settle(false)) return
 
         const current = useStore.getState()
         const freshWindow = current.windows[windowId]
-        const errorCostMeta = buildCostMetadata(tokenUsage, freshWindow?.model ?? window.model)
+        const errorCostMeta = buildCostMetadata(tokenUsage, window.model, window.provider)
 
         current.updateWindow(windowId, {
           isStreaming: false,
@@ -178,23 +181,25 @@ function dispatchSingleExchangeTurn(windowId: string): Promise<boolean> {
           error,
           runningCost: (freshWindow?.runningCost ?? 0) + (errorCostMeta?.estimatedCost ?? 0),
         })
-
-        resolve(false)
       },
     }
 
-    streamResponse(
-      {
-        provider: window.provider,
-        model: window.model,
-        apiKey,
-        systemPrompt,
-        messages,
-        signal: controller.signal,
-        ...(key.baseUrl != null ? { baseUrl: key.baseUrl } : {}),
-        ...(key.adapterDefinitionId != null ? { adapterDefinitionId: key.adapterDefinitionId } : {}),
-      },
-      callbacks,
-    )
+    try {
+      state.updateWindow(windowId, { isStreaming: true, streamContent: '', error: null })
+      if (settled) return
+      streamResponse(
+        {
+          provider: window.provider,
+          model: window.model,
+          ...credentialRequestFields(credential),
+          systemPrompt,
+          messages,
+          signal: controller.signal,
+        },
+        callbacks,
+      )
+    } catch (error) {
+      callbacks.onError(error instanceof Error ? error.message : 'Could not start advisor exchange')
+    }
   })
 }

@@ -42,5 +42,5 @@ export const deepseekAdapter = createOpenAICompatibleAdapter(
 export const openrouterAdapter = createOpenAICompatibleAdapter(
   'openrouter',
   'https://openrouter.ai/api/v1',
-  { 'HTTP-Referer': 'https://github.com/consilium', 'X-Title': 'Consilium' },
+  { 'HTTP-Referer': 'https://github.com/FpSilSha/Consilium', 'X-Title': 'Consilium' },
 )

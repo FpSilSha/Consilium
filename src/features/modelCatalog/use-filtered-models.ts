@@ -1,6 +1,6 @@
 import type { Provider, ModelInfo } from '@/types'
 import { useStore } from '@/store'
-import { getModelsForProvider } from '@/features/modelSelector/model-registry'
+import { availableModels } from '@/features/modelSelector/available-models'
 
 /**
  * Returns the list of models available for a provider, filtered by
@@ -12,10 +12,8 @@ import { getModelsForProvider } from '@/features/modelSelector/model-registry'
 export function useFilteredModels(provider: Provider): readonly ModelInfo[] {
   const catalogModels = useStore((s) => s.catalogModels[provider]) ?? []
   const allowedIds = useStore((s) => s.allowedModels[provider]) ?? []
-  // Use catalog if available, else static fallback
-  const allModels = catalogModels.length > 0
-    ? catalogModels
-    : getModelsForProvider(provider)
+  const status = useStore((s) => s.catalogStatus[provider])
+  const allModels = availableModels(provider, catalogModels, status)
 
   // Empty allowed list = all models permitted
   if (allowedIds.length === 0) return allModels

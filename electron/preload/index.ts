@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { ConsiliumAPI } from './types'
+import { LOCAL_AGENT_CHANNELS, type LocalAgentEvent } from '../../shared/local-agent/protocol'
 
 const api: ConsiliumAPI = {
   platform: process.platform,
@@ -87,6 +88,15 @@ const api: ConsiliumAPI = {
   sessionDelete: (id) => ipcRenderer.invoke('session:delete', id),
   toggleDevTools: () => ipcRenderer.invoke('window:toggle-devtools'),
   sessionSaveSync: (id, content) => ipcRenderer.sendSync('session:save-sync', id, content) as boolean,
+
+  localAgentReadiness: (runtime) => ipcRenderer.invoke(LOCAL_AGENT_CHANNELS.readiness, runtime),
+  localAgentStart: (request) => ipcRenderer.invoke(LOCAL_AGENT_CHANNELS.start, request),
+  localAgentCancel: (requestId) => ipcRenderer.invoke(LOCAL_AGENT_CHANNELS.cancel, requestId),
+  onLocalAgentEvent: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: LocalAgentEvent) => callback(payload)
+    ipcRenderer.on(LOCAL_AGENT_CHANNELS.event, handler)
+    return () => { ipcRenderer.removeListener(LOCAL_AGENT_CHANNELS.event, handler) }
+  },
 }
 
 contextBridge.exposeInMainWorld('consiliumAPI', api)

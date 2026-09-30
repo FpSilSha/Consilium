@@ -1,7 +1,7 @@
 import { type ReactNode, useEffect, useState } from 'react'
 import type { Provider } from '@/types'
 import { useStore } from '@/store'
-import { getModelsForProvider } from './model-registry'
+import { useFilteredModels } from '@/features/modelCatalog/use-filtered-models'
 import { fetchOpenRouterModels } from './openrouter-models'
 import { getRawKey } from '@/features/keys/key-vault'
 
@@ -31,7 +31,7 @@ export function ModelDropdown({ provider, keyId, selectedModel, onSelect }: Mode
     return () => { cancelled = true }
   }, [provider, keyId, openRouterModels.length])
 
-  const models = provider === 'openrouter' ? openRouterModels : getModelsForProvider(provider)
+  const models = useFilteredModels(provider)
 
   if (loading) {
     return (

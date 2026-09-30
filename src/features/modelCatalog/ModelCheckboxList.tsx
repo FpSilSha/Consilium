@@ -2,7 +2,7 @@ import { type ReactNode, useState, useCallback, useMemo, useRef } from 'react'
 import type { Provider, ModelInfo } from '@/types'
 import { useStore } from '@/store'
 import { Tooltip } from '@/features/ui/Tooltip'
-import { getModelsForProvider } from '@/features/modelSelector/model-registry'
+import { availableModels } from '@/features/modelSelector/available-models'
 import { getRawKey } from '@/features/keys/key-vault'
 import { saveCatalogPreferences, saveCustomModelId } from './catalog-persistence'
 import { testModelId, testWillCost } from './model-validation'
@@ -21,9 +21,7 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
 
   const [search, setSearch] = useState('')
 
-  const allModels = catalogModels.length > 0
-    ? catalogModels
-    : getModelsForProvider(provider)
+  const allModels = availableModels(provider, catalogModels, catalogStatus)
 
   const filteredModels = useMemo(() => searchModels(allModels, search), [allModels, search])
 
@@ -47,10 +45,10 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
       const available = catalog.filter((m) => newAllowed.includes(m.id))
       if (available.length > 0) {
         // Pick cheapest: free (both prices 0) first, then lowest output price
-        const free = available.filter((m) => m.inputPricePerToken === 0 && m.outputPricePerToken === 0)
+        const free = available.filter((m) => m.pricingKnown !== false && m.inputPricePerToken === 0 && m.outputPricePerToken === 0)
         const cheapest = free.length > 0
           ? free[0]!.id
-          : [...available].sort((a, b) => a.outputPricePerToken - b.outputPricePerToken)[0]!.id
+          : [...available].sort((a, b) => (a.pricingKnown === false ? Infinity : a.outputPricePerToken) - (b.pricingKnown === false ? Infinity : b.outputPricePerToken))[0]!.id
         for (const windowId of state.windowOrder) {
           const win = state.windows[windowId]
           if (win == null || win.provider !== provider) continue
@@ -89,7 +87,7 @@ export function ModelCheckboxList({ provider }: ModelCheckboxListProps): ReactNo
       <div className="rounded-md bg-surface-base px-4 py-6 text-center text-xs text-content-disabled">
         {catalogStatus === 'loading' ? 'Loading models...' :
          catalogStatus === 'error' ? 'Failed to load models. Add an API key to fetch the model list.' :
-         'No models available. Add an API key to fetch the model list.'}
+         catalogStatus === 'loaded' ? 'No compatible chat models are available for this provider.' : 'No models available. Add an API key to fetch the model list.'}
       </div>
     )
   }
@@ -200,9 +198,9 @@ function ModelRow({ model, checked, onToggle, priceOverride }: {
         {model.contextWindow > 0 ? `${Math.round(model.contextWindow / 1000)}K` : '—'}
       </span>
       <span className="w-24 text-right text-[10px] text-content-disabled">
-        {inputPrice > 0 || outputPrice > 0
+        {model.pricingKnown === false && priceOverride == null ? 'Unknown' : inputPrice > 0 || outputPrice > 0
           ? `$${formatTokenPrice(inputPrice)} / $${formatTokenPrice(outputPrice)}`
-          : '—'}
+          : 'Free'}
         {priceOverride != null && (
           <Tooltip text="Price override active" position="left">
             <span className="ml-0.5 text-accent-blue">*</span>
@@ -273,8 +271,10 @@ function CustomModelInput({ provider, onAdded }: {
         contextWindow: 0,
         inputPricePerToken: 0,
         outputPricePerToken: 0,
+        pricingKnown: false,
+        isCustom: true,
       }
-      setCatalogModels(provider, [...catalogModels, newModel])
+      setCatalogModels(provider, [...useStore.getState().catalogModels[provider].filter((model) => model.id !== trimmed), newModel])
       onAdded(trimmed)
       setCustomId('')
       // Persist so it survives restart

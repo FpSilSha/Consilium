@@ -3,6 +3,12 @@ export interface CostMetadata {
   readonly outputTokens: number
   readonly estimatedCost: number
   readonly isEstimate: boolean
+  /**
+   * How the call was paid for. Absent means a legacy API-billed message.
+   * `subscription` usage has no per-call price: its `estimatedCost` of 0 means
+   * "nothing added to API spend", never "free" or "measured $0".
+   */
+  readonly billing?: 'api' | 'subscription' | undefined
 }
 
 export interface Attachment {

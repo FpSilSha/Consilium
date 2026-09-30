@@ -15,4 +15,6 @@ export {
   stopAll,
   manualDispatch,
   retryAdvisor,
+  skipQueueCard,
+  removeQueueCard,
 } from './turn-dispatcher'

@@ -1,3 +1,5 @@
+import type { LocalAgentEvent, LocalAgentReadiness, LocalAgentRuntimeId, LocalAgentTurnRequest } from '../../shared/local-agent/protocol'
+
 export interface StoredKey {
   readonly providerId: string
   readonly rawKey: string
@@ -54,4 +56,8 @@ export interface ConsiliumAPI {
   sessionDelete(id: string): Promise<void>
   toggleDevTools(): Promise<void>
   sessionSaveSync(id: string, content: string): boolean
+  localAgentReadiness(runtime: LocalAgentRuntimeId): Promise<LocalAgentReadiness>
+  localAgentStart(request: LocalAgentTurnRequest): Promise<{ ok: true } | { ok: false; code: string; message: string }>
+  localAgentCancel(requestId: string): Promise<boolean>
+  onLocalAgentEvent(callback: (event: LocalAgentEvent) => void): () => void
 }

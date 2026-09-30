@@ -18,7 +18,6 @@ function makeMessage(overrides: Partial<Message> & { content: string }): Message
   return {
     id: 'msg-1',
     role: 'user',
-    content: overrides.content,
     personaLabel: 'You',
     timestamp: 1_000_000,
     windowId: 'win-1',
@@ -296,14 +295,14 @@ describe('getContextUsagePercent', () => {
   })
 
   it('calculates percentage correctly for a known input', () => {
-    // claude-opus-4-6: contextWindow = 200000
+    // claude-opus-4-6: contextWindow = 1000000
     // "[You]: hello" = 12 chars → Math.ceil(12/4) = 3 tokens
-    // percent = (3 / 200000) * 100 = 0.0015
+    // percent = (3 / 1000000) * 100 = 0.0003
     const msg = makeMessage({ content: 'hello' })
     const pct = getContextUsagePercent([msg], 'claude-opus-4-6')
     const formatted = formatWithIdentityHeader(msg)
     const tokens = estimateTokens(formatted)
-    const expected = Math.min((tokens / 200000) * 100, 100)
+    const expected = Math.min((tokens / 1000000) * 100, 100)
     expect(pct).toBeCloseTo(expected, 10)
   })
 

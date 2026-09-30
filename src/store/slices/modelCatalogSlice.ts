@@ -26,6 +26,7 @@ const EMPTY_PROVIDER_RECORD: Readonly<Record<Provider, readonly ModelInfo[]>> = 
   deepseek: [],
   openrouter: [],
   custom: [],
+  'claude-subscription': [],
 }
 
 const EMPTY_ALLOWED: Readonly<Record<Provider, readonly string[]>> = {
@@ -36,6 +37,7 @@ const EMPTY_ALLOWED: Readonly<Record<Provider, readonly string[]>> = {
   deepseek: [],
   openrouter: [],
   custom: [],
+  'claude-subscription': [],
 }
 
 const EMPTY_STATUS: Readonly<Record<Provider, CatalogStatus>> = {
@@ -46,6 +48,7 @@ const EMPTY_STATUS: Readonly<Record<Provider, CatalogStatus>> = {
   deepseek: 'idle',
   openrouter: 'idle',
   custom: 'idle',
+  'claude-subscription': 'idle',
 }
 
 export const createModelCatalogSlice: StateCreator<ModelCatalogSlice> = (set) => ({

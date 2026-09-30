@@ -13,7 +13,9 @@ export const openaiAdapter: ProviderAdapter = {
       },
       body: JSON.stringify({
         model: config.model,
-        max_tokens: config.maxTokens ?? 4096,
+        ...(config.provider === 'openai'
+          ? { max_completion_tokens: config.maxTokens ?? 4096 }
+          : { max_tokens: config.maxTokens ?? 4096 }),
         stream: true,
         stream_options: { include_usage: true },
         messages: [
@@ -34,15 +36,15 @@ export const openaiAdapter: ProviderAdapter = {
     try {
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
 
-        buffer += decoder.decode(value, { stream: true })
+
+        buffer += done ? decoder.decode() : decoder.decode(value, { stream: true })
         const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
+        buffer = done ? '' : lines.pop() ?? ''
 
         for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6).trim()
+          if (!line.startsWith('data:')) continue
+          const data = line.slice(5).trim()
           if (data === '' || data === '[DONE]') continue
 
           try {
@@ -53,6 +55,7 @@ export const openaiAdapter: ProviderAdapter = {
             // Skip malformed JSON lines
           }
         }
+        if (done) break
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -69,41 +72,34 @@ export const openaiAdapter: ProviderAdapter = {
 function parseOpenAIEvent(event: unknown): StreamChunk | null {
   if (typeof event !== 'object' || event === null) return null
   const obj = event as Record<string, unknown>
-
-  const choices = obj['choices'] as readonly Record<string, unknown>[] | undefined
-
-  // Check choices first — content takes priority over usage in the same event
-  if (choices !== undefined && choices.length > 0) {
-    const choice = choices[0]!
-    const delta = choice['delta'] as Record<string, unknown> | undefined
-
-    if (delta !== undefined && typeof delta['content'] === 'string' && delta['content'] !== '') {
-      return { type: 'content', content: delta['content'] }
-    }
-
-    const finishReason = choice['finish_reason']
-    if (finishReason !== null && finishReason !== undefined) {
-      if (finishReason === 'content_filter') {
-        return { type: 'error', content: 'Response blocked by provider content filter' }
+  const error = obj['error']
+  if (error != null) {
+    const message = typeof error === 'object' ? (error as Record<string, unknown>)['message'] : error
+    return { type: 'error', content: typeof message === 'string' ? message : 'Provider stream failed' }
+  }
+  const rawUsage = obj['usage']
+  const usage = rawUsage != null && typeof rawUsage === 'object' ? rawUsage as Record<string, unknown> : undefined
+  const tokenCount = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0
+  const tokenUsage = usage == null ? undefined : {
+    inputTokens: tokenCount(usage['prompt_tokens']), outputTokens: tokenCount(usage['completion_tokens']),
+  }
+  const choices = obj['choices']
+  const choice = Array.isArray(choices) && choices[0] != null && typeof choices[0] === 'object'
+    ? choices[0] as Record<string, unknown> : undefined
+  if (choice != null) {
+    if (choice['finish_reason'] === 'error') return { type: 'error', content: 'Provider stream failed', tokenUsage }
+    if (choice['finish_reason'] === 'content_filter') return { type: 'error', content: 'Response blocked by provider content filter', tokenUsage }
+    const delta = choice['delta']
+    if (delta != null && typeof delta === 'object') {
+      const content = (delta as Record<string, unknown>)['content']
+      if (typeof content === 'string' && content !== '') {
+        return { type: 'content', content, ...(tokenUsage == null ? {} : { tokenUsage }) }
       }
-      // Don't return yet — usage may be in this same event (fall through)
     }
   }
-
-  // Usage event — standalone or alongside an empty/finish choices event
-  const usage = obj['usage'] as Record<string, unknown> | undefined | null
-  if (usage != null && typeof usage === 'object') {
-    const inputTokens = typeof usage['prompt_tokens'] === 'number' ? usage['prompt_tokens'] : 0
-    const outputTokens = typeof usage['completion_tokens'] === 'number' ? usage['completion_tokens'] : 0
-    return {
-      type: 'done',
-      content: '',
-      tokenUsage: { inputTokens, outputTokens },
-    }
-  }
-
-  return null
+  return tokenUsage == null ? null : { type: 'done', content: '', tokenUsage }
 }
+
 
 /**
  * Builds OpenAI-compatible message content.

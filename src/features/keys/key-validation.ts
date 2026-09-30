@@ -9,12 +9,12 @@ export interface ValidationResult {
 }
 
 const PROVIDER_ENDPOINTS: Readonly<Record<KnownProvider, string>> = {
-  anthropic: 'https://api.anthropic.com/v1/messages',
+  anthropic: 'https://api.anthropic.com/v1/models',
   openai: 'https://api.openai.com/v1/models',
   google: 'https://generativelanguage.googleapis.com/v1beta/models',
   xai: 'https://api.x.ai/v1/models',
   deepseek: 'https://api.deepseek.com/v1/models',
-  openrouter: 'https://openrouter.ai/api/v1/models',
+  openrouter: 'https://openrouter.ai/api/v1/key',
 }
 
 const VALIDATION_TIMEOUT_MS = 15_000
@@ -34,18 +34,9 @@ export async function validateKey(
       : timeoutSignal
 
     const response = await fetch(endpoint, {
-      method: provider === 'anthropic' ? 'POST' : 'GET',
+      method: 'GET',
       headers,
       signal: combinedSignal,
-      ...(provider === 'anthropic'
-        ? {
-            body: JSON.stringify({
-              model: 'claude-haiku-4-5-20251001',
-              max_tokens: 1,
-              messages: [{ role: 'user', content: 'test' }],
-            }),
-          }
-        : {}),
     })
 
     // 401/403 = invalid key, anything else might be rate limiting or other issue
@@ -86,6 +77,7 @@ function buildAuthHeaders(
     case 'anthropic':
       headers['x-api-key'] = rawKey
       headers['anthropic-version'] = '2023-06-01'
+      headers['anthropic-dangerous-direct-browser-access'] = 'true'
       break
     case 'google':
       headers['x-goog-api-key'] = rawKey

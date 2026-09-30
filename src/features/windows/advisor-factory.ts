@@ -2,41 +2,29 @@ import { v4 as uuidv4 } from 'uuid'
 import type { AdvisorWindow, ApiKey, Persona, Provider, ModelInfo } from '@/types'
 import { useStore } from '@/store'
 import { getAccentColor, BUILT_IN_THEMES } from '@/features/themes'
-import { getModelsForProvider } from '@/features/modelSelector/model-registry'
-import { getRawKey } from '@/features/keys/key-vault'
+import { resolveModelsForProvider } from '@/features/modelSelector/model-resolve'
+import { refreshProviderCatalog } from '@/services/api/catalog/fetch-all-catalogs'
 
 /**
  * Returns the available models for a provider, respecting the allowed-models filter.
- * Falls back to the static registry if catalog is empty.
+ * Uses the offline shortlist until discovery succeeds.
  */
 function getAvailableModels(provider: Provider): readonly ModelInfo[] {
-  const state = useStore.getState()
-  const catalog = state.catalogModels[provider] ?? []
-  const allowed = state.allowedModels[provider] ?? []
-
-  if (allowed.length > 0) {
-    const filtered = catalog.filter((m) => allowed.includes(m.id))
-    if (filtered.length > 0) return filtered
-    const staticModels = getModelsForProvider(provider)
-    const staticFiltered = staticModels.filter((m) => allowed.includes(m.id))
-    if (staticFiltered.length > 0) return staticFiltered
-  }
-
-  if (catalog.length > 0) return catalog
-  return getModelsForProvider(provider)
+  const models = resolveModelsForProvider(provider)
+  const allowed = useStore.getState().allowedModels[provider]
+  return allowed.length === 0 ? models : models.filter((model) => allowed.includes(model.id))
 }
-
 /**
  * Picks the cheapest model from a list.
  * Models with price 0 are genuinely free (cheapest possible).
- * Models with both input and output price of -1 are treated as unknown pricing
+ * Models marked with unknown pricing
  * and deprioritized. All others are sorted by output price ascending.
  */
 function cheapestFromList(models: readonly ModelInfo[]): ModelInfo | undefined {
   if (models.length === 0) return undefined
 
   // Free models (price === 0) are the cheapest — pick first one found
-  const free = models.filter((m) => m.inputPricePerToken === 0 && m.outputPricePerToken === 0)
+  const free = models.filter((m) => m.pricingKnown !== false && m.inputPricePerToken === 0 && m.outputPricePerToken === 0)
   if (free.length > 0) return free[0]
 
   // Among paid models, sort by output price ascending
@@ -55,21 +43,11 @@ function cheapestFromList(models: readonly ModelInfo[]): ModelInfo | undefined {
  * gets real model data instead of a hardcoded fallback.
  */
 async function ensureCatalogLoaded(providerKeys: ReadonlyMap<Provider, ApiKey>): Promise<void> {
-  for (const [provider, key] of providerKeys) {
-    const catalog = useStore.getState().catalogModels[provider] ?? []
-    if (catalog.length > 0) continue
-
-    if (provider === 'openrouter') {
-      const rawKey = getRawKey(key.id)
-      if (rawKey == null) continue
-      try {
-        const { fetchOpenRouterModels } = await import('@/features/modelSelector/openrouter-models')
-        await fetchOpenRouterModels(rawKey)
-      } catch { /* non-fatal — will use fallback */ }
-    }
-  }
+  await Promise.all([...providerKeys.keys()].filter((provider) => provider !== 'custom').map(async (provider) => {
+    if (useStore.getState().catalogStatus[provider] === 'loaded') return
+    try { await refreshProviderCatalog(provider) } catch { /* Offline fallback remains available. */ }
+  }))
 }
-
 /**
  * Picks the best provider and cheapest model across all providers that have keys.
  * Returns the provider with the cheapest available model.
@@ -92,7 +70,7 @@ function pickBestProviderAndModel(keys: readonly ApiKey[]): { readonly provider:
     const cheapest = cheapestFromList(models)
     if (cheapest == null) continue
 
-    const price = cheapest.outputPricePerToken
+    const price = cheapest.pricingKnown === false ? Infinity : cheapest.outputPricePerToken
     if (price < bestPrice) {
       bestPrice = price
       bestProvider = provider
@@ -101,13 +79,13 @@ function pickBestProviderAndModel(keys: readonly ApiKey[]): { readonly provider:
     }
   }
 
-  // If no provider had priced models, just use the first key's provider and first model
+  // Unknown prices remain usable, but a successful empty catalog is not a model choice.
   if (bestPrice === Infinity && providerKeys.size > 0) {
-    const [firstProvider, firstKey] = [...providerKeys.entries()][0]!
-    const models = getAvailableModels(firstProvider)
-    bestProvider = firstProvider
-    bestKeyId = firstKey.id
-    bestModel = models[0]?.id ?? 'claude-haiku-4-5-20251001'
+    const available = [...providerKeys.entries()].find(([provider]) => getAvailableModels(provider).length > 0)
+    const [provider, key] = available ?? [...providerKeys.entries()][0]!
+    bestProvider = provider
+    bestKeyId = key.id
+    bestModel = getAvailableModels(provider)[0]?.id ?? ''
   }
 
   return { provider: bestProvider, keyId: bestKeyId, model: bestModel }
@@ -152,7 +130,7 @@ export async function createDefaultAdvisorWindow(
     runningCost: 0,
     isStreaming: false,
     streamContent: '',
-    error: null,
+    error: model === '' ? 'No compatible model available. Check Models & Keys.' : null,
     isCompacted: false,
     compactedSummary: null,
     bufferSize: 15,

@@ -1,4 +1,4 @@
-export type Provider = 'anthropic' | 'openai' | 'google' | 'xai' | 'deepseek' | 'openrouter' | 'custom'
+export type Provider = 'anthropic' | 'openai' | 'google' | 'xai' | 'deepseek' | 'openrouter' | 'custom' | 'claude-subscription'
 
 export interface ApiKey {
   readonly id: string
@@ -18,4 +18,11 @@ export interface ModelInfo {
   readonly contextWindow: number
   readonly inputPricePerToken: number
   readonly outputPricePerToken: number
+  readonly pricingKnown?: boolean | undefined
+  readonly pricingSource?: 'provider' | 'reference' | 'fallback' | undefined
+  readonly maxOutputTokens?: number | undefined
+  readonly inputModalities?: readonly string[] | undefined
+  readonly outputModalities?: readonly string[] | undefined
+  readonly supportedParameters?: readonly string[] | undefined
+  readonly isCustom?: boolean | undefined
 }

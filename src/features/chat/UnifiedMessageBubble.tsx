@@ -161,10 +161,14 @@ function AssistantBubble({ message, displayContent, accentColor, modelName, isDo
               {cost.outputTokens > 0 && (
                 <span>{cost.outputTokens.toLocaleString()} out</span>
               )}
-              <span>
-                ~${cost.estimatedCost.toFixed(4)}
-                {cost.isEstimate ? ' est' : ''}
-              </span>
+              {cost.billing === 'subscription' ? (
+                <span title="Billed to your Claude subscription, not API spend">Subscription</span>
+              ) : (
+                <span>
+                  ~${cost.estimatedCost.toFixed(4)}
+                  {cost.isEstimate ? ' est' : ''}
+                </span>
+              )}
             </>
           )}
           {cost == null && message.role === 'assistant' && (

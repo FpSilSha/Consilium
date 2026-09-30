@@ -1,102 +1,32 @@
 import type { ModelInfo } from '@/types'
 import type { CatalogFetchResult } from './catalog-types'
-const ENDPOINT = 'https://openrouter.ai/api/v1/models'
-/** Longer timeout for OpenRouter — the models payload is large (300+ entries) */
-const TIMEOUT_MS = 30_000
+import { catalogJson, entries, isRecord, positiveNumber, priceNumber, runCatalogFetch, strings } from './catalog-request'
 
-interface OpenRouterModel {
-  readonly id: string
-  readonly name: string
-  readonly context_length?: number
-  readonly pricing?: {
-    readonly prompt?: string
-    readonly completion?: string
-  }
-}
-
-/**
- * Fetches the full model catalog from OpenRouter.
- * No API key required — the models endpoint is public.
- * Includes pricing data used to enrich other providers.
- */
-export async function fetchOpenRouterCatalog(
-  signal?: AbortSignal,
-): Promise<CatalogFetchResult> {
-  try {
-    const response = await fetch(ENDPOINT, {
-      signal: signal ?? AbortSignal.timeout(TIMEOUT_MS),
+/** Public endpoint: omit offset/limit to receive the entire text-model catalog. */
+export function fetchOpenRouterCatalog(signal?: AbortSignal): Promise<CatalogFetchResult> {
+  return runCatalogFetch('openrouter', async (requestSignal) => {
+    const json = await catalogJson('https://openrouter.ai/api/v1/models', {}, requestSignal)
+    return entries(json, 'data').flatMap((raw): ModelInfo[] => {
+      if (typeof raw['id'] !== 'string' || raw['id'].trim() === '' || raw['id'].endsWith(':batch')) return []
+      if (typeof raw['name'] !== 'string' || raw['name'].trim() === '') return []
+      const architecture = isRecord(raw['architecture']) ? raw['architecture'] : {}
+      const inputModalities = strings(architecture['input_modalities'])
+      const outputModalities = strings(architecture['output_modalities'])
+      if (outputModalities != null && !outputModalities.includes('text')) return []
+      if (inputModalities != null && !inputModalities.includes('text')) return []
+      const pricing = isRecord(raw['pricing']) ? raw['pricing'] : {}
+      const topProvider = isRecord(raw['top_provider']) ? raw['top_provider'] : {}
+      const input = priceNumber(pricing['prompt'])
+      const output = priceNumber(pricing['completion'])
+      return [{
+        id: raw['id'], name: raw['name'], provider: 'openrouter',
+        contextWindow: positiveNumber(raw['context_length']) || positiveNumber(topProvider['context_length']),
+        maxOutputTokens: positiveNumber(topProvider['max_completion_tokens']) || undefined,
+        inputPricePerToken: input ?? 0, outputPricePerToken: output ?? 0,
+        pricingKnown: input !== undefined && output !== undefined,
+        inputModalities, outputModalities,
+        supportedParameters: strings(raw['supported_parameters']),
+      }]
     })
-
-    if (!response.ok) {
-      let detail = ''
-      try {
-        const body: unknown = await response.json()
-        if (typeof body === 'object' && body !== null) {
-          const err = (body as Record<string, unknown>)['error']
-          if (typeof err === 'string') detail = `: ${err}`
-          else if (typeof err === 'object' && err !== null) {
-            const msg = (err as Record<string, unknown>)['message']
-            if (typeof msg === 'string') detail = `: ${msg}`
-          }
-        }
-      } catch { /* no body */ }
-
-      const msg = response.status === 408
-        ? `Timeout — OpenRouter took too long to respond. Try again.${detail}`
-        : response.status === 429
-          ? `Rate limited — wait a moment and try again.${detail}`
-          : `HTTP ${response.status}${detail}`
-      return { provider: 'openrouter', models: [], error: msg }
-    }
-
-    let json: unknown
-    try {
-      json = await response.json()
-    } catch {
-      return { provider: 'openrouter', models: [], error: 'Invalid JSON response' }
-    }
-
-    if (!isValidResponse(json)) {
-      return { provider: 'openrouter', models: [], error: 'Invalid response shape' }
-    }
-
-    const models: readonly ModelInfo[] = (json as { data: readonly unknown[] }).data
-      .filter(isOpenRouterEntry)
-      .map((raw): ModelInfo => {
-        const m = raw as OpenRouterModel
-        return {
-          id: m.id,
-          name: m.name,
-          provider: 'openrouter',
-          contextWindow: m.context_length ?? 4096,
-          inputPricePerToken: parsePrice(m.pricing?.prompt),
-          outputPricePerToken: parsePrice(m.pricing?.completion),
-        }
-      })
-      .sort((a, b) => a.name.localeCompare(b.name))
-
-    return { provider: 'openrouter', models }
-  } catch (err) {
-    if (err instanceof DOMException) {
-      if (err.name === 'AbortError') throw err
-      if (err.name === 'TimeoutError') return { provider: 'openrouter', models: [], error: 'Timeout' }
-    }
-    return { provider: 'openrouter', models: [], error: 'Network error' }
-  }
-}
-
-function parsePrice(s: string | undefined): number {
-  const n = parseFloat(s ?? '0')
-  return Number.isFinite(n) ? n : 0
-}
-
-function isValidResponse(json: unknown): boolean {
-  if (typeof json !== 'object' || json === null) return false
-  return Array.isArray((json as Record<string, unknown>)['data'])
-}
-
-function isOpenRouterEntry(entry: unknown): boolean {
-  if (entry == null || typeof entry !== 'object') return false
-  const obj = entry as Record<string, unknown>
-  return typeof obj['id'] === 'string' && obj['id'] !== '' && typeof obj['name'] === 'string'
+  }, signal, 30_000)
 }

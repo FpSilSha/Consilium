@@ -34,8 +34,12 @@ export function MessageBubble({ message, accentColor }: MessageBubbleProps): Rea
         <div className="whitespace-pre-wrap break-words">{message.content}</div>
         {message.costMetadata !== undefined && (
           <div className="mt-1 text-right text-xs text-content-disabled">
-            ~${message.costMetadata.estimatedCost.toFixed(4)}
-            {message.costMetadata.isEstimate ? ' (est)' : ''}
+            {message.costMetadata.billing === 'subscription' ? 'Subscription' : (
+              <>
+                ~${message.costMetadata.estimatedCost.toFixed(4)}
+                {message.costMetadata.isEstimate ? ' (est)' : ''}
+              </>
+            )}
           </div>
         )}
       </div>

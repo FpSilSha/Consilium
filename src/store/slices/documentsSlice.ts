@@ -69,6 +69,8 @@ export interface DocumentsSlice {
 
   /** Replaces the in-memory documents + IDs (used on session load). */
   setSessionDocuments: (docs: readonly SessionDocument[]) => void
+  /** Restore durable references before their document files finish loading. */
+  setSessionDocumentReferences: (ids: readonly string[]) => void
 
   /** Adds a freshly compiled document to the current session. */
   addDocument: (doc: SessionDocument) => void
@@ -117,6 +119,8 @@ export const createDocumentsSlice: StateCreator<DocumentsSlice> = (set) => ({
       documentIds: docs.map((d) => d.id),
     }),
 
+  setSessionDocumentReferences: (ids) => set({ documents: [], documentIds: [...ids] }),
+
   addDocument: (doc) =>
     set((state) => {
       // Newest first; don't duplicate an existing ID
@@ -124,7 +128,7 @@ export const createDocumentsSlice: StateCreator<DocumentsSlice> = (set) => ({
       const next = [doc, ...filtered]
       return {
         documents: next,
-        documentIds: next.map((d) => d.id),
+        documentIds: [doc.id, ...state.documentIds.filter((id) => id !== doc.id)],
       }
     }),
 
@@ -133,7 +137,7 @@ export const createDocumentsSlice: StateCreator<DocumentsSlice> = (set) => ({
       const next = state.documents.filter((d) => d.id !== id)
       return {
         documents: next,
-        documentIds: next.map((d) => d.id),
+        documentIds: state.documentIds.filter((documentId) => documentId !== id),
       }
     }),
 

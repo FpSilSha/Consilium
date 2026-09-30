@@ -26,6 +26,8 @@ interface AdvisorCostEntry {
   readonly cost: number
   readonly messageCount: number
   readonly untrackedCount: number
+  /** Messages billed to the user's Claude subscription (no API dollar cost). */
+  readonly subscriptionCount: number
 }
 
 export function CostBreakdownModal({
@@ -129,6 +131,10 @@ export function CostBreakdownModal({
                     <span className="text-xs text-content-primary">
                       ~${entry.cost.toFixed(4)}
                     </span>
+                  ) : entry.subscriptionCount > 0 ? (
+                    <span className="text-xs text-content-disabled" title="Billed to your Claude subscription, not API spend">
+                      subscription
+                    </span>
                   ) : entry.untrackedCount > 0 ? (
                     <span className="text-xs italic text-content-disabled">
                       unknown
@@ -186,15 +192,17 @@ function buildBreakdown(
   orModels: readonly import('@/types').ModelInfo[],
 ): readonly AdvisorCostEntry[] {
   // Aggregate per window
-  const map = new Map<string, { cost: number; messageCount: number; untrackedCount: number }>()
+  const map = new Map<string, { cost: number; messageCount: number; untrackedCount: number; subscriptionCount: number }>()
 
   for (const msg of messages) {
     if (msg.role !== 'assistant') continue
-    const existing = map.get(msg.windowId) ?? { cost: 0, messageCount: 0, untrackedCount: 0 }
+    const existing = map.get(msg.windowId) ?? { cost: 0, messageCount: 0, untrackedCount: 0, subscriptionCount: 0 }
+    const isSubscription = msg.costMetadata?.billing === 'subscription'
     map.set(msg.windowId, {
-      cost: existing.cost + (msg.costMetadata?.estimatedCost ?? 0),
+      cost: existing.cost + (isSubscription ? 0 : (msg.costMetadata?.estimatedCost ?? 0)),
       messageCount: existing.messageCount + 1,
       untrackedCount: existing.untrackedCount + (msg.costMetadata == null ? 1 : 0),
+      subscriptionCount: existing.subscriptionCount + (isSubscription ? 1 : 0),
     })
   }
 
@@ -206,7 +214,7 @@ function buildBreakdown(
     seen.add(id)
     const win = windows[id]
     if (win == null) continue
-    const stats = map.get(id) ?? { cost: 0, messageCount: 0, untrackedCount: 0 }
+    const stats = map.get(id) ?? { cost: 0, messageCount: 0, untrackedCount: 0, subscriptionCount: 0 }
     if (stats.messageCount === 0) continue
 
     entries.push({
