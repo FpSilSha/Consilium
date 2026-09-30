@@ -8,17 +8,20 @@
 
 Consilium is for the kind of decision-making that benefits from more than one perspective: technical design reviews, product strategy debates, security threat-modeling, code reviews, planning sessions. Instead of asking one model and getting one answer, you convene a council of advisors and let them argue, agree, and refine each other's thinking — with you as the human in the loop.
 
-It's a desktop app (Electron + React + TypeScript). Bring your own API keys; nothing is routed through any third party.
+It's a desktop app (Electron + React + TypeScript). Bring your own API keys, or use your own supported personal subscription under the provider's terms. Claude subscription access through your locally installed Claude Code is currently supported. Requests go to your configured providers; Consilium does not operate a hosted model service.
 
 ---
 
 ## What you can do with it
 
 - **Run multiple models in one conversation.** Mix Claude, GPT, Gemini, Grok, DeepSeek, OpenRouter models, and your own custom HTTP adapters in the same thread. Each advisor sees the full conversation including the other advisors' responses.
+- **Use your own Claude subscription.** Add a Claude subscription advisor alongside API-key advisors, using your own Claude Code installation and sign-in. See [personal subscriptions and permitted use](#personal-subscriptions-and-permitted-use) for setup and restrictions.
+- **Refresh the available models.** Discover models from supported providers, retain manually added model IDs, and use bundled fallback lists when discovery is unavailable. Pricing distinguishes unknown costs from known free models.
 - **Assign personas.** Each advisor has a persona — Security Engineer, Product Strategist, Devil's Advocate, or any custom persona you create. Personas shape how the model approaches the conversation without changing what model it actually is.
 - **Choose how they speak.** Four turn modes: sequential (one after another), parallel (all at once), manual (you pick who responds next), or queue (you stack a planned order).
 - **Steer the discussion.** Address advisors by name with `@mentions`, swap personas mid-session (with conversation handoff), call for a vote, or compile the whole discussion into a polished document.
-- **Stay in control of cost.** Per-session budget cap with halt-on-exceed. Cost tracking by advisor. Live token usage estimates.
+- **Track API spending.** View estimated costs by advisor and set a session budget that stops further turns when reached. In-flight requests can exceed that budget. Subscription usage is labeled separately and is governed by the provider's plan limits.
+- **Save and resume discussions.** Sessions preserve the advisor lineup, transcript, document references, existing summaries, budget, and loop settings. Autosave and session-switch guards help keep conversations separate.
 - **Manage context automatically.** Long sessions get summarized (compacted) so you don't blow past model context windows. Compaction is a separate cheap-model call so the main advisors never see truncated history.
 
 ---
@@ -33,10 +36,12 @@ All advisors read from and write to a single conversation thread. Each message h
 
 The shared context is the same regardless of turn mode; the difference is *when* each advisor speaks:
 
-- **Sequential** — advisors take turns in order. After your message, advisor 1 responds, then advisor 2 sees both your message and advisor 1's response, and so on.
+- **Sequential** — advisors take turns in order. After your message, advisor 1 responds, then advisor 2 sees both your message and advisor 1's response, and so on. A lone advisor gets a user turn so it waits for you instead of repeatedly answering itself.
 - **Parallel** — all advisors respond to your message at the same time, each unaware of the others' responses for that round. Useful for soliciting independent opinions without anchoring.
 - **Manual** — you pick who responds next via a queue panel. Good for following up with one specific advisor without triggering everyone.
 - **Queue** — you build a planned order ahead of time and the app dispatches it.
+
+You can stop a run, retry a failed advisor, or skip/remove a queued turn. Failed advisors remain available to retry after a run ends. A round with no advisor replies stops instead of looping indefinitely.
 
 ### Personas
 
@@ -58,7 +63,9 @@ Each pane saves independently (per-pane Save button) and warns on unsaved change
 
 ### Cost tracking and budget
 
-Every advisor turn records its provider, model, prompt tokens, response tokens, and estimated cost (calculated from OpenRouter's published per-model pricing). The session running cost is shown in the budget bar; clicking it opens a per-advisor cost breakdown. Setting a session budget enforces a halt at 100% so an out-of-control parallel-mode session can't burn through your API credits. Cost figures are estimates and don't guarantee a match with your actual provider invoice.
+API turns use reported token usage and available model pricing to estimate cost. Provider pricing takes precedence, with reference estimates where available; unknown pricing is not treated as a known zero price. The budget bar opens a per-advisor cost breakdown. A session budget can stop further turns when reached, but it is not a hard billing limit: in-flight requests and incomplete usage accounting can exceed the displayed amount. Provider invoices remain authoritative.
+
+Claude subscription turns are labeled as subscription usage, not priced as API calls. Consilium does not calculate your remaining subscription allowance or control provider-side extra-usage charges. Check usage, limits, and billing in your provider account.
 
 ### Compile Document
 
@@ -99,15 +106,17 @@ API integrations are written as per-provider adapters in `src/services/api/adapt
 ### Install and run
 
 ```bash
-git clone https://github.com/FpSilSha/Consilium.git
+git clone --branch codex/provider-catalog-overhaul https://github.com/FpSilSha/Consilium.git
 cd Consilium
 npm install
 npm run dev      # launches the Electron app in dev mode
 ```
 
+The current provider, subscription, session, and turn-management updates are on `codex/provider-catalog-overhaul`; the command above selects that branch.
+
 ### First-run setup
 
-On first launch, the onboarding wizard walks you through adding an API key for at least one provider, choosing a model, and picking a persona for your first advisor. From there you can add more advisors via the right sidebar, switch turn modes via the input bar, and start chatting.
+For API access, the onboarding wizard walks you through adding a provider key, choosing a model, and picking a persona. For Claude subscription access, you can skip API-key setup and follow the steps below. Add advisors in the right sidebar, select a turn mode, and send your first message.
 
 ---
 
@@ -132,7 +141,9 @@ For a deep dive into architecture, conventions, and how each feature is wired, s
 
 ---
 
-## Bring your own keys
+## Connect your own accounts
+
+### API keys
 
 Consilium does not host any AI model. You add your own API keys for whichever providers you want to use. Keys are stored locally via Electron's `safeStorage` (OS-level encryption: Keychain on macOS, DPAPI on Windows, kwallet/gnome-keyring on Linux) and never leave your machine except when making the API call to the provider you configured them for.
 
@@ -145,6 +156,23 @@ Supported providers out of the box:
 - DeepSeek
 - OpenRouter (single key, hundreds of models)
 - Custom adapters (any HTTP-based API — configure request/response templates in the Adapter Builder)
+
+### Personal subscriptions and permitted use
+
+**Personal subscriptions may be used only where the respective provider permits the integration, only by the subscription owner for their own use, and in accordance with that provider's current Terms of Service, usage policies, and plan limits.** Do not share credentials, pool or resell subscription access, or use one person's subscription to serve other users. Each person must use their own eligible account.
+
+**Currently supported: Claude subscription through Claude Code in the desktop app.** The other providers listed above currently require API credentials; listing an API provider does not imply support for its consumer subscription.
+
+To connect your own Claude subscription:
+
+1. Install the unmodified Claude Code using [Anthropic's installation instructions](https://code.claude.com/docs/en/setup). Consilium currently requires version **2.1.284 or newer**. On Windows, use the native installer; the npm command shim is not supported by this integration.
+2. Run `claude` in a terminal and sign in to your own eligible Claude account through Anthropic's sign-in flow. Consilium does not provide a Claude login form or collect your subscription credentials.
+3. In Consilium, add an advisor and select **Claude subscription (Claude Code)**, then a model and persona. Check the displayed sign-in status; use **Recheck** after installing or signing in if needed.
+4. Start a text conversation. You can mix subscription advisors with advisors using your own API keys.
+
+Subscription advisors use your local Claude Code installation and never automatically fall back to paid API-key access. They currently support text conversations only: conversations containing file attachments are rejected for these advisors. Compaction model selection currently requires an API-key provider.
+
+Anthropic's current guidance states that `claude -p` and Agent SDK usage draw from subscription limits; eligibility, usage allowances, and billing rules can change. Review the current [Claude plan guidance](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan), [Claude Code authentication and usage rules](https://code.claude.com/docs/en/legal-and-compliance), and [Anthropic Terms of Service](https://www.anthropic.com/legal/consumer-terms) before connecting. Consilium's integration does not override a provider's terms or authorize unsupported uses.
 
 ---
 
