@@ -156,18 +156,18 @@ describe('Seq mode with a single AI: errors, retry and round limits', () => {
     expect(streamResponse).toHaveBeenCalledTimes(3)
   })
 
-  it('does not leave a lone user turn behind when the only advisor errors under a round limit', async () => {
+  it('keeps the advisor and its user turn when it errors under a round limit, so the next message runs it', async () => {
     setup(['a'])
     useStore.setState({ loopCount: 1 })
     failNext(1)
     startRun()
     handleUserMessage()
     await vi.waitFor(() => expect(useStore.getState().isRunning).toBe(false))
-    expect(useStore.getState().queue).toEqual([])
-    // The next message must not start a run that can never finish.
+    expect(useStore.getState().queue.map((c) => [c.isUser, c.status])).toEqual([[true, 'waiting'], [false, 'waiting']])
+    expect(useStore.getState().windows['a']?.error).toBe('boom')
     startRun()
     handleUserMessage()
-    expect(useStore.getState().isRunning).toBe(false)
+    await vi.waitFor(() => expect(streamResponse).toHaveBeenCalledTimes(2))
   })
 })
 
@@ -194,7 +194,7 @@ describe('round-2 regressions', () => {
     handleUserMessage()
     await vi.waitFor(() => expect(useStore.getState().windows['a']?.error).toBe('boom'))
     stopAll()
-    // a's card is gone, as when a round limit ends and drops errored cards.
+    // a's card is gone (e.g. the user removed it from the queue).
     useStore.setState({ queue: useStore.getState().queue.filter((c) => c.windowId !== 'a') })
     retryAdvisor('a')
     await vi.waitFor(() => expect(streamResponse.mock.calls.length).toBeGreaterThanOrEqual(2))
@@ -681,5 +681,33 @@ describe('rounds in which no advisor replies (missing keys, early failures)', ()
     expect(useStore.getState().isRunning).toBe(true)
     expect(isUserTurn(useStore.getState().queue)).toBe(true)
     expect(agentCards('a')).toHaveLength(1)
+  })
+})
+
+describe('errored advisors stay in the rotation', () => {
+  it('Stop keeps an advisor whose turn errored', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ queue: [userCard(), ...useStore.getState().queue] })
+    scriptCalls((n) => (n === 1 ? { outcome: 'fail', delay: 1 } : { outcome: 'reply', delay: 200 }))
+    startRun()
+    handleUserMessage()
+    await vi.waitFor(() => expect(useStore.getState().windows['a']?.error).toBe('boom'))
+    stopAll() // while b is still replying
+    expect(agentCards('a')).toHaveLength(1)
+    expect(useStore.getState().queue.map((c) => c.status)).toEqual(['waiting', 'waiting', 'waiting'])
+    expect(useStore.getState().windows['a']?.error).toBe('boom')
+  })
+
+  it('a finite run whose last round fails keeps its advisors, so Start still works', async () => {
+    setup(['a', 'b'])
+    useStore.setState({
+      turnMode: 'parallel',
+      loopCount: 1,
+      keys: [],
+      windows: { a: { ...advisor('a'), provider: 'anthropic' }, b: { ...advisor('b'), provider: 'anthropic' } },
+    })
+    startRun()
+    await vi.waitFor(() => expect(useStore.getState().isRunning).toBe(false))
+    expect(useStore.getState().queue.map((c) => c.status)).toEqual(['waiting', 'waiting'])
   })
 })

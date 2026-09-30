@@ -227,10 +227,11 @@ export function stopAll(): void {
 
     state.updateWindow(windowId, { isStreaming: false, streamContent: '' })
   }
-  // Prep queue for next start — reset all cards to waiting
+  // Prep queue for next start — reset all cards to waiting. Errored advisors
+  // stay in the rotation (they keep showing their error); skipped cards leave.
   state.setQueue(
     state.queue
-      .filter((c) => c.status !== 'errored' && c.status !== 'skipped')
+      .filter((c) => c.status !== 'skipped')
       .map((c) => ({ ...c, status: 'waiting' as const, errorLabel: null })),
   )
   state.setIsRunning(false)
@@ -567,10 +568,11 @@ function prepQueueForNextRound(): void {
   // The run is over; a message pending for its next round must not carry into a later run.
   userMessageAwaitingTurn = false
   cancelAutoRetries()
+  // As at Stop: errored advisors stay in the rotation, skipped cards leave.
   state.setQueue(
     dropOrphanUserTurns(
       state.queue
-        .filter((c) => c.status !== 'errored' && c.status !== 'skipped')
+        .filter((c) => c.status !== 'skipped')
         .map((c) => ({ ...c, status: 'waiting' as const, errorLabel: null })),
     ),
   )

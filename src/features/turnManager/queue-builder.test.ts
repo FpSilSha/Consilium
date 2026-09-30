@@ -109,11 +109,12 @@ describe('dropLeftoverRetryCards', () => {
 })
 
 describe('resetQueueForNewRun', () => {
-  it('drops errored cards and makes finished or in-progress cards wait again', () => {
+  it('makes errored, finished or in-progress cards wait again and keeps skipped ones', () => {
     const skipped = agent('b', 'skipped')
     const result = resetQueueForNewRun([user('completed'), agent('a', 'active'), agent('c', 'errored'), skipped, agent('d', 'completed')])
-    expect(result.map((c) => c.status)).toEqual(['waiting', 'waiting', 'skipped', 'waiting'])
-    expect(result[2]).toBe(skipped)
+    expect(result.map((c) => c.status)).toEqual(['waiting', 'waiting', 'waiting', 'skipped', 'waiting'])
+    expect(result.every((c) => c.errorLabel === null)).toBe(true)
+    expect(result[3]).toBe(skipped)
   })
 
   it('returns untouched waiting cards as they are', () => {
@@ -128,8 +129,10 @@ describe('prepareQueueForRun', () => {
     expect(result.map((c) => [c.isUser, c.status])).toEqual([[true, 'waiting'], [false, 'waiting']])
   })
 
-  it('drops a user turn that has no advisor left', () => {
-    expect(prepareQueueForRun([user('completed'), agent('a', 'errored')], 'sequential', () => false)).toEqual([])
+  it('keeps an errored advisor, waiting again, and drops a user turn with no advisor card', () => {
+    const kept = prepareQueueForRun([user('completed'), agent('a', 'errored')], 'sequential', () => false)
+    expect(kept.map((c) => [c.isUser, c.status])).toEqual([[true, 'waiting'], [false, 'waiting']])
+    expect(prepareQueueForRun([user('completed')], 'sequential', () => false)).toEqual([])
   })
 })
 

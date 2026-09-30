@@ -45,14 +45,13 @@ export function dropLeftoverRetryCards(
 }
 
 /**
- * Resets a queue for a new run, the way Stop leaves it: errored cards are
- * dropped and finished or in-progress cards wait again. A session saved
- * mid-reply would otherwise restore an "active" card that never completes.
- * Skipped cards stay skipped.
+ * Resets a queue for a new run: errored, finished or in-progress cards wait
+ * again (an error keeps its advisor in the rotation; the advisor still shows
+ * it). A session saved mid-reply would otherwise restore an "active" card
+ * that never completes. Skipped cards stay skipped.
  */
 export function resetQueueForNewRun(queue: readonly QueueCard[]): readonly QueueCard[] {
   return queue
-    .filter((c) => c.status !== 'errored')
     .map((c) => (c.status === 'skipped' || (c.status === 'waiting' && c.errorLabel === null)
       ? c
       : { ...c, status: 'waiting' as const, errorLabel: null }))
@@ -154,8 +153,8 @@ const replaceAt = (queue: readonly QueueCard[], index: number, card: QueueCard):
 /**
  * The queue for a Retry pressed during a run, so the advisor answers each
  * message once and keeps exactly one card in the rotation:
- * - its errored card is replaced in place (Stop and run ends drop errored
- *   cards, so keeping both would lose the advisor);
+ * - its errored card is replaced in place, so the advisor keeps one card in
+ *   its place;
  * - a card of its own still to run this round with no user turn before it
  *   would answer the same messages again, so the retry takes that turn now;
  * - if it has another card (one that already ran, or one waiting for the
@@ -175,8 +174,9 @@ export function queueForRetryWhileRunning(queue: readonly QueueCard[], retryCard
 /**
  * The queue for a Retry pressed while stopped, which starts a new run with
  * Start's clean-up and then places the retry as during a run (see
- * queueForRetryWhileRunning). The advisor's errored card keeps its place for
- * the retry, since the clean-up would drop it. When the retry takes a turn
+ * queueForRetryWhileRunning). An errored card of the advisor (a session saved
+ * mid-round) marks where the round stopped, so the retry takes its place
+ * before the clean-up would make it wait again. When the retry takes a turn
  * (it isn't a one-shot), the round resumes there: in Seq and Queue mode the
  * turns before it count as taken (a user turn ahead of it would otherwise wait
  * for a message the retry is already answering), in Parallel mode every other
