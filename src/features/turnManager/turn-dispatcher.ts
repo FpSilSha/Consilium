@@ -39,6 +39,14 @@ let userMessageAwaitingTurn = false
 /** Retry cards: each runs once, then is removed from the queue (see retryAdvisor). */
 const oneShotCards = new Set<string>()
 
+/**
+ * Whether any advisor turn in the current round replied (sent text or
+ * finished). A round in which none did (missing keys, requests refused before
+ * reaching the network, every request failing) must not start the next round
+ * on its own (see onTurnComplete).
+ */
+let advisorRepliedThisRound = false
+
 /** Every retry card created in this app session (see dropLeftoverRetryCards). */
 const liveRetryCards = new Set<string>()
 const isLiveRetryCard = (cardId: string): boolean => liveRetryCards.has(cardId)
@@ -84,6 +92,7 @@ function beginRun(): void {
   useStore.setState({ roundsCompleted: 0 })
   retriedCards.clear()
   userMessageAwaitingTurn = false
+  advisorRepliedThisRound = false
   cancelAutoRetries()
 }
 
@@ -270,10 +279,12 @@ export function manualDispatch(cardId: string): void {
 }
 
 function dispatchAgentTurn(card: QueueCard): void {
-  // Only a card still waiting in the queue runs; a stale card list could
-  // otherwise run a card twice, or run one that was removed.
-  const queued = useStore.getState().queue.find((c) => c.id === card.id)
-  if (queued?.status !== 'waiting') return
+  // Only a card still waiting in the queue runs, and only during a run; a
+  // stale card list could otherwise run a card twice, run one that was
+  // removed, or run one after the run ended.
+  const current = useStore.getState()
+  const queued = current.queue.find((c) => c.id === card.id)
+  if (!current.isRunning || queued?.status !== 'waiting') return
   // Running the card now supersedes a pending auto-retry of it (e.g. a message
   // sent during the wait dispatched it), which would otherwise run it again.
   cancelAutoRetry(card.id)
@@ -337,6 +348,7 @@ function dispatchAgentTurn(card: QueueCard): void {
 
   const callbacks: StreamCallbacks = {
     onChunk: (content) => {
+      advisorRepliedThisRound = true
       const current = useStore.getState()
       const currentWindow = current.windows[card.windowId]
       if (currentWindow === undefined) return
@@ -349,6 +361,7 @@ function dispatchAgentTurn(card: QueueCard): void {
 
       // Discard late-arriving responses after user explicitly stopped
       if (controller.signal.aborted) return
+      advisorRepliedThisRound = true
 
       const current = useStore.getState()
       const freshWindow = current.windows[card.windowId]
@@ -504,11 +517,16 @@ function onTurnComplete(): void {
     }
 
     // Loop continues (infinite or rounds remaining) — reset queue and dispatch
+    const anyReply = advisorRepliedThisRound
     useStore.setState({ roundsCompleted })
     resetQueueForNextRound()
-    // No advisor left to run (all removed or dropped): end the run instead of
-    // looping on an empty queue that can never dispatch.
-    if (!hasActiveAgent(useStore.getState().queue)) {
+    const next = useStore.getState()
+    // End the run instead of looping without end when no advisor is left to
+    // run (all removed or dropped), or when no advisor replied this round
+    // (e.g. missing API keys, or requests refused before reaching the network)
+    // and nothing holds the next round back: no user turn waits in the queue
+    // and the mode isn't Manual. The errors stay shown.
+    if (!hasActiveAgent(next.queue) || (!anyReply && next.turnMode !== 'manual' && !userTurnWaiting(next.queue))) {
       prepQueueForNextRound()
       return
     }
@@ -520,7 +538,7 @@ function onTurnComplete(): void {
   dispatchNextTurn()
 }
 
-/** Resets queue cards to 'waiting' for the next round, preserving skipped cards. */
+/** Resets queue cards to 'waiting' for the next round; skipped cards leave the rotation. */
 function resetQueueForNextRound(): void {
   const state = useStore.getState()
   const reset = state.queue
@@ -534,7 +552,13 @@ function resetQueueForNextRound(): void {
   const next = dropOrphanUserTurns(ensureUserTurnForSoloAgent(reset, state.turnMode))
   const pending = userMessageAwaitingTurn
   userMessageAwaitingTurn = false
+  advisorRepliedThisRound = false
   state.setQueue(pending ? completeUserTurn(next) : next)
+}
+
+/** Whether a user turn waits in the queue, so a round can't finish until the user answers. */
+function userTurnWaiting(queue: readonly QueueCard[]): boolean {
+  return queue.some((c) => c.isUser && c.status === 'waiting')
 }
 
 /** Stops running and preps the queue so the user can hit Start again. */

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { AdvisorWindow } from '@/types'
 
 const streamResponse = vi.fn()
@@ -570,5 +570,116 @@ describe('round-6 regressions', () => {
     await vi.waitFor(() => expect(isUserTurn(useStore.getState().queue)).toBe(true))
     await settle()
     expect(streamResponse).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('rounds in which no advisor replies (missing keys, early failures)', () => {
+  const missingKey = (id: string): AdvisorWindow => ({ ...advisor(id), provider: 'anthropic' })
+
+  let stopBreaker: () => void = () => {}
+  afterEach(() => stopBreaker())
+
+  /** Stops the run if the dispatcher loops, so a regression fails instead of hanging the test. */
+  function breakRunawayLoop(): void {
+    const unsubscribe = useStore.subscribe((state) => {
+      if (state.errorLog.length <= 20 || !state.isRunning) return
+      unsubscribe() // first: stopAll's own store updates would re-enter here
+      stopAll()
+    })
+    stopBreaker = unsubscribe
+  }
+
+  it.each(['parallel', 'sequential'] as const)('%s mode ends the run after one failed round instead of looping', async (mode) => {
+    setup(['a', 'b'])
+    useStore.setState({ turnMode: mode, keys: [], errorLog: [], windows: { a: missingKey('a'), b: missingKey('b') } })
+    breakRunawayLoop()
+    startRun()
+    await vi.waitFor(() => expect(useStore.getState().isRunning).toBe(false))
+    expect(useStore.getState().errorLog).toHaveLength(2) // one per advisor
+    expect(useStore.getState().windows['a']?.error).toBe('API key not found')
+    expect(useStore.getState().queue.map((c) => c.status)).toEqual(['waiting', 'waiting'])
+    expect(streamResponse).not.toHaveBeenCalled()
+  })
+
+  it('stops when a later round has no reply (keys deleted mid-run)', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ turnMode: 'parallel', keys: [], errorLog: [] })
+    streamResponse.mockImplementation((_config: unknown, callbacks: Callbacks) => {
+      const controller = new AbortController()
+      // After round 1 has started both requests, both advisors lose their key.
+      if (streamResponse.mock.calls.length === 2) useStore.setState({ windows: { a: missingKey('a'), b: missingKey('b') } })
+      setTimeout(() => { if (!controller.signal.aborted) callbacks.onDone('reply') }, 1)
+      return controller
+    })
+    breakRunawayLoop()
+    startRun()
+    await vi.waitFor(() => expect(useStore.getState().isRunning).toBe(false))
+    expect(streamResponse).toHaveBeenCalledTimes(2)
+    expect(useStore.getState().errorLog).toHaveLength(2)
+  })
+
+  it.each(['parallel', 'sequential'] as const)('%s: requests refused before reaching the network (e.g. an attachment on the subscription) end the run after one round', async (mode) => {
+    setup(['a', 'b'])
+    useStore.setState({ turnMode: mode, errorLog: [] })
+    streamResponse.mockImplementation((_config: unknown, callbacks: Callbacks) => {
+      const controller = new AbortController()
+      queueMicrotask(() => callbacks.onError('Attachments are not supported'))
+      return controller
+    })
+    breakRunawayLoop()
+    startRun()
+    await vi.waitFor(() => expect(useStore.getState().isRunning).toBe(false))
+    expect(streamResponse).toHaveBeenCalledTimes(2)
+    expect(useStore.getState().errorLog).toHaveLength(2)
+  })
+
+  it('a round in which every request fails ends the run instead of retrying forever', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ turnMode: 'parallel', errorLog: [] })
+    failNext(2)
+    startRun()
+    await vi.waitFor(() => expect(useStore.getState().isRunning).toBe(false))
+    expect(streamResponse).toHaveBeenCalledTimes(2)
+    expect(useStore.getState().errorLog).toHaveLength(2)
+  })
+
+  it('a user turn in the middle of the queue still holds the run, as before', async () => {
+    setup(['a', 'b'])
+    useStore.setState({
+      turnMode: 'queue',
+      keys: [],
+      errorLog: [],
+      windows: { a: missingKey('a'), b: missingKey('b') },
+      queue: [createAgentCard('a'), userCard(), createAgentCard('b')],
+    })
+    breakRunawayLoop()
+    startRun() // a fails; the run waits at the user turn
+    expect(isUserTurn(useStore.getState().queue)).toBe(true)
+    handleUserMessage() // b fails; the next round's a fails; the run waits for the user again
+    await settle()
+    expect(useStore.getState().isRunning).toBe(true)
+    expect(isUserTurn(useStore.getState().queue)).toBe(true)
+    expect(useStore.getState().errorLog).toHaveLength(3)
+  })
+
+  it('keeps looping while another advisor replies', async () => {
+    setup(['a', 'b'])
+    useStore.setState({ turnMode: 'parallel', keys: [], errorLog: [], windows: { a: missingKey('a'), b: advisor('b') } })
+    startRun()
+    await vi.waitFor(() => expect(streamResponse.mock.calls.length).toBeGreaterThanOrEqual(3))
+    expect(useStore.getState().isRunning).toBe(true)
+    stopAll()
+  })
+
+  it('a lone advisor with a user turn still waits for the user after the error', async () => {
+    setup(['a'])
+    useStore.setState({ keys: [], errorLog: [], windows: { a: missingKey('a') } })
+    startRun()
+    handleUserMessage()
+    await vi.waitFor(() => expect(useStore.getState().windows['a']?.error).toBe('API key not found'))
+    await settle()
+    expect(useStore.getState().isRunning).toBe(true)
+    expect(isUserTurn(useStore.getState().queue)).toBe(true)
+    expect(agentCards('a')).toHaveLength(1)
   })
 })
