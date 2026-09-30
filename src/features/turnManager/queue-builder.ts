@@ -159,7 +159,7 @@ const replaceAt = (queue: readonly QueueCard[], index: number, card: QueueCard):
  *   would answer the same messages again, so the retry takes that turn now;
  * - if it has another card (one that already ran, or one waiting for the
  *   user's next message), the retry is a one-shot extra turn;
- * - with no card left (e.g. dropped by Stop), the retry card becomes its card.
+ * - with no card left (e.g. removed from the queue), the retry card becomes its card.
  */
 export function queueForRetryWhileRunning(queue: readonly QueueCard[], retryCard: QueueCard): RetryPlacement {
   const isAdvisorCard = (c: QueueCard): boolean => c.windowId === retryCard.windowId && !c.isUser && c.status !== 'skipped'

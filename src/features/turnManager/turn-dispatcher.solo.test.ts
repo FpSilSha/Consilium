@@ -186,7 +186,7 @@ describe('Seq mode with several AIs keeps its previous behaviour', () => {
 })
 
 describe('round-2 regressions', () => {
-  it('a retry keeps the advisor in the rotation when its own card was already dropped', async () => {
+  it('a retry keeps the advisor in the rotation when its own card was removed', async () => {
     setup(['a', 'b'])
     useStore.setState({ queue: [{ id: 'u', windowId: '__user__', isUser: true, status: 'waiting', errorLabel: null }, ...useStore.getState().queue] })
     failNext(1) // a fails
