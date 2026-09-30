@@ -106,13 +106,11 @@ API integrations are written as per-provider adapters in `src/services/api/adapt
 ### Install and run
 
 ```bash
-git clone --branch codex/provider-catalog-overhaul https://github.com/FpSilSha/Consilium.git
+git clone https://github.com/FpSilSha/Consilium.git
 cd Consilium
 npm install
 npm run dev      # launches the Electron app in dev mode
 ```
-
-The current provider, subscription, session, and turn-management updates are on `codex/provider-catalog-overhaul`; the command above selects that branch.
 
 ### First-run setup
 
