@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/hero.png" alt="Consilium — collaborate with multiple AIs in a virtual council" />
+  <img src="./assets/hero.png" alt="Consilium — a human and holographic advisors Claude, Grok, Gemini, Llama, and GPT gather around a council table overlooking Earth" />
 </p>
 
 # Consilium
